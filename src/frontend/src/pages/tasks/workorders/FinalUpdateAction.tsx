@@ -97,7 +97,10 @@ export function WorkRecordUpdate({
           ) : (
             <>
               {!readiness.ready && (
-                <Alert color='yellow'>
+                <Alert
+                  color='yellow'
+                  styles={{ message: { color: 'var(--mantine-color-text)' } }}
+                >
                   <Stack gap='xs'>
                     {readiness.blockers.map((row) => (
                       <Text key={`${row.code}-${row.message}`} size='sm'>

@@ -103,6 +103,8 @@ export function showWorkPackageWarnings(warnings: readonly string[] = []) {
       })
       .join('\n'),
     color: needsReview ? 'orange' : 'blue',
+    styles: { description: { color: 'var(--mantine-color-text)' } },
+    closeButtonProps: { 'aria-label': t`Close` },
     autoClose: false
   });
 }

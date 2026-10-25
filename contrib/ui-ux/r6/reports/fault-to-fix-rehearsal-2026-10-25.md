@@ -38,6 +38,38 @@ remain fail-closed; user titles do not establish approved trades.
 
 ## Actual local exercise and recovery
 
+### Follow-up governance contrast and real capture
+
+Fable's current92.2 finding takes precedence over Gemini99.10: the real persistent
+assignment notification body measures3.32:1 and two Closeout governance messages
+measure2.69/3.62:1. Scoped native message/description body colours now use theme
+text without weakening lifecycle or approval rules. The work-order toast's close
+button also receives its native accessible name after a real axe scan exposes
+the missing label. Two notification cases and six packet/blocker/manual-PDF
+browser cases pass; new raw axe/direct contrast reports cover those surfaces.
+1197 units and App/expanded S6 types pass again. Old scores do not accept this
+changed candidate; both reviewers must independently re-score the final delta.
+
+An explicitly bounded second exercise17/Work3858/packet35 stops at that unnamed
+close-button audit and safely ends only its own synthetic event. It is retained
+as a failed verification, not erased or counted as a successful complete run.
+After the label fix, final exercise18/Work3859/packet36 passes all seven real
+creation/critical-surface/PDF/governed-refusal stages, with genuine zero-violation
+notification, mimic-notice, packet-ownership and blocker audits. Its critical
+motor capture shows the fixed outlined notice and TEST-critical reading group
+in the real application, not merely a fixture. The route capture waits for real
+Work tabs; Performance capture waits for no loading overlay. Only18 is ended;
+its Work remains Draft and no human approval is forged. Source telemetry stays
+unchanged. Initial16 and stopped17 remain resolved with their prior audit history.
+
+The ef48 image is superseded by these final runtime colour/accessibility
+corrections. A new clean image is required; already verified dependency blobs
+can be reused. Two Docker uploads and one8MiB host upload time out; the1MiB
+digest-checked chunked upload makes measurable progress and commits the227MB
+dependency blob. A bounded larger-chunk continuation is used for the remaining
+444MB base blob. Authentication and small blob writes succeed; this is not
+presented as a bad database password or successful publication. No traffic moves.
+
 One native browser confirmation selects Motor Winding Temperature6 from58 real
 mapped Pump08 parameters. It creates synthetic alarm16, Work3857/WO-003857 and
 packet34 atomically, with actual eligible Avery27 assignment and native returned-ID

@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { auditAccessibility } from '../s0/accessibility';
+import { assertReadableContrast } from '../s0/contrast';
 import { nativeBaseline } from '../s0/guards';
 import { mockMachine } from '../s0/machineFixtures';
 import { mockPositions } from '../s2/equipmentFixtures';
@@ -11,6 +13,90 @@ import {
 } from './closeoutFixtures';
 
 nativeBaseline();
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`packet ownership and governed closeout blockers are readable (${scheme})`, async ({
+    page
+  }, info) => {
+    const fixture = await closeoutWork(page, { captures: [] });
+    fixture.setOverview({
+      lifecycle_status: 'draft',
+      repair_packet: {
+        id: 28,
+        reference: 'RP-28',
+        status: 'draft',
+        criticality: 'critical',
+        fault_summary: 'Synthetic motor test',
+        symptom: '',
+        production_impact: '',
+        generation_status: 'not_started',
+        diagnosis: {},
+        diagnosis_is_preliminary: true,
+        diagnosis_status: null,
+        findings: [],
+        approved_scope: null,
+        gates: []
+      }
+    });
+    const message =
+      'The controlled exercise requires three current passed checks with valid prepared evidence. Physical authority remains separate.';
+    await page.route('**/api/repair/packets/28/close/', (route) =>
+      route.fulfill({
+        json: {
+          action: 'complete',
+          ready: false,
+          lifecycle_version: 7,
+          packet_id: 28,
+          work_order_id: 73,
+          blockers: [{ code: 'EXERCISE_VERIFICATION_INCOMPLETE', message }],
+          warnings: []
+        }
+      })
+    );
+    await openCloseout(page, scheme);
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-mantine-color-scheme',
+      scheme
+    );
+    const ownership = page
+      .getByTestId('closeout-preparation')
+      .locator('.mantine-Alert-message');
+    await expect(ownership).toContainText(
+      'The linked Repair Packet owns these transitions.'
+    );
+    const blocker = page
+      .getByTestId('work-record-update')
+      .getByText(message, { exact: true });
+    await expect(blocker).toBeVisible();
+    const contrast = {
+      scheme,
+      ownership: await assertReadableContrast(ownership),
+      blocker: await assertReadableContrast(blocker)
+    };
+    await info.attach(`governance-contrast-${scheme}`, {
+      body: JSON.stringify(contrast),
+      contentType: 'application/json'
+    });
+    await auditAccessibility(
+      page,
+      page.getByTestId('closeout-preparation'),
+      info,
+      `packet-ownership-${scheme}`
+    );
+    await auditAccessibility(
+      page,
+      page.getByTestId('work-record-update'),
+      info,
+      `closeout-blocker-${scheme}`
+    );
+    await page
+      .getByTestId('closeout-preparation')
+      .screenshot({ path: info.outputPath(`packet-ownership-${scheme}.png`) });
+    await page
+      .getByTestId('work-record-update')
+      .screenshot({ path: info.outputPath(`closeout-blocker-${scheme}.png`) });
+  });
+}
 
 test('manual account uses the current version after submission and independent approval', async ({
   page
@@ -193,6 +279,11 @@ test('manual account is editable and report downloads as PDF', async ({
   await openCloseout(page);
   await expect(page.getByTestId('closeout-preparation')).toContainText(
     'Assign a technician before execution'
+  );
+  await assertReadableContrast(
+    page
+      .getByTestId('work-record-update')
+      .getByText('Assign a technician before execution', { exact: true })
   );
   await page
     .getByRole('textbox', { name: 'Action taken', exact: true })

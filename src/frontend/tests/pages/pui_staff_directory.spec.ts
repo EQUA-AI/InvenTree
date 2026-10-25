@@ -500,7 +500,7 @@ test('a stale version is never silently retried with a newer version', async ({
 
 test('creation trade override is a human-confirmed action and uses the compound create command', async ({
   page
-}) => {
+}, info) => {
   await mockApi(page);
   await page.route('**/api/maintenance/work-packages/create/', (route) => {
     const body = route.request().postDataJSON();
@@ -566,6 +566,20 @@ test('creation trade override is a human-confirmed action and uses the compound 
       { exact: true }
     )
   ).toBeVisible();
+  await assertReadableContrast(
+    page.getByText(
+      'Authorized trade mismatch override recorded with its reason. This does not authorize work to start.',
+      { exact: true }
+    )
+  );
+  await auditAccessibility(
+    page,
+    page
+      .locator('.mantine-Notification-root')
+      .filter({ hasText: 'Work order created — assignment recorded' }),
+    info,
+    'assignment-override-toast'
+  );
   await expect(
     page.getByText(
       /ASSIGNMENT_MANUAL_OVERRIDE|Work order created — review required/
@@ -575,7 +589,7 @@ test('creation trade override is a human-confirmed action and uses the compound 
 
 test('confirmed trades without an owner show a readable persistent assignment warning', async ({
   page
-}) => {
+}, info) => {
   await mockApi(page);
   await page.route('**/api/maintenance/work-packages/create/', (route) => {
     const body = route.request().postDataJSON();
@@ -621,6 +635,20 @@ test('confirmed trades without an owner show a readable persistent assignment wa
       { exact: true }
     )
   ).toBeVisible();
+  await assertReadableContrast(
+    page.getByText(
+      'No owner is assigned. Assign authorized staff before work starts.',
+      { exact: true }
+    )
+  );
+  await auditAccessibility(
+    page,
+    page
+      .locator('.mantine-Notification-root')
+      .filter({ hasText: 'Work order created — review required' }),
+    info,
+    'assignment-review-toast'
+  );
   await expect(
     page.getByText('ASSIGNMENT_UNASSIGNED', { exact: false })
   ).toHaveCount(0);
