@@ -1,5 +1,30 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## Localhost ready — final application freeze387816b5
+
+The running-count fix is available at http://localhost:5173/; refresh the station
+page. HTTP200 and the served source confirm the bay-derived count and mismatch
+warning. The observed station93 has all14 bays Idle but source counter1: show
+calculated0of14 with an explicit disagreement rather than inventing a running
+pump. Backend8000 is reloaded; its scoped staff route returns401 without a
+session. The preserved sync server does not establish ASGI/AI liveness.
+
+Both origin branches contain387816b545312553f7018d921cf7ae40a3609edd. Final
+independent Fable96.7 and Gemini99.00 each pass the scoped local UI gate with
+zero mandatory blockers;64 source identities and26 delta plus46 baseline
+attachments are verified by each.239 units, App/S6 types,18 responsive mimic,
+18 staff and10 native workflow cases pass. Identical contrast JSON copies count
+as one receipt, not four independent measurements. Optional polish is deferred.
+
+The exact387816b5 AMD64 image builds and passes network-disabled identity,
+driver, pip and tokenizer smoke checks; no build heap override leaks to runtime.
+It is not pushed and no Azure revision or traffic is changed. No new database
+migration is needed for this UI fix. Subsequent documentation-only commits do
+not change this application/image freeze. Target confirmation, approved operator
+session and worker alignment remain required before cloud release; live AI,
+external mail, SAP and physical release are not accepted. P17/D23 remain open
+for their broader product obligations. Earlier checkpoints below are historical.
+
 ## Local fix served; final duplicate-review corrections verified
 
 Both branches contain72ec703f0. Local frontend5173 serves the count fix and the
