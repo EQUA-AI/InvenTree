@@ -2,14 +2,33 @@
 
 ## Real local rehearsal and Azure follow-through — in progress
 
-Current application/image freeze isef48d76cb42156c5f0933675bd6d5c76ef8c7a79.
-It builds forAMD64 and passes isolated offline identity/driver/pip/tokenizer
-checks. Publishing is in progress, not traffic promotion. A subsequent test-only
+Current application/image freeze is8a9426cef3c30511c580001d9a2015260e249427.
+The final AMD64 production build and isolated network-disabled identity,
+native-driver, pip and tokenizer checks pass. Host Vite also builds in16.36s.
+The ef48 image is historical and must not be promoted as the current fix.
+Registry publication is not verified; upload timeouts retain private resumable
+checkpoints. No Azure revision or traffic changes. A subsequent test-only
 correction verifies actual HTML light/dark schemes:4 cases and8 measured axe
 reports pass; the earlier34-case run alone was not genuine dark-theme evidence.
 Fourteen additional creation/manual-report/PDF fixture cases pass. Production
-source is unchanged by this verification checkpoint; no second rebuild is needed
-solely for tests/docs. Both current independent re-scores remain required.
+source is unchanged by this documentation checkpoint; no second rebuild is
+needed solely for docs. Both current independent re-scores remain required.
+
+Final actual exercise18/Work3859/packet36 passes native creation, critical views,
+genuine12664-byte PDF and governed refusal. Four actual scoped axe reports have
+zero violations. Its safe synthetic-only end restores Performance, graph, motor,
+station and board condition, retaining history and the original measured value.
+All owned events16/17/18 are resolved; Work3857/3858/3859 remain Draft. Exercise17
+correctly remains a failed audit before the accessible close-button correction.
+Three real toast/Closeout contrast/name defects are fixed;1197 units, App/S6
+types,124 PG,6 governance/PDF and2 notification cases pass. No human publication,
+report approval, Work completion, worker heartbeat or physical release is claimed.
+
+Fresh21:09 UTC Azure reads still show oldfac03cbf/revision119 at100 percent.
+Worker read is authorization-denied; target confirmation and approved operator
+cookie remain absent. Public ready/alive is not authenticated release acceptance.
+The database schema was already aligned; current UI changes add no migration.
+See the current execution ledger for final review and upload outcomes.
 
 Actual exercise16 createsWork3857/packet34 from one of58 mapped channels;
 TEST159.5 C appears critical in motor/station mimics, Performance, KPI, graph

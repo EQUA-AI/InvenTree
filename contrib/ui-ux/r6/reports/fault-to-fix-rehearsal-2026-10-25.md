@@ -38,6 +38,61 @@ remain fail-closed; user titles do not establish approved trades.
 
 ## Actual local exercise and recovery
 
+### Final bounded release checkpoint
+
+Final production source is8a9426cef3c30511c580001d9a2015260e249427. The host
+Vite build passes in16.36s and the clean native AMD64 production image builds.
+Its local OCI index is477fe684df3c74e558855d42503f8fa762b1a42b8f84a6138d63eb76e1c5f07f;
+the AMD64 platform manifest is434bb1ba35ff2b598fb3d0292ada169ba76a03930d5b7b0373face3e6c3f642c.
+The network-disabled smoke confirms matching frontend/backend commit, clean
+ui_contract1, actual psycopg3/MySQL/sqlite drivers, pip consistency and cached
+tokenizer. An initial smoke command incorrectly imports psycopg2; that command
+fails and is retained separately. The corrected check uses the installed native
+psycopg driver and passes; no dependency is added merely to satisfy a bad probe.
+No build-only Node heap override leaks into runtime. These local identities are
+not claimed as published registry digests or deployed Azure acceptance.
+
+Final actual exercise18 verifies all seven bounded native stages. Four actual
+scoped axe reports are zero-violation; independent recovery verifies six surface,
+source-integrity and retained-history checks. The genuine PDF is12664 bytes.
+All three newly owned events16/17/18 are resolved, while Work3857/3858/3859 and
+their packets remain Draft. Final comparison again confirms all ten prior-domain
+tables match the backup after excluding only the explicitly owned exercise
+records and new draft procedure. Exact local ended-test Mailpit receipts for
+3858/3859 are reconciled without sending unrelated queued messages. No general
+queue drain or running-worker claim is made.
+
+Final source checks pass:1197 units across127 files;124 native PG tests; App and
+expanded S6 types;34 affected mimic cases;4 genuine light/dark desktop/phone
+cases;14 creation/manual-report/PDF cases;6 governance/PDF cases;2 fully audited
+notification cases. Fixture report submission/independent approval is not the
+unperformed human approval of these actual Work records. Production
+staff_assignment.py modules and backend migration tree are unchanged.
+
+Fresh21:09 UTC read-only Azure preflight still servesfac03cbf onrevision119,
+old image214a6a8a, at100 percent ordinary traffic. Public live/AI-ready return200,
+but worker metadata remains authorization-denied and neither target confirmation
+nor an approved operator cookie is supplied. No revision or traffic write is
+performed. Independent procedure publication and three current governed checks
+are prerequisites for actual closeout; they are not bypassed to claim speed or
+completion. Local and Azure schema were already aligned; no new migration or
+local-to-Azure data copy is required by these frontend changes.
+
+The final registry dependency upload is bounded to240 seconds and stops at
+21:15:38 UTC without publishing a manifest or moving traffic. Last acknowledged
+private checkpoints preserve roughly75.5MB of the444.3MB base blob and40.9MB of
+the227.1MB final dependency blob. They are resumable, not completed uploads.
+No stalled upload is deliberately left running. Credentials authenticate and
+small blobs verify; the blocker is throughput/write timeouts, not a demonstrated
+invalid PostgreSQL password. The final image remains local and unpromoted.
+
+Both specialists receive all46 final delta attachments and78 source identities
+with their retained37-file baseline. A100-unattached-upload service cap is
+resolved by sequential batches of at most19; no evidence is omitted. Final
+independent current-candidate scoring remains required and is not inferred from
+the superseded92.2/99.10 reviews. Delivery receipts contain no signed upload URL,
+cookie, environment secret or database backup.
+
 ### Follow-up governance contrast and real capture
 
 Fable's current92.2 finding takes precedence over Gemini99.10: the real persistent
@@ -63,7 +118,7 @@ its Work remains Draft and no human approval is forged. Source telemetry stays
 unchanged. Initial16 and stopped17 remain resolved with their prior audit history.
 
 The ef48 image is superseded by these final runtime colour/accessibility
-corrections. A new clean image is required; already verified dependency blobs
+corrections. The new8a clean image now builds; already verified dependency blobs
 can be reused. Two Docker uploads and one8MiB host upload time out; the1MiB
 digest-checked chunked upload makes measurable progress and commits the227MB
 dependency blob. A bounded larger-chunk continuation is used for the remaining
