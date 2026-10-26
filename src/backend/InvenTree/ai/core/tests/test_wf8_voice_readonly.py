@@ -146,7 +146,7 @@ class VoicePromptTests(SimpleTestCase):
         from django.utils.asyncio import async_unsafe
 
         workflow = T1LookupWorkflow()
-        tool = object()
+        tool = SimpleNamespace(name="test_read")
         selected = SimpleNamespace(
             requires_specialist=False,
             clarification_required=False,

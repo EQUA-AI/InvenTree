@@ -100,6 +100,129 @@ def test_category_total_counts_each_physical_row_once_and_ranking_returns_ties(s
     assert Decimal(current_stock_summary(part.pk, location_id)["total_in_stock"]) == 4
 
 
+@pytest.mark.parametrize(
+    "operator,quantity,expected",
+    [
+        ("lt", 10, {"base", "template", "empty"}),
+        ("lte", 10, {"base", "template", "empty", "ten"}),
+        ("gt", 10, {"twelve"}),
+        ("gte", 10, {"ten", "twelve"}),
+        ("eq", 0, {"template", "empty"}),
+    ],
+)
+def test_native_quantity_comparisons_include_zeros_and_exact_boundaries(
+    stock_fixture, operator, quantity, expected
+):
+    part, template, empty, category = stock_fixture
+    ten = Part.objects.create(name="Ten", category=category)
+    twelve = Part.objects.create(name="Twelve", category=category)
+    StockItem.objects.create(part=ten, quantity=10, batch="")
+    StockItem.objects.create(part=twelve, quantity=12, batch="")
+    identities = {
+        "base": part.pk,
+        "template": template.pk,
+        "empty": empty.pk,
+        "ten": ten.pk,
+        "twelve": twelve.pk,
+    }
+    data = category_stock_summary(
+        category.pk, None, quantity_comparison=operator, quantity_value=quantity
+    )
+    assert data["resolved"] is True
+    assert {p["part_id"] for p in data["parts"]} == {identities[k] for k in expected}
+    assert data["part_count"] == len(expected)
+
+
+@pytest.mark.parametrize(
+    "operator,value,legacy",
+    [("bad", 1, None), ("lt", float("nan"), None), ("lt", -1, None), ("lt", 10, 2)],
+)
+def test_native_quantity_comparison_rejects_invalid_or_conflicting_filters(
+    stock_fixture, operator, value, legacy
+):
+    category = stock_fixture[3]
+    data = category_stock_summary(
+        category.pk, legacy, quantity_comparison=operator, quantity_value=value
+    )
+    assert data["resolved"] is False
+
+
+def test_live_exact_part_and_under_threshold_prompts_use_native_evidence(
+    stock_fixture, monkeypatch
+):
+    from ai.core.tools import capabilities
+    from ai.core.tools.stock_queries import resolve_stock_query
+
+    part, template, empty, category = stock_fixture
+    category.name = "PCBA"
+    category.save()
+    part.revision = "REV-A"
+    part.save()
+    monkeypatch.setattr(capabilities, "category_lexicon", lambda: frozenset({"pcba"}))
+    for query in [
+        f"Where is stock for part ID {part.pk} located?",
+        f"Show current stock for exact part ID {part.pk}.",
+        f"For exact part ID {part.pk} revision REV-A, list current in-stock locations and quantities only. Exclude historical, depleted and non-current stock rows.",
+    ]:
+        result = resolve_stock_query(query)
+        assert result is not None
+        assert Decimal(result["evidence"]["total_in_stock"]) == 4
+        assert "totals 4" in result["text"] or "on hand 4" in result["text"]
+        assert "rounding" not in result["text"] and "900" not in result["text"]
+    result = resolve_stock_query("Which PCBA parts have under10 units in stock?")
+    assert {p["part_id"] for p in result["evidence"]["parts"]} == {part.pk, template.pk, empty.pk}
+    assert "3 exact parts" in result["text"]
+    scoped = resolve_stock_query("Which parts in PCBA have under 10 units in stock?")
+    assert scoped["evidence"]["part_count"] == 3
+    for filtered in [
+        f"What stock is at Room 101 for part {part.pk}?",
+        "Which PCBA parts have under 10 available stock?",
+        "Which PCBA parts have under 10 stock at Room 101?",
+        f"Show stock for part {part.pk} batch TEST.",
+    ]:
+        assert resolve_stock_query(filtered) is None
+    precise = resolve_stock_query("Which PCBA parts have stock under 4.0000000000000001?")
+    assert precise["evidence"]["quantity_value"] == "4.0000000000000001"
+    assert resolve_stock_query("Show stock for part 002.01-PCBA.") is None
+    with patch("ai.core.tools.inventree.read.database._current_user", return_value=None):
+        assert (
+            resolve_stock_query(f"Where is stock for part {part.pk} located?")["evidence"][
+                "resolved"
+            ]
+            is False
+        )
+
+
+@pytest.mark.asyncio
+async def test_exact_part_workflow_is_native_in_text_and_streaming_and_never_calls_model(
+    stock_fixture,
+):
+    from ai.core.integrations.inventory_tools import get_stock_levels
+    from ai.core.workflows.wf8_lookup import T1LookupWorkflow
+
+    part = stock_fixture[0]
+    workflow = T1LookupWorkflow()
+    for modality in ("text", "voice"):
+        with (
+            patch(
+                "ai.core.tools.rbac.tools_for_current_user",
+                new=AsyncMock(return_value=[get_stock_levels]),
+            ),
+            patch.object(
+                workflow,
+                "_get_agent",
+                new=AsyncMock(side_effect=AssertionError("No model stock answer")),
+            ),
+        ):
+            query = f"Where is stock for part ID {part.pk} located?"
+            result = await workflow.execute(query, context={"modality": modality})
+            assert result.success and "totals 4" in result.formatted_response
+            chunks = [
+                s async for s in workflow.execute_streaming(query, context={"modality": modality})
+            ]
+            assert len(chunks) == 1 and "totals 4" in chunks[0]
+
+
 def test_native_part_summary_does_not_stop_at_a_stock_api_page(stock_fixture):
     part, _template, _empty, _category = stock_fixture
     StockItem.objects.bulk_create([StockItem(part=part, quantity=1, batch="") for _ in range(205)])
@@ -572,3 +695,54 @@ async def test_bom_unknown_flags_cannot_certify_required_components_or_variant_e
         "variant_lines": None,
     }
     assert result["arithmetic_buildable_quantity"] is None
+
+
+@pytest.mark.asyncio
+async def test_catalog_keyword_page_keeps_parts_scope_and_native_coverage(stock_fixture):
+    from ai.core.tools.catalog_queries import catalog_request, resolve_catalog_query
+
+    provider = SimpleNamespace(
+        search_parts_page=AsyncMock(
+            return_value={
+                "results": [
+                    {"pk": 1, "name": "Bearing A", "IPN": "A"},
+                    {"pk": 2, "name": "Bearing B", "IPN": "B"},
+                ],
+                "population_count": 5,
+                "has_more": True,
+            }
+        )
+    )
+    query = "Show only the first2 keyword matches for bearing and state total, returned count and whether more pages exist."
+    assert catalog_request(query) == {"query": "bearing", "limit": 2, "offset": 0}
+    with patch("ai.core.tools.inventree.read.parts.get_data_provider", return_value=provider):
+        result = await resolve_catalog_query(query)
+    provider.search_parts_page.assert_awaited_once_with(
+        query="bearing", category=None, active=None, limit=2, offset=0
+    )
+    assert "Total matches: 5; returned count: 2; more pages: yes" in result["text"]
+    assert (
+        "across catalog parts" in result["text"] and "category name matches" not in result["text"]
+    )
+    assert result["evidence"]["complete_population"] is False
+
+
+@pytest.mark.asyncio
+async def test_catalog_duplicate_category_names_require_native_selection(stock_fixture):
+    from ai.core.tools.catalog_queries import resolve_catalog_query
+    from asgiref.sync import sync_to_async
+
+    def setup():
+        parent = PartCategory.objects.create(name=f"Parent {uuid.uuid4().hex[:8]}")
+        first = PartCategory.objects.create(name="Bearings")
+        second = PartCategory.objects.create(name="Bearings", parent=parent)
+        return first.pk, second.pk
+
+    first, second = await sync_to_async(setup)()
+    with patch(
+        "ai.core.tools.inventree.read.parts.get_data_provider",
+        side_effect=AssertionError("No guessed category read"),
+    ):
+        result = await resolve_catalog_query("List parts specifically in the Bearings category.")
+    assert result["evidence"]["requires_clarification"] is True
+    assert str(first) in result["text"] and str(second) in result["text"]

@@ -1,0 +1,139 @@
+"""Explicit catalog search intent and native page coverage, without model prose."""
+
+from __future__ import annotations
+
+import re
+
+from asgiref.sync import sync_to_async
+
+_KEYWORD = re.compile(
+    r"^\s*(?:list|show|find)\s+(?:all\s+)?parts?\s+(?:matching|containing)\s+[\"']?([\w -]{1,100}?)[\"']?\s*(?:[.;?!]|$)",
+    re.I,
+)
+_PAGE = re.compile(
+    r"^\s*(?:show|list|give)\s+(?:only\s+)?(?:the\s+)?first\s*(\d{1,3})\s+(?:part\s+)?keyword\s+matches\s+for\s+[\"']?([\w -]{1,100}?)[\"']?\s*(?:\s+and\s+state\b|[.;?!]|$)",
+    re.I,
+)
+_CATEGORY = re.compile(
+    r"^\s*(?:list|show|find)\s+parts?\s+(?:specifically\s+)?in\s+(?:the\s+)?(.+?)\s+category\s*[.?!]?\s*$",
+    re.I,
+)
+_CATEGORY_ID = re.compile(
+    r"^\s*(?:list|show|find)\s+parts?\s+in\s+category\s*(?:id\s*)?[:#]?\s*(\d{1,9})\s*[.?!]?\s*$",
+    re.I,
+)
+
+
+def catalog_request(query: str) -> dict | None:
+    """Recognize complete read requests; ambiguous filters retain existing planning."""
+    from ai.core.tools.capabilities import _write_intent
+
+    if _write_intent(query.casefold()) is not None:
+        return None
+    page = _PAGE.match(query)
+    if page:
+        if re.search(
+            r"\b(?:with|where|stock|active|inactive|only|except|category)\b", page[2], re.I
+        ):
+            return None
+        tail = query[page.end() :].strip().lower()
+        if tail and not re.fullmatch(
+            r"(?:total,?\s*returned count\s*and\s*whether more pages exist)[.?!]?", tail
+        ):
+            return None
+        return {"query": page[2].strip(), "limit": min(100, max(1, int(page[1]))), "offset": 0}
+    keyword = _KEYWORD.match(query)
+    if keyword:
+        if re.search(
+            r"\b(?:with|where|stock|active|inactive|only|except|category)\b", keyword[1], re.I
+        ):
+            return None
+        tail = query[keyword.end() :].strip().lower()
+        if tail and not re.fullmatch(
+            r"(?:do not (?:add|use) (?:a |any )?category filter)[.?!]?", tail
+        ):
+            return None
+        return {"query": keyword[1].strip(), "limit": 100, "offset": 0}
+    category_id = _CATEGORY_ID.match(query)
+    if category_id:
+        return {"category_id": int(category_id[1]), "limit": 100, "offset": 0}
+    category = _CATEGORY.match(query)
+    if category:
+        return {"category_name": category[1].strip(), "limit": 100, "offset": 0}
+    return None
+
+
+async def resolve_catalog_query(query: str, context: dict | None = None) -> dict | None:
+    """Read only an explicit catalog request, preserving native page metadata."""
+    from ai.core.tools.inventree.read.database import _current_user
+    from ai.core.tools.inventree.read.parts import search_parts
+    from users.permissions import check_user_role
+
+    request = catalog_request(query)
+    if request is None:
+        return None
+
+    def authorize_category():
+        from django.db.models import Q
+        from part.models import PartCategory
+
+        user = _current_user()
+        if user is None or not check_user_role(user, "part", "view"):
+            return {"error": "Catalog results could not be verified with your permissions."}
+        if request.get("category_name"):
+            rows = PartCategory.objects.filter(
+                Q(name__iexact=request["category_name"])
+                | Q(pathstring__iexact=request["category_name"])
+            )
+            if rows.count() != 1:
+                if not rows.exists():
+                    return {
+                        "error": "No current catalog category matches that name. Specify its category ID or full path."
+                    }
+                choices = "; ".join(
+                    f"{r.pathstring} (category {r.pk})" for r in rows.order_by("pk")[:5]
+                )
+                return {
+                    "error": f"Which exact category should I use? {choices}. Specify its category ID or full path."
+                }
+            request["category_id"] = rows.values_list("pk", flat=True).get()
+        if request.get("category_id") is not None:
+            row = PartCategory.objects.filter(pk=request["category_id"]).first()
+            if row is None:
+                return {"error": "That category could not be verified."}
+            request["category_name"] = row.pathstring
+        return None
+
+    error = await sync_to_async(authorize_category)()
+    if error:
+        return {
+            "text": error["error"],
+            "evidence": {"resolved": False, "requires_clarification": True},
+        }
+    data = await search_parts(
+        query=request.get("query"),
+        category_id=request.get("category_id"),
+        is_active=None,
+        limit=request["limit"],
+        offset=request["offset"],
+        include_coverage=True,
+    )
+    name = (
+        f"Keyword {request['query']!r} across catalog parts"
+        if "query" in request
+        else f"Category {request['category_name']} (ID {request['category_id']})"
+    )
+    total = data.get("population_count")
+    more = data.get("has_more")
+    text = f"{name}. Total matches: {total if total is not None else 'unverified'}; returned count: {data['returned_count']}; more pages: {'yes' if more is True else 'no' if more is False else 'unverified'}."
+    rows = data["results"][: 3 if (context or {}).get("modality") == "voice" else 100]
+    displayed = 0
+    for row in rows:
+        entry = f" Part {row['pk']}: {row.get('IPN') or '(no IPN)'}; {row['name']}."
+        if (context or {}).get("modality") == "voice" and len(text) + len(entry) > 600:
+            break
+        text += entry
+        displayed += 1
+    if displayed < data["returned_count"]:
+        text += " Additional returned parts are available in chat."
+    return {"text": text, "evidence": data}
