@@ -282,6 +282,39 @@ it('reports browser-only lifecycle while accepting consecutive turns after faile
   expect(state.getState().transport).toBe('connected');
 });
 
+it.each([
+  'Where is stock for 2.01 PCBA located?',
+  'For 002.01-PCBA, what is the on-hand stock?'
+])('holds a numeric-leading IPN until explicit review: %s', async (text) => {
+  await controller.start();
+  controller.handleEvent(
+    JSON.stringify({
+      type: 'conversation.item.input_audio_transcription.completed',
+      transcript: text,
+      item_id: 'ipn-review'
+    })
+  );
+  await flush();
+  expect(state.getState().pendingConfirm?.text).toBe(text);
+  expect(requests.filter((r) => r.path.endsWith('/turns'))).toHaveLength(0);
+  const corrected = 'Where is stock for 002.01-PCBA located?';
+  controller.handleEvent(
+    JSON.stringify({
+      type: 'conversation.item.input_audio_transcription.completed',
+      transcript: corrected,
+      item_id: 'ipn-corrected'
+    })
+  );
+  await flush();
+  expect(state.getState().pendingConfirm?.revision).toBe(2);
+  await controller.confirmPending();
+  await flush();
+  const turns = requests.filter((r) => r.path.endsWith('/turns'));
+  expect(turns).toHaveLength(1);
+  expect(turns[0].body?.transcript).toBe(corrected);
+  expect(decisions.getState().decide).not.toHaveBeenCalled();
+});
+
 it('starts once, gates PTT tracks, and survives minimize', async () => {
   await Promise.all([controller.start(), controller.start()]);
   expect(

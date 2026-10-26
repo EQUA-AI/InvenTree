@@ -56,6 +56,24 @@ def promote_captured_manual_question(*, modality: str) -> bool:
     ledger = current_tool_captures()
     if ledger is None:
         return False
+    candidates = ledger.ambiguous_part_candidates()
+    if candidates:
+        set_question_proposal({
+            "source": "part_ipn_ambiguity",
+            "question_text": "Which exact part and revision do you mean?",
+            "options": [
+                {
+                    "id": f"part:{row['pk']}",
+                    "label": f"{str(row.get('IPN') or '')[:60]} — {str(row.get('revision') or 'revision not recorded')[:60]} (part {row['pk']})",
+                    # Reuse the existing term-selection rail. The selected exact
+                    # ID is a lookup hint; the part tool reauthorizes the new read.
+                    "kind": "lexicon_term",
+                    "ref": {"term": f"part {row['pk']}"},
+                }
+                for row in candidates[: options_cap(modality)]
+            ],
+        })
+        return True
     options = promote_machine_candidates(ledger.manuals_machine_candidates(), modality=modality)
     if len(options) < 2:
         return False

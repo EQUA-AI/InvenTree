@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { VoiceSessionControl } from '../src/components/ai/VoiceSessionControl';
+import { VoiceTranscript } from '../src/components/ai/VoiceTranscript';
 import { VoiceConsentDialog } from '../src/components/ai/voice/VoiceConsentDialog';
 import { VoiceExperienceControls } from '../src/components/ai/voice/VoiceExperienceControls';
 import { VoiceGlobalIndicator } from '../src/components/ai/voice/VoiceGlobalIndicator';
@@ -40,6 +41,12 @@ function Panel() {
         onToggleMute={voice.toggleMute}
         onConfirmTranscript={() => void voice.confirmPending()}
         onDiscardTranscript={voice.discardPending}
+      />
+      <VoiceTranscript
+        partial={voice.partial}
+        listening={voice.state === 'listening'}
+        pendingConfirm={voice.pendingConfirm}
+        holdPrompt={voice.holdPrompt}
       />
       <VoiceExperienceControls />
     </Stack>

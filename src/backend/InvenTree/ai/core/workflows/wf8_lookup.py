@@ -236,6 +236,25 @@ def apply_question_replacement(
 
     proposal = pending_question_proposal.get()
     if proposal is None:
+        # Question cards ship behind a flag. Exact-IPN ambiguity still requires
+        # a truthful plain-text question when cards are off. Ask for explicit
+        # IDs, not ordinals that have no persisted selection record to bind to.
+        from ai.core.tools.capture_ledger import current_tool_captures
+
+        ledger = current_tool_captures()
+        candidates = ledger.ambiguous_part_candidates() if ledger is not None else []
+        from ai.core.config import get_settings as current_settings
+
+        if candidates and not getattr(current_settings(), "feature_question_cards", False):
+            labels = [
+                f"part {row['pk']}: {str(row.get('IPN') or '')[:60]}, {str(row.get('revision') or 'revision not recorded')[:60]}"
+                for row in candidates[: 3 if modality == "voice" else 4]
+            ]
+            return (
+                "Several parts share this IPN. Please specify the exact part ID and revision: "
+                + "; ".join(labels)
+                + "."
+            )
         return response_text
     resolution = (context or {}).get("question_resolution")
     if isinstance(resolution, dict):
@@ -379,6 +398,8 @@ Never replace an exact revision with a template or strip leading zeros from iden
 For a category total use category_id; for the highest-stock part use highest_stock=True.
 Those tools aggregate the full population before capping displayed rows. Never rank a search
 page or add a template rollup to its variants. A locations_complete=false result is partial.
+Resolve an IPN through get_part. If it returns requires_clarification, ask the user to choose
+the exact part/revision from its candidates before stock or BOM reads. Never pick a stocked revision.
 For a BOM use the exact requested assembly/revision; the API includes applicable inheritance.
 Only native buildable_quantity establishes buildability. arithmetic_buildable_quantity is an
 on-hand-only estimate, never available stock or a statement that production is ready.
