@@ -32,8 +32,18 @@ def _database():
 def _no_background_worker():
     # Native rows are real; unrelated pricing/notification jobs must never
     # contact the developer's Redis or background worker from this fixture.
+    models = (WorkOrder, AssetMachine, StockItem, Part, PartCategory, StockLocation)
+    existing = {model: set(model.objects.values_list("pk", flat=True)) for model in models}
     with patch("InvenTree.tasks.offload_task", return_value=False):
-        yield
+        try:
+            yield
+        finally:
+            # This island shares its scratch database between modules. Remove
+            # this test's rows in FK order, preserving earlier fixtures. In
+            # particular, machine-less Work is legitimately shared and must
+            # not leak into a later actor's trend population.
+            for model in models:
+                model.objects.exclude(pk__in=existing[model]).delete()
 
 
 @pytest.fixture
