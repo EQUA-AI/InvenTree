@@ -144,6 +144,9 @@ function AssistantSurfaceFrame({
               width,
               maxWidth: '100vw',
               height: height ?? '100dvh',
+              // Resize/keyboard events update React geometry asynchronously.
+              // Keep the composer inside the viewport before that update lands.
+              maxHeight: '100dvh',
               zIndex: 200,
               overflow: 'hidden',
               background: 'var(--mantine-color-body)'
