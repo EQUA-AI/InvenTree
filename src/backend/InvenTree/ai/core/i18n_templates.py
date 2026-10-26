@@ -313,15 +313,13 @@ _TEMPLATES: dict[str, dict[str, str]] = {
     },
     ANALYSIS_BUCKET_RANGE: {
         "en": (
-            "The requested series spans more time buckets than a single "
-            "answer supports. Narrow the window or use a wider bucket "
-            "(month or quarter) and ask again."
+            "Monthly charts support 1-36 calendar months. "
+            "Request a window of 36 months or fewer and ask again."
         ),
         "es": (
-            "La serie solicitada abarca más intervalos "  # codespell:ignore serie
-            "de tiempo de los que admite una sola respuesta. Reduzca la "
-            "ventana o use un intervalo más amplio (mes o trimestre) y "
-            "vuelva a preguntar."
+            "Los gráficos mensuales admiten de 1 a 36 meses "
+            "naturales. Solicite una ventana de 36 meses o menos "
+            "y vuelva a preguntar."
         ),
     },
     ANALYSIS_COMPARISON_GATE: {

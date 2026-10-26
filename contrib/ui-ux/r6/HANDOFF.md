@@ -480,6 +480,19 @@ cleanup records pass. Structural/provider CSV audit preserves all 60 task rows,
 28 contract rows and dispositions; inherited R8 additions still fail the fixed
 R6 tracking validator. Next: human review and upstream migration policy decision.
 Push/PR and deployment acceptance remain separate.
+## Chat retest follow-up implementation — 25 October 2026
+
+Scoped analysis now recovers rejected model claims once from the same native
+evidence and passes the complete validator/reauthorization path again. Safety
+fail-closed remains terminal. Identity display is clean; explicit catalog keyword
+scope and native pagination/coverage are preserved; monthly range copy states
+1–36 months. [Follow-up ledger](reports/chat-followup-fixes-20261025.md) records
+source/native/browser evidence and every known limitation. Final actual-model
+category/pagination checks are blocked by intermittent ConnectTimeout failures;
+release validation/promotion remains open. Existing aimms-dev web/worker remain
+on 4db9cdf73. No new Azure chat question or production data write.
+
+
 ## AI/OpenUI live-result fixes — 25 October 2026
 
 The reproducible SDK-schema, negative-action selection, ordinary-chat entity

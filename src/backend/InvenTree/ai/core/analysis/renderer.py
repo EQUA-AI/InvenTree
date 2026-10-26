@@ -39,9 +39,14 @@ _MARKER_RE = re.compile(r"\s*\[\d+\]")
 class RenderError(RuntimeError):
     """A claim referenced a template or slot the store cannot satisfy.
 
-    The executor converts this into an abstention — a claim that cannot be
-    rendered deterministically is never paraphrased around.
+    The executor discards these claims and may retry its deterministic claim
+    set through the full gate. Unrenderable claims are never paraphrased around.
     """
+
+    def __init__(self, message: str, *, code: str = "render_error", claim_id: str | None = None):
+        super().__init__(message)
+        self.code = code
+        self.claim_id = claim_id
 
 
 #: (slots, paraphrase, marker, locale) -> one rendered sentence/paragraph.
@@ -717,7 +722,9 @@ def _resolve_slots(
         if name not in available:
             raise RenderError(
                 f"claim {claim.claim_id}: template {template.key} slot '{name}' "
-                "has no referenced value"
+                "has no referenced value",
+                code="missing_template_slot",
+                claim_id=claim.claim_id,
             )
         slots[name] = available[name]
     return slots
@@ -754,7 +761,9 @@ def render_answer(
         template = RENDER_TEMPLATES.get(claim.render_template)
         if template is None:
             raise RenderError(
-                f"claim {claim.claim_id}: unknown render template '{claim.render_template}'"
+                f"claim {claim.claim_id}: unknown render template '{claim.render_template}'",
+                code="unknown_template",
+                claim_id=claim.claim_id,
             )
         slots = _resolve_slots(claim, template, store)
         paraphrase = claim.paraphrase if template.paraphrase_slot else ""

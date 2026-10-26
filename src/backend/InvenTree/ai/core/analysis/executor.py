@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -1084,6 +1085,7 @@ async def run_analysis(
 
     if not shadow:
         await _emit_progress(run, "reviewing_records", emitted)
+    retrieval_started = time.perf_counter()
     vocabulary_code: str | None = None
     vocabulary_facets: tuple[str, ...] = ()
     try:
@@ -1125,6 +1127,21 @@ async def run_analysis(
     except Exception:
         logger.warning("analysis retrieval failed", exc_info=True)
         retrieval_failed = True
+
+    retrieval_ms = (time.perf_counter() - retrieval_started) * 1000
+    synthesis_ms = 0.0
+    validation_attempts: list[dict[str, Any]] = []
+
+    def gate_details(verdict, codes, synthesis="not_run"):
+        return {
+            "verdict": verdict,
+            "codes": codes,
+            "synthesis": synthesis,
+            "retrieval_ms": round(retrieval_ms, 2),
+            "synthesis_ms": round(synthesis_ms, 2),
+            "scope_snapshot_id": getattr(scope, "snapshot_id", None),
+            "validation_attempts": list(validation_attempts),
+        }
 
     if not shadow:
         await _emit_progress(run, "validating_evidence", emitted)
@@ -1171,7 +1188,7 @@ async def run_analysis(
             turn_state="incomplete",
             store=store,
             scope=scope,
-            gate={"verdict": "abstain", "codes": [vocabulary_code]},
+            gate=gate_details("abstain", [vocabulary_code]),
             entities=[],
             emitted=emitted,
             claims=[],
@@ -1199,7 +1216,7 @@ async def run_analysis(
             turn_state="incomplete",
             store=store,
             scope=scope,
-            gate={"verdict": "abstain", "codes": ["retrieval_unavailable"]},
+            gate=gate_details("abstain", ["retrieval_unavailable"]),
             entities=[],
             emitted=emitted,
             claims=[],
@@ -1212,9 +1229,11 @@ async def run_analysis(
     from ai.core.analysis.renderer import RENDER_TEMPLATES
 
     view = store.synthesis_view(template_keys=tuple(RENDER_TEMPLATES))
+    synthesis_started = time.perf_counter()
     facets, claims, synthesis_source = await asyncio.to_thread(
         _claims_from_synthesis, view, intent, store, timeout_s=synthesis_timeout_s
     )
+    synthesis_ms = (time.perf_counter() - synthesis_started) * 1000
 
     state = "complete"
     if timed_out:
@@ -1228,85 +1247,120 @@ async def run_analysis(
 
     ledger_ids, ledger_chunks = _ledger_join_keys()
 
-    verdict = None
-    rendered = None
-    for attempt in range(2):
-        try:
-            ordinals = assign_ordinals(
-                claims, store, default_as_of=(store.coverage_meta() or {}).get("as_of", "")
-            )
-            rendered = render_answer(
-                claims,
-                store,
-                ordinals=ordinals,
-                locale=locale,
-                state=state,
-                incomplete_reasons=[
-                    _incomplete_reason_obj(reason) for reason in incomplete_reasons
-                ],
-            )
-        except RenderError:
-            logger.warning("analysis render failed; abstaining", exc_info=False)
-            verdict = None
-            rendered = None
-            break
+    async def evaluate_claims(facets, claims, source):
+        verdict = None
+        rendered = None
+        ordinals = None
+        render_failure: RenderError | None = None
+        for attempt in range(2):
+            validation_started = time.perf_counter()
+            try:
+                ordinals = assign_ordinals(
+                    claims, store, default_as_of=(store.coverage_meta() or {}).get("as_of", "")
+                )
+                rendered = render_answer(
+                    claims,
+                    store,
+                    ordinals=ordinals,
+                    locale=locale,
+                    state=state,
+                    incomplete_reasons=[
+                        _incomplete_reason_obj(reason) for reason in incomplete_reasons
+                    ],
+                )
+            except RenderError as exc:
+                render_failure = exc
+                validation_attempts.append({
+                    "source": source,
+                    "stage": "render",
+                    "codes": [exc.code],
+                    "elapsed_ms": round((time.perf_counter() - validation_started) * 1000, 2),
+                })
+                logger.warning(
+                    "analysis render rejected", extra={"reason_code": exc.code}, exc_info=False
+                )
+                verdict = None
+                rendered = None
+                break
 
-        from ai.core.entities import build_analysis_entity_manifest
+            from ai.core.entities import build_analysis_entity_manifest
 
-        candidate_entities = build_analysis_entity_manifest(claims, store, scope)
-        # Off-loop: the C13 reauthorization closure touches the ORM.
-        verdict = await asyncio.to_thread(
-            lambda claims=claims, facets=facets, rendered=rendered, candidate_entities=candidate_entities: (
-                validate_analysis(
-                    claims=claims,
-                    facets=facets,
-                    store=store,
-                    rendered=rendered,
-                    entities=candidate_entities,
-                    scope=scope,
-                    ledger_retrieval_ids=ledger_ids,
-                    ledger_chunk_ids=ledger_chunks,
-                    emitted_events=emitted,
-                    reauthorize=lambda: _reauthorize(user, store),
-                    safety_audit=None,
+            candidate_entities = build_analysis_entity_manifest(claims, store, scope)
+            # Off-loop: the C13 reauthorization closure touches the ORM.
+            verdict = await asyncio.to_thread(
+                lambda claims=claims, facets=facets, rendered=rendered, candidate_entities=candidate_entities: (
+                    validate_analysis(
+                        claims=claims,
+                        facets=facets,
+                        store=store,
+                        rendered=rendered,
+                        entities=candidate_entities,
+                        scope=scope,
+                        ledger_retrieval_ids=ledger_ids,
+                        ledger_chunk_ids=ledger_chunks,
+                        emitted_events=emitted,
+                        reauthorize=lambda: _reauthorize(user, store),
+                        safety_audit=None,
+                    )
                 )
             )
+            validation_attempts.append({
+                "source": source,
+                "stage": "validation",
+                "codes": list(dict.fromkeys(verdict.codes())),
+                "elapsed_ms": round((time.perf_counter() - validation_started) * 1000, 2),
+            })
+            if verdict.outcome is CheckOutcome.PASS:
+                break
+            if verdict.outcome is CheckOutcome.DOWNGRADE and attempt == 0:
+                dropped = set(verdict.dropped_claim_ids)
+                claims = [claim for claim in claims if claim.claim_id not in dropped]
+                claims.append(
+                    AnalysisClaim.model_validate_json(
+                        json.dumps({
+                            "claim_id": "c_downgrade",
+                            "claim_role": "limitation",
+                            "claim_type": "limitation",
+                            "evidence_classification": "insufficient",
+                            "fact_refs": [],
+                            "calculation_output_refs": [],
+                            "evidence_refs": [],
+                            "entity_refs": [],
+                            "render_template": "analysis.downgrade_limitation",
+                            "paraphrase": "",
+                        })
+                    )
+                )
+                facets = [
+                    AnalysisFacet.model_validate_json(
+                        json.dumps({
+                            "name": facet.name,
+                            "status": str(facet.status),
+                            "claim_ids": [
+                                claim_id for claim_id in facet.claim_ids if claim_id not in dropped
+                            ],
+                        })
+                    )
+                    for facet in facets
+                ]
+                continue
+            break
+
+        return verdict, rendered, ordinals, facets, claims, render_failure
+
+    verdict, rendered, ordinals, facets, claims, render_failure = await evaluate_claims(
+        facets, claims, synthesis_source
+    )
+    if synthesis_source == "model" and (
+        verdict is None or verdict.outcome in (CheckOutcome.ABSTAIN, CheckOutcome.DOWNGRADE)
+    ):
+        # Rebuild once from the SAME authorized snapshot, with the full gate.
+        # Safety/authorization FAIL_CLOSED outcomes never enter recovery.
+        facets, claims = deterministic_claims(intent, store)
+        synthesis_source = "deterministic_fallback"
+        verdict, rendered, ordinals, facets, claims, render_failure = await evaluate_claims(
+            facets, claims, synthesis_source
         )
-        if verdict.outcome is CheckOutcome.PASS:
-            break
-        if verdict.outcome is CheckOutcome.DOWNGRADE and attempt == 0:
-            dropped = set(verdict.dropped_claim_ids)
-            claims = [claim for claim in claims if claim.claim_id not in dropped]
-            claims.append(
-                AnalysisClaim.model_validate_json(
-                    json.dumps({
-                        "claim_id": "c_downgrade",
-                        "claim_role": "limitation",
-                        "claim_type": "limitation",
-                        "evidence_classification": "insufficient",
-                        "fact_refs": [],
-                        "calculation_output_refs": [],
-                        "evidence_refs": [],
-                        "entity_refs": [],
-                        "render_template": "analysis.downgrade_limitation",
-                        "paraphrase": "",
-                    })
-                )
-            )
-            facets = [
-                AnalysisFacet.model_validate_json(
-                    json.dumps({
-                        "name": facet.name,
-                        "status": str(facet.status),
-                        "claim_ids": [
-                            claim_id for claim_id in facet.claim_ids if claim_id not in dropped
-                        ],
-                    })
-                )
-                for facet in facets
-            ]
-            continue
-        break
 
     if verdict is not None and verdict.outcome is CheckOutcome.FAIL_CLOSED:
         response = _template_response(
@@ -1320,7 +1374,7 @@ async def run_analysis(
             turn_state="failed",
             store=store,
             scope=scope,
-            gate={"verdict": "fail_closed", "codes": list(verdict.codes())},
+            gate=gate_details("fail_closed", list(verdict.codes()), synthesis_source),
             entities=[],
             emitted=emitted,
             claims=[],
@@ -1336,20 +1390,30 @@ async def run_analysis(
         or (verdict.outcome is CheckOutcome.DOWNGRADE)
     ):
         codes = list(verdict.codes()) if verdict is not None else ["render_error"]
+        affected_facets = [
+            facet.name
+            for facet in facets
+            if facet.name in facet_plan
+            and render_failure is not None
+            and render_failure.claim_id in facet.claim_ids
+        ]
+        reason_code = "render_error" if render_failure is not None else "evidence_validation_failed"
         response = _template_response(
             kind_state="incomplete",
             message=deterministic_template(ANALYSIS_ABSTAIN, locale),
             reasoning=(
                 "The evidence gate could not verify a reliable answer; no conclusion was produced."
             ),
-            incomplete_reasons=[{"code": "facet_budget_exhausted", "facet": facet_plan[0]}],
+            incomplete_reasons=[
+                {"code": reason_code, "facet": facet} for facet in (affected_facets or facet_plan)
+            ],
         )
         return _outcome_from_response(
             response,
             turn_state="incomplete",
             store=store,
             scope=scope,
-            gate={"verdict": "abstain", "codes": codes},
+            gate=gate_details("abstain", codes, synthesis_source),
             entities=[],
             emitted=emitted,
             claims=[],
@@ -1389,11 +1453,7 @@ async def run_analysis(
         turn_state=turn_state,
         store=store,
         scope=scope,
-        gate={
-            "verdict": str(verdict.outcome),
-            "codes": list(verdict.codes()),
-            "synthesis": synthesis_source,
-        },
+        gate=gate_details(str(verdict.outcome), list(verdict.codes()), synthesis_source),
         entities=[dict(entity) for entity in verdict.allowed_entities],
         emitted=emitted,
         claims=claims,

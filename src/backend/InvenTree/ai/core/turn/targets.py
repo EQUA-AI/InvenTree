@@ -35,12 +35,12 @@ def identity_requested(text: str) -> bool:
 def read_identity(actor: Any, machine_id: int) -> dict | None:
     """Read the same identity projection as the native page, under current access."""
     from ai.core.focus.resolution import read_machine
-    from assets.ai_read import machine_identity
+    from assets.ai_read import machine_display_identity
     from django.contrib.auth import get_user_model
 
     user = get_user_model().objects.filter(pk=actor.user_pk, is_active=True).first()
     machine = read_machine(user, machine_id) if user is not None else None
-    return machine_identity(machine) if machine is not None else None
+    return machine_display_identity(machine) if machine is not None else None
 
 
 def identity_message(identity: dict) -> str:

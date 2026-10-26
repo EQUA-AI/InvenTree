@@ -241,7 +241,7 @@ class TestTypedUnavailability:
     def test_each_code_renders_its_named_message(self, monkeypatch) -> None:
         expectations = {
             "grouping_unavailable": "defensible grouping",
-            "bucket_range_exceeded": "more time buckets",
+            "bucket_range_exceeded": "1-36 calendar months",
             "population_cap_exceeded": "exact-analysis envelope",
             "snapshot_changed": "single consistent snapshot",
         }

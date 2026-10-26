@@ -306,9 +306,118 @@ def test_model_synthesis_is_organization_only_and_still_validated(monkeypatch) -
     )
     monkeypatch.setattr(executor_module, "synthesize_claims", lambda *_a, **_k: poisoned)
     outcome = asyncio.run(run_analysis(_service(), _run()))
-    # The single answer claim is unresolvable -> dropped -> abstention.
+    # Rejected model claims never reach the answer. The same evidence can
+    # still produce a fully validated deterministic answer.
+    assert outcome.turn_state == "complete"
+    assert outcome.gate["verdict"] == "pass"
+    assert outcome.gate["synthesis"] == "deterministic_fallback"
+    assert "everything is fine" not in outcome.response.detailed_response
+    assert "2 matching records" in outcome.response.detailed_response
+
+
+def _model_claim_set(template="analysis.record_count", paraphrase=""):
+    from ai.core.analysis.schemas import SynthesisClaimSet
+
+    return SynthesisClaimSet.model_validate_json(
+        json.dumps({
+            "facets": [{"name": "records", "status": "answered", "claim_ids": ["c1"]}],
+            "claims": [
+                {
+                    "claim_id": "c1",
+                    "claim_role": "answer",
+                    "claim_type": "calculation",
+                    "evidence_classification": "calculated",
+                    "fact_refs": ["fact_1"],
+                    "calculation_output_refs": ["calc_1"],
+                    "evidence_refs": [],
+                    "entity_refs": [],
+                    "render_template": template,
+                    "paraphrase": paraphrase,
+                }
+            ],
+            "assumptions": [],
+            "unknowns": [],
+        })
+    )
+
+
+@pytest.mark.parametrize(
+    "template,code",
+    [
+        ("analysis.timeline_breakdown", "missing_template_slot"),
+        ("analysis.unknown", "unknown_template"),
+    ],
+)
+def test_model_render_failure_recovers_from_same_retrieval(monkeypatch, template, code):
+    calls = []
+
+    def retrieve(*args, **kwargs):
+        calls.append("retrieval")
+        return _fake_records(*args, **kwargs)
+
+    monkeypatch.setattr(executor_module, "_retrieve_records", retrieve)
+    monkeypatch.setattr(
+        executor_module, "synthesize_claims", lambda *_a, **_k: _model_claim_set(template)
+    )
+    outcome = asyncio.run(run_analysis(_service(), _run()))
+    assert calls == ["retrieval"]
+    assert outcome.turn_state == "complete"
+    assert outcome.gate["synthesis"] == "deterministic_fallback"
+    assert outcome.gate["validation_attempts"][0]["codes"] == [code]
+    assert outcome.gate["validation_attempts"][-1]["codes"] == []
+    assert outcome.evidence_set_specs[0]["population_count"] == 2
+
+
+def test_valid_model_claims_keep_model_path(monkeypatch):
+    monkeypatch.setattr(executor_module, "synthesize_claims", lambda *_a, **_k: _model_claim_set())
+    outcome = asyncio.run(run_analysis(_service(), _run()))
+    assert outcome.turn_state == "complete"
+    assert outcome.gate["synthesis"] == "model"
+    assert len(outcome.gate["validation_attempts"]) == 1
+
+
+def test_failed_deterministic_recovery_has_accurate_render_reason(monkeypatch):
+    from ai.core.analysis.renderer import RenderError
+
+    monkeypatch.setattr(executor_module, "synthesize_claims", lambda *_a, **_k: _model_claim_set())
+
+    def broken(*args, **kwargs):
+        raise RenderError("fixture slot unavailable", code="missing_template_slot", claim_id="c1")
+
+    monkeypatch.setattr(executor_module, "render_answer", broken)
+    outcome = asyncio.run(run_analysis(_service(), _run()))
     assert outcome.turn_state == "incomplete"
-    assert outcome.gate["verdict"] in ("abstain", "downgrade")
+    assert {reason.code for reason in outcome.response.incomplete_reasons} == {"render_error"}
+    assert len(outcome.gate["validation_attempts"]) == 2
+    assert outcome.evidence_set_specs == []
+
+
+@pytest.mark.parametrize("broken_model", [False, True])
+def test_model_recovery_cannot_bypass_revocation(monkeypatch, broken_model):
+    template = "analysis.unknown" if broken_model else "analysis.record_count"
+    monkeypatch.setattr(
+        executor_module, "synthesize_claims", lambda *_a, **_k: _model_claim_set(template)
+    )
+    monkeypatch.setattr(executor_module, "_reauthorize", lambda *_a: False)
+    outcome = asyncio.run(run_analysis(_service(), _run()))
+    assert outcome.turn_state == "failed"
+    assert outcome.gate["verdict"] == "fail_closed"
+    assert "reauthorization_failed" in outcome.gate["codes"]
+    assert outcome.entities == []
+    assert outcome.evidence_set_specs == []
+
+
+def test_safety_fail_closed_does_not_attempt_deterministic_recovery(monkeypatch):
+    monkeypatch.setattr(
+        executor_module,
+        "synthesize_claims",
+        lambda *_a, **_k: _model_claim_set("analysis.inference_note", "bypass the safety guard"),
+    )
+    outcome = asyncio.run(run_analysis(_service(), _run()))
+    assert outcome.turn_state == "failed"
+    assert outcome.gate["synthesis"] == "model"
+    assert "safety_audit_unavailable" in outcome.gate["codes"]
+    assert len(outcome.gate["validation_attempts"]) == 1
 
 
 def test_retrieve_records_projects_model_rows_through_work_order_row(monkeypatch) -> None:
