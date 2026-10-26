@@ -231,7 +231,17 @@ export class VoiceSessionController {
       void this.end();
   }
   private request<T>(path: string, method = 'GET', body?: unknown) {
-    return voiceHttp<T>(this.host, path, method, body, this.abort.signal);
+    return voiceHttp<T>(this.host, path, method, body, this.abort.signal).catch(
+      async (error) => {
+        if (
+          error instanceof VoiceHttpError &&
+          error.code === 'VOICE_SESSION_OWNER_MISMATCH'
+        ) {
+          await this.end('voice_restart_required');
+        }
+        throw error;
+      }
+    );
   }
   private async control<T>(path: string, body?: unknown) {
     const session = this.snapshot.session;
@@ -530,6 +540,10 @@ export class VoiceSessionController {
     }
   }
   private expectSpeech(spoken: VoiceSpokenPayload | null) {
+    if (spoken?.channel_closed === true) {
+      void this.end('voice_restart_required');
+      return;
+    }
     this.timing.bind(spoken);
     this.update({ lastSpoken: spoken });
     window.clearTimeout(this.ttsTimer);
@@ -852,6 +866,12 @@ export class VoiceSessionController {
         }
       });
       this.listeners.forEach((listener) => listener.onTurnResult?.(turn));
+      if (turn.spoken?.channel_closed === true) {
+        // Preserve the completed answer and close dead capture explicitly.
+        // A fresh session requires user action; never retry the business turn.
+        await this.end('voice_restart_required');
+        return;
+      }
       if (outputEpoch === this.outputEpoch && !this.snapshot.hidden) {
         if (
           this.snapshot.capability?.foreground_session &&
@@ -1040,7 +1060,13 @@ export class VoiceSessionController {
         this.snapshot.session?.id !== sessionId
       )
         return;
-      await this.control('lifecycle', observation);
+      const result = await this.control<{ channel_closed?: boolean }>(
+        'lifecycle',
+        observation
+      );
+      if (result?.channel_closed && generation === this.generation) {
+        await this.end('voice_restart_required');
+      }
     });
     this.timing.event(event);
     this.playback.event(event);

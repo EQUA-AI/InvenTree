@@ -49,7 +49,8 @@ def test_ten_real_route_turns_with_browser_only_lifecycle_do_not_close_input_or_
                         status=status,
                     ),
                 )
-                assert result == {"observed": True}
+                assert result["observed"] is True
+                assert result["channel_closed"] is False
             state = await sync_to_async(
                 lambda uid=body["spoken"]["utterance_id"]: (
                     VoiceUtterance.objects.get(pk=uid).playback_state

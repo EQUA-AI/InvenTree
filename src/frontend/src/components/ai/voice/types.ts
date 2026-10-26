@@ -22,6 +22,7 @@ export type VoiceNotice =
   | 'queue_full'
   | 'audio_blocked'
   | 'tts_timeout'
+  | 'voice_restart_required'
   | 'mic_silent'
   | 'route_changed'
   | 'sounds_off'

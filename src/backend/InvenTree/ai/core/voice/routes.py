@@ -44,11 +44,10 @@ _provider_channel_closer = None
 #: provider channel's speech slot must be handed over in order.
 #:
 #: S35 accepted exception to the "no in-process cross-request state"
-#: invariant (ai/README.md): these locks assume a voice session is affine to
-#: one replica, which holds because the session's WebSocket pins it to the
-#: process that owns the provider channel. Residual risk: if voice turns
-#: ever arrive over plain HTTP across replicas, serialization silently
-#: weakens to per-replica — revisit before any such transport change.
+#: invariant (ai/README.md): these locks require one serving process and
+#: session-affine HTTP routing. Browser RTC does NOT pin HTTP requests.
+#: The persisted transport owner rejects another process before admission;
+#: the release topology guard verifies routing. Failover requires a user restart.
 _turn_locks: dict[str, asyncio.Lock] = {}
 
 
@@ -271,7 +270,9 @@ def _thread_focus_state(thread_id: str, owner_pk, actor_pk) -> tuple[dict[str, A
     return focus_contract.focus_payload(current), version
 
 
-async def _owned_session(principal: AIPrincipal, session_id: str, settings):
+async def _owned_session(
+    principal: AIPrincipal, session_id: str, settings, *, transport_owner: bool = True
+):
     from voice.services import realtime
 
     def _get():
@@ -283,7 +284,12 @@ async def _owned_session(principal: AIPrincipal, session_id: str, settings):
         )
 
     try:
-        return await sync_to_async(_get, thread_sensitive=True)()
+        session = await sync_to_async(_get, thread_sensitive=True)()
+        from voice.services.ownership import owns_transport
+
+        if transport_owner and not owns_transport(session):
+            raise HTTPException(status_code=409, detail="VOICE_SESSION_OWNER_MISMATCH")
+        return session
     except realtime.VoiceSessionError as exc:
         raise _session_error(exc) from None
 
@@ -363,7 +369,7 @@ async def get_voice_session(session_id: str) -> dict:
     """Owner-safe session status."""
     settings = _require_voice_enabled()
     principal = _principal()
-    session = await _owned_session(principal, session_id, settings)
+    session = await _owned_session(principal, session_id, settings, transport_owner=False)
     focus_state = await sync_to_async(_thread_focus_state, thread_sensitive=True)(
         session.thread_id, session.owner_id, principal.user_pk
     )
@@ -380,7 +386,7 @@ async def end_voice_session(session_id: str) -> dict:
     """Idempotently end the session and cancel queued playback."""
     settings = _require_voice_enabled()
     principal = _principal()
-    session = await _owned_session(principal, session_id, settings)
+    session = await _owned_session(principal, session_id, settings, transport_owner=False)
 
     # Known end: pending speech and every optional tracker are invalidated
     # BEFORE any speech await.
@@ -435,7 +441,7 @@ async def observe_voice_lifecycle(session_id: str, request: VoiceLifecycleObserv
 
     dispatcher = speech_dispatch._dispatchers.get(str(session.id))
     if dispatcher is None or dispatcher.closed:
-        return {"observed": False}
+        return {"observed": False, **({"channel_closed": True} if dispatcher else {})}
     observer = getattr(dispatcher.channel, "observe_client_lifecycle", None)
     if observer is None:
         return {"observed": False}
@@ -444,7 +450,11 @@ async def observe_voice_lifecycle(session_id: str, request: VoiceLifecycleObserv
         "response": {"id": request.response_id, "status": request.status},
     }
     outcome = await observer(event)
-    return {"observed": outcome in {"ack", "observed", "canceled", "failed", "late_ignored"}}
+    return {
+        "observed": outcome in {"ack", "observed", "canceled", "failed", "late_ignored"},
+        "outcome": outcome,
+        "channel_closed": dispatcher.closed,
+    }
 
 
 async def _cancel_playback(session, settings, *, reason: str) -> dict:
@@ -648,6 +658,10 @@ async def request_voice_prompt(session_id: str, request: VoicePromptRequest) -> 
         spoken_summary_hash=utterance.spoken_summary_hash,
         playback_state=playback_state,
         playback_audit_state=playback_audit_state,
+        channel_closed=bool(dispatcher and dispatcher.closed),
+        failure_reason=(
+            dispatcher.snapshot().get("reason") if dispatcher and dispatcher.closed else None
+        ),
     ).model_dump(mode="json")
 
 
@@ -668,7 +682,10 @@ async def relay_sdp(session_id: str, request: VoiceSdpRequest) -> dict:
         raise HTTPException(status_code=409, detail="VOICE_SESSION_EXPIRED")
 
     from voice.services import realtime
+    from voice.services.ownership import claim_transport
 
+    if not await sync_to_async(claim_transport, thread_sensitive=True)(session):
+        raise HTTPException(status_code=409, detail="VOICE_SESSION_OWNER_MISMATCH")
     channel = _provider_channel_factory(session) if _provider_channel_factory else None
     try:
         answer = await sdp_signaling.relay_sdp_offer(channel=channel, sdp_offer=request.sdp_offer)
@@ -1118,6 +1135,13 @@ async def _submit_voice_turn(session_id: str, request: VoiceTurnRequest) -> dict
                         spoken["playback_audit_state"] = route_speech.dispatch_audit_state_for(
                             record
                         )
+                        audit = dispatcher.snapshot()
+                        spoken["channel_closed"] = audit["closed"]
+                        spoken["failure_reason"] = (
+                            (audit.get("reason") or record.reason or None)
+                            if record.state == "failed"
+                            else None
+                        )
                         logger.info(
                             "Exact TTS dispatched",
                             extra={"session": str(session.id), "utterance": str(utterance.id)},
@@ -1251,6 +1275,12 @@ async def presentation_command(session_id: str, request: PresentationCommandRequ
                 "spoken_summary_hash": utterance.spoken_summary_hash,
                 "playback_state": state,
                 "playback_audit_state": playback_audit_state,
+                "channel_closed": bool(dispatcher and dispatcher.closed),
+                "failure_reason": (
+                    dispatcher.snapshot().get("reason")
+                    if dispatcher and dispatcher.closed
+                    else None
+                ),
             },
         }
 

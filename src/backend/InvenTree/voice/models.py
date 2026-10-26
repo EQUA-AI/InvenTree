@@ -114,6 +114,11 @@ class VoiceSession(models.Model):
         max_length=16, choices=VoiceTransport.choices, blank=True
     )
     azure_session_id = models.CharField(max_length=128, blank=True)
+    # Opaque server process binding for the live provider channel. Never a
+    # provider ID, client hint, credential, or permission grant.
+    transport_owner = models.CharField(
+        max_length=64, blank=True, default='', db_default=''
+    )
     policy_version = models.CharField(max_length=64)
     # Blank on pre-v2 sessions: a migration must never manufacture consent.
     consent_version = models.CharField(

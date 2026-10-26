@@ -39,6 +39,63 @@ This checks feature contracts and access; reconcile displayed counts with the
 same user's maintenance and machine records separately. It does not validate
 write workflows, worker compatibility, or performance at production scale.
 
+## Live voice routing
+
+The browser's provider RTC connection does not pin its separate HTTP controls
+to a backend process. Speech dispatchers, event gates and turn locks currently
+live in one process. The October 26 campaign reached different replicas for the
+same session, losing correlated lifecycle acknowledgements. A healthy revision
+alone does not qualify this topology.
+
+Before enabling the repaired candidate:
+
+1. Apply `voice.0012_voicesession_transport_owner` before serving the new code.
+   It adds a private process owner with an empty database default. Existing
+   sessions must finish or be ended before the rollout; users then start new
+   sessions. Never migrate an active provider connection to another process.
+2. Keep `INVENTREE_GUNICORN_WORKERS=1`. In the existing Multiple revision
+   release strategy, set the candidate's maximum replicas to **1** and route
+   100 percent of ordinary application traffic to that exact candidate.
+   Do not overlap active voice sessions with a traffic switch. Confirm the
+   actual serving revision's scale and process settings, not just the app's
+   latest template.
+3. If multiple replicas are required, use **Single** revision mode and HTTP
+   sticky sessions (`affinity: sticky`). Azure supports cookie affinity only
+   in Single revision mode; this changes the release strategy. Pod loss can
+   still break affinity, requiring a user restart. See the official
+   [session affinity documentation](https://learn.microsoft.com/azure/container-apps/sticky-sessions).
+4. Save a sanitized Container App `show` response containing only revision
+   mode, ingress transport/stickySessions/traffic, scale and the web container's
+   `INVENTREE_GUNICORN_WORKERS` entry. Run
+   `python contrib/testing/check-voice-topology.py /private/path/topology.json`.
+   A nonzero result blocks voice qualification. Never put the complete env or
+   secret-bearing application response in a report or repository.
+5. Verify exact frontend/backend commit and image digest, then run a fresh
+   campaign. Require ten distinct useful turns with paired lifecycle IDs;
+   test pause/unmute, PTT, cancellation, session bounds and explicit restart
+   after ownership/closed-channel failures. Compare stock and scoped counts
+   with independent native reads. Record actual hearing and physical audio
+   routes separately. Requested playback is not hearing acceptance.
+
+For the current Multiple revision strategy, the candidate deployment must
+include `--min-replicas 1 --max-replicas 1` alongside its reviewed image digest
+and revision suffix. Do not apply a partial YAML template that could replace
+other environment, probe, resource or mount settings. The read-only guard does
+not deploy or change traffic.
+
+`VOICE_SESSION_OWNER_MISMATCH` refuses a request before admitting its turn or
+creating a provider channel. The browser stops capture, checks chat and asks
+the user to restart. It never automatically resubmits a business request.
+Closed-channel prompt/answer/presentation responses expose the same recovery
+signal. Existing authorization, consent, transcript review, playback proof and
+approval requirements remain in force.
+
+For rollback, drain sessions first and restore the reviewed code/image and
+routing. The previous ORM can insert rows with the added column present;
+retain the additive migration during an application rollback. Remove the
+column only after no running code references it. Local SQLite operation and
+old-writer checks do not replace candidate PostgreSQL migration qualification.
+
 ## Markdown evidence viewer
 
 Indexed `.md` and `.markdown` attachments can be previewed in the evidence viewer
