@@ -68,6 +68,7 @@ def current_stock_summary(
             "part_id": part.pk,
             "part_name": part.name,
             "part_ipn": part.IPN,
+            "part_revision": part.revision,
             "units": part.units or "units",
             "total_in_stock": str(total),
             "available_stock": str(max(total - allocated, Decimal(0)))
@@ -99,6 +100,8 @@ def category_stock_summary(
     zero_stock: bool = False,
     highest_stock: bool = False,
     group_by: str | None = None,
+    quantity_comparison: str | None = None,
+    quantity_value: float | Decimal | None = None,
 ) -> dict[str, Any]:
     """Aggregate stock with the existing inventory role boundary."""
     from ai.core.tools.inventree.read.database import _current_user
@@ -110,6 +113,24 @@ def category_stock_summary(
 
     if group_by not in (None, "location"):
         return {"resolved": False, "error": "group_by must be location or omitted"}
+    comparison_value = None
+    if quantity_comparison is not None or quantity_value is not None:
+        if quantity_comparison not in ("lt", "lte", "gt", "gte", "eq") or quantity_value is None:
+            return {
+                "resolved": False,
+                "error": "A supported comparison and finite quantity are required",
+            }
+        if minimum_quantity is not None or zero_stock or highest_stock:
+            return {
+                "resolved": False,
+                "error": "Quantity comparison conflicts with legacy stock filters",
+            }
+        try:
+            comparison_value = Decimal(str(quantity_value))
+            if not comparison_value.is_finite() or comparison_value < 0:
+                raise ValueError
+        except (InvalidOperation, ValueError):
+            return {"resolved": False, "error": "quantity_value must be finite and nonnegative"}
     if category_id is not None and (type(category_id) is not int or category_id <= 0):
         return {"error": "category_id must be a positive integer", "resolved": False}
     if type(zero_stock) is not bool or (zero_stock and minimum_quantity is not None):
@@ -148,7 +169,12 @@ def category_stock_summary(
             output_field=DecimalField(),
         )
     )
-    if zero_stock:
+    if quantity_comparison is not None:
+        # Coalesce above retains exact zero-stock parts, including revisions
+        # with no rows. Compare the full native sum, never a search page.
+        lookup = "exact" if quantity_comparison == "eq" else quantity_comparison
+        parts = parts.filter(**{f"total__{lookup}": comparison_value})
+    elif zero_stock:
         # A part with no stock rows is just as empty as one whose rows sum
         # to zero. Low-stock reports exclude some of these parts entirely.
         parts = parts.filter(Q(total__isnull=True) | Q(total=0))
@@ -160,7 +186,7 @@ def category_stock_summary(
     parts = parts.order_by("pk")
     count = parts.count()
     total = parts.aggregate(quantity=Sum("total"))["quantity"] or Decimal(0)
-    rows = list(parts.values("pk", "name", "category_id", "total")[:200])
+    rows = list(parts.values("pk", "name", "IPN", "revision", "category_id", "total")[:200])
     result = {
         "resolved": True,
         "category_id": category.pk if category else None,
@@ -168,16 +194,20 @@ def category_stock_summary(
         "include_descendants": category is not None,
         "zero_stock": zero_stock,
         "highest_stock": highest_stock,
+        "quantity_comparison": quantity_comparison,
+        "quantity_value": str(comparison_value) if comparison_value is not None else None,
         "total_in_stock": str(total),
         "stock_scope": "exact_part_current_stock",
         "quantity_greater_than": None
-        if zero_stock or highest_stock
+        if zero_stock or highest_stock or quantity_comparison is not None
         else str(minimum if minimum is not None else 0),
         "part_count": count,
         "parts": [
             {
                 "part_id": row["pk"],
                 "name": row["name"],
+                "part_ipn": row["IPN"],
+                "part_revision": row["revision"],
                 "category_id": row["category_id"],
                 "total_stock": str(row["total"] or 0),
             }

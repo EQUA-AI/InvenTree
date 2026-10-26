@@ -171,6 +171,8 @@ async def get_stock_levels(
     zero_stock: bool = False,
     highest_stock: bool = False,
     group_by: str | None = None,
+    quantity_comparison: str | None = None,
+    quantity_value: float | None = None,
 ) -> dict[str, Any] | list[dict[str, Any]]:
     """
     Get stock for a part/location, or count stocked parts in a category subtree.
@@ -196,6 +198,10 @@ async def get_stock_levels(
         group_by: Use "location" with category_id for a full-category location
             breakdown. Preserves descendants and other aggregate filters;
             totals cover every matching part before location/detail caps.
+        quantity_comparison: Compare full per-part current stock: lt, lte, gt,
+            gte or eq. Requires quantity_value and category_id. Includes zeros.
+            Cannot combine with minimum_quantity, zero_stock or highest_stock.
+        quantity_value: Finite nonnegative quantity for quantity_comparison.
 
     Returns:
         For a part: {part_id, part_name, part_ipn, description, units,
@@ -218,6 +224,7 @@ async def get_stock_levels(
         category_id = bound.stock_location_category_id
         part_id = location_id = minimum_quantity = None
         zero_stock = highest_stock = False
+        quantity_comparison = quantity_value = None
         group_by = "location"
         bound.stock_location_result.clear()
     if group_by is not None and category_id is None and not (zero_stock or highest_stock):
@@ -236,12 +243,16 @@ async def get_stock_levels(
             zero_stock=zero_stock,
             highest_stock=highest_stock,
             group_by=group_by,
+            quantity_comparison=quantity_comparison,
+            quantity_value=quantity_value,
         )
         if bound is not None and bound.stock_location_category_id is not None:
             bound.stock_location_result.update(summary)
         return summary
     if minimum_quantity is not None:
         return {"resolved": False, "error": "minimum_quantity requires category_id"}
+    if quantity_comparison is not None or quantity_value is not None:
+        return {"resolved": False, "error": "Quantity comparison requires category_id"}
     if part_id is not None:
         from ai.core.tools.inventree.read.stock import current_stock_summary
         from asgiref.sync import sync_to_async

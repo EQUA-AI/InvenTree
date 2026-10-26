@@ -1326,6 +1326,42 @@ as the specified torque for a tightening sequence.
 
         tools = await tools_for_current_user(self._base_tools_for(is_voice=is_voice))
 
+        # Narrow stock questions have native aggregate contracts. Resolve them
+        # before model pack selection can omit stock reads or substitute SQL.
+        # The reader rechecks the current actor; the offered tool is only a
+        # capability fence, never a permission grant.
+        from ai.core.tools.stock_queries import resolve_stock_query, stock_question
+
+        if stock_question(query):
+            from ai.core.tools.capabilities import tool_name
+
+            if any(tool_name(tool) == "get_stock_levels" for tool in tools):
+                native = await sync_to_async(resolve_stock_query)(query, context)
+                if native is not None:
+                    return LookupResult(
+                        lookup_type=lookup_type,
+                        success=True,
+                        data={"native_stock": native["evidence"]},
+                        formatted_response=native["text"],
+                        execution_time_ms=(time.perf_counter() - start_time) * 1000,
+                    )
+
+        from ai.core.tools.catalog_queries import catalog_request, resolve_catalog_query
+
+        if catalog_request(query) is not None:
+            from ai.core.tools.capabilities import tool_name
+
+            if any(tool_name(tool) == "search_parts" for tool in tools):
+                native = await resolve_catalog_query(query, context)
+                if native is not None:
+                    return LookupResult(
+                        lookup_type=lookup_type,
+                        success=True,
+                        data={"native_catalog": native["evidence"]},
+                        formatted_response=native["text"],
+                        execution_time_ms=(time.perf_counter() - start_time) * 1000,
+                    )
+
         # A cold category/machine lexicon loads Django models. Keep those
         # synchronous reads off the event loop rather than silently degrading
         # the lexicon to empty after SynchronousOnlyOperation.
