@@ -136,6 +136,21 @@ export function compileEvidence(manifest, root) {
         Object.hasOwn(item, 'expected'),
         'Assertion requires an independent expected value'
       );
+      if (manifest.require_raw_evidence && item.lane === 'live')
+        assert(
+          item.source_evidence?.length,
+          'Live assertions require raw source evidence'
+        );
+      const sourceEvidence = (item.source_evidence ?? []).map((ref) => {
+        assert(
+          ref.attempt_id && ref.source_sha === manifest.source_sha,
+          'Raw evidence requires matching attempt and source identity'
+        );
+        return {
+          ...ref,
+          available: atPointer(read(ref.file), ref.json_pointer).available
+        };
+      });
       if (reviewed)
         assert(
           item.expected === 'PASS',
@@ -147,6 +162,15 @@ export function compileEvidence(manifest, root) {
           ref.attempt_id && ref.source_sha === manifest.source_sha,
           'Attempt and matching source identities required'
         );
+        if (manifest.require_raw_evidence && item.lane === 'live')
+          assert(
+            sourceEvidence.some(
+              (source) =>
+                source.attempt_id === ref.attempt_id &&
+                (source.project ?? '') === (ref.project ?? '')
+            ),
+            'Every live attempt requires matching raw source evidence'
+          );
         const observed = atPointer(read(ref.file), ref.json_pointer);
         let outcome;
         if (reviewed && observed.available) {
@@ -195,7 +219,12 @@ export function compileEvidence(manifest, root) {
         lane: item.lane,
         expected: item.expected,
         observations,
-        status: aggregate(observations)
+        status:
+          sourceEvidence.some((ref) => !ref.available) &&
+          aggregate(observations) !== 'FAIL'
+            ? 'UNVERIFIED'
+            : aggregate(observations),
+        ...(sourceEvidence.length ? { source_evidence: sourceEvidence } : {})
       };
     });
     let status = aggregate(assertions);
@@ -224,18 +253,28 @@ export function compileEvidence(manifest, root) {
       suite: definition.suite,
       title: definition.title,
       status,
+      qualification_lanes: [...new Set(assertions.map((item) => item.lane))],
+      fixture_only: assertions.every((item) => item.lane === 'fixture'),
       assertions,
       ...(definition.review ? { review: definition.review } : {})
     };
   });
   const counts = {};
+  const laneCounts = {};
   for (const item of cases)
     counts[item.status] = (counts[item.status] ?? 0) + 1;
+  for (const item of cases)
+    for (const assertion of item.assertions) {
+      laneCounts[assertion.lane] ??= {};
+      const counts = laneCounts[assertion.lane];
+      counts[assertion.status] = (counts[assertion.status] ?? 0) + 1;
+    }
   return {
     schema_version: 1,
     source_sha: manifest.source_sha,
     total_case_definitions: cases.length,
     counts,
+    assertion_counts_by_lane: laneCounts,
     cases,
     evidence_file_sha256: hashes
   };

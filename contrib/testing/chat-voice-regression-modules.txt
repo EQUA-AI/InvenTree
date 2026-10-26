@@ -1,4 +1,6 @@
 core/tests/test_voice_baseline_grounding.py
+core/tests/test_voice_transport_ownership.py
+core/tests/test_chat_visualization_retest.py
 core/tests/test_voice_lifecycle_observations.py
 core/tests/test_voice_speech_dispatch.py
 core/tests/test_voice_route_speech_integration.py
