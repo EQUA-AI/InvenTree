@@ -48,12 +48,16 @@ def provided_visualization(text: str, *, turn_id: str) -> tuple[str, list[dict]]
                 r"\b(?:line|bar|pie)\s+(?:chart|graph|plot)\b", label, re.I
             ):
                 declaration = re.search(
-                    r"\b(?:line|bar|pie)\s+(?:chart|graph|plot)\s+(?:for|comparing)\s+(.+)$",
+                    r"\b(?:line|bar|pie)\s+(?:chart|graph|plot)\s+"
+                    r"(?:for|comparing|(?:using|from)\s+"
+                    r"(?:(?:supplied|synthetic|user[- ]provided|test)\s+)*data(?:\s+only)?)\s+(.+)$",
                     label,
                     re.I,
                 )
                 if declaration:
                     label = declaration[1].strip()
+                else:
+                    raise ValueError("ambiguous first label includes chart instructions")
             points.append({"label": label, "value": int(value) if value.is_integer() else value})
         dataset = PresentationChartV2.model_validate({
             "kind": "chart_dataset",

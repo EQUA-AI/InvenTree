@@ -412,6 +412,10 @@ function WidgetGrid(
   return (
     <ReactGridLayout
       className='dashboard-layout'
+      // Grid items animate their previous width after a viewport shrink.
+      // Keep that paint inside the dashboard without clipping portal menus
+      // or making the whole application a horizontal scroll container.
+      style={{ overflowX: 'clip' }}
       breakpoints={DASHBOARD_BREAKPOINTS}
       cols={DASHBOARD_COLS}
       rowHeight={64}

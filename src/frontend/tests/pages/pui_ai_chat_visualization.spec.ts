@@ -180,6 +180,21 @@ test.describe('native color-menu and mobile layout transitions', () => {
                 .querySelector('[data-testid="send-ai-chat-message"]')!
                 .getBoundingClientRect();
               observations.push({
+                overflowElements: [...document.querySelectorAll('body *')]
+                  .filter((el) => {
+                    const rect = el.getBoundingClientRect();
+                    return (
+                      rect.width > 0 &&
+                      rect.right > innerWidth + 1 &&
+                      getComputedStyle(el).position !== 'fixed'
+                    );
+                  })
+                  .slice(0, 10)
+                  .map((el) => ({
+                    tag: el.tagName,
+                    className: el.className,
+                    right: el.getBoundingClientRect().right
+                  })),
                 documentWidth: document.documentElement.scrollWidth,
                 viewportWidth: innerWidth,
                 viewportHeight: innerHeight,
@@ -465,3 +480,102 @@ for (const name of ['recorded-status', 'recorded-trend', 'provided-pie']) {
         ).toBeVisible();
   });
 }
+
+for (const type of ['line', 'bar'] as const)
+  for (const theme of ['light', 'dark'] as const)
+    test(`home dashboard and ${type} chat fit every resize frame in ${theme}`, async ({
+      page
+    }, info) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.emulateMedia({
+        reducedMotion: 'no-preference',
+        colorScheme: theme
+      });
+      await prepareDrawerFixture(page, {
+        voice: false,
+        foundation: { threadDetailMessages: [message(type)] }
+      });
+      await page.goto(
+        '/playwright/aichat-drawer.html?native-header=1&actor=reader'
+      );
+      const widget = page.locator('.dashboard-layout .react-grid-item').first();
+      await expect(widget).toBeVisible();
+      await page.getByTestId('open-ai-chat').click();
+      await page.getByRole('tab', { name: 'History', exact: true }).click();
+      await page
+        .getByTestId('ai-chat-history-row')
+        .filter({ hasText: 'Server conversation' })
+        .click();
+      const chart = page.getByTestId('presentation-chart');
+      await expect(chart).toBeVisible();
+      await expect
+        .poll(async () => (await widget.boundingBox())!.width)
+        .toBeLessThanOrEqual(390);
+      for (const size of [
+        { width: 320, height: 480 },
+        { width: 390, height: 844 }
+      ]) {
+        await page.setViewportSize(size);
+        const samples = await page.evaluate(async () => {
+          const result = [];
+          for (let n = 0; n < 30; n++) {
+            await new Promise<void>((resolve) =>
+              requestAnimationFrame(() => resolve())
+            );
+            const drawer = document
+              .querySelector('[data-testid="ai-chat-drawer"]')!
+              .getBoundingClientRect();
+            const send = document
+              .querySelector('[data-testid="send-ai-chat-message"]')!
+              .getBoundingClientRect();
+            const svg = document
+              .querySelector('[data-testid="presentation-chart"] svg')!
+              .getBoundingClientRect();
+            result.push({
+              width: innerWidth,
+              document: document.documentElement.scrollWidth,
+              drawerFits:
+                drawer.right <= innerWidth + 1 &&
+                drawer.bottom <= innerHeight + 1,
+              sendFits:
+                send.right <= innerWidth + 1 && send.bottom <= innerHeight + 1,
+              svgFits: svg.right <= innerWidth + 1,
+              offenders:
+                document.documentElement.scrollWidth > innerWidth + 1
+                  ? [...document.querySelectorAll('body *')]
+                      .filter(
+                        (el) =>
+                          el.getBoundingClientRect().right > innerWidth + 1
+                      )
+                      .slice(0, 10)
+                      .map((el) => ({
+                        tag: el.tagName,
+                        className: el.className,
+                        right: el.getBoundingClientRect().right
+                      }))
+                  : []
+            });
+          }
+          return result;
+        });
+        writeFileSync(
+          info.outputPath(`home-${size.width}-resize.json`),
+          JSON.stringify(samples, null, 2)
+        );
+        expect(
+          samples.filter(
+            (row) =>
+              row.document > row.width + 1 ||
+              !row.drawerFits ||
+              !row.sendFits ||
+              !row.svgFits
+          )
+        ).toEqual([]);
+        await chart.getByRole('row').last().scrollIntoViewIfNeeded();
+        await expect(chart.getByRole('row').last()).toBeInViewport();
+        await expect(page.getByTestId('send-ai-chat-message')).toBeInViewport();
+        await page.screenshot({
+          path: info.outputPath(`home-${type}-${theme}-${size.width}.png`)
+        });
+      }
+    });

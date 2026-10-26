@@ -8,7 +8,9 @@ from typing import Any
 
 def machine_candidates(text: str) -> frozenset[int]:
     """Typed IDs only; a model number or the '2' in a machine name is not an ID."""
-    values = re.findall(r"\bmachine\s+(?:id\s*)?[:#]?\s*(\d{1,7})\b", text, re.I)
+    values = re.findall(
+        r"\bmachine(?:\s+(?:id\s*)?[:#]?\s*|[:#]\s*|(?=\d))(\d{1,7})\b(?![.-]\w)", text, re.I
+    )
     values += re.findall(
         r"\bmachine\b[^?\n]{0,180}?\(\s*(?:id\s*[:#]?\s*|#)(\d{1,7})\s*\)",
         text,

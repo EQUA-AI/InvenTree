@@ -16,6 +16,9 @@ import { Button, MantineProvider, Stack } from '@mantine/core';
 import '@mantine/core/styles.css';
 import { Notifications } from '@mantine/notifications';
 import '@mantine/notifications/styles.css';
+import '@mantine/carousel/styles.css';
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -24,7 +27,9 @@ import { VoiceConsentDialog } from '../src/components/ai/voice/VoiceConsentDialo
 import { VoiceGlobalIndicator } from '../src/components/ai/voice/VoiceGlobalIndicator';
 import { VoiceHandsFreeSurface } from '../src/components/ai/voice/VoiceHandsFreeSurface';
 import { GlobalEvidenceViewer } from '../src/components/aichat/MediaEvidenceModal';
+import DashboardLayout from '../src/components/dashboard/DashboardLayout';
 import { AIChatButton, AIChatDrawer } from '../src/components/nav/AIChatDrawer';
+import { Header } from '../src/components/nav/Header';
 import { MainMenu } from '../src/components/nav/MainMenu';
 import { ApiProvider } from '../src/contexts/ApiContext';
 import { openGlobalAIChat, useAIChatState } from '../src/states/AIChatState';
@@ -45,6 +50,16 @@ useUserState.setState({
 
 function DrawerFixture() {
   const opened = useAIChatState((state) => state.isOpen);
+  if (new URLSearchParams(window.location.search).has('native-header')) {
+    return (
+      <>
+        <Header />
+        <div style={{ padding: 16 }}>
+          <DashboardLayout />
+        </div>
+      </>
+    );
+  }
   return (
     <Stack p='md' gap='xs'>
       {new URLSearchParams(window.location.search).has('native-menu') && (
@@ -129,7 +144,9 @@ function DrawerFixture() {
 
 const initialRoute =
   new URLSearchParams(window.location.search).get('route') ??
-  '/machines/index/';
+  (new URLSearchParams(window.location.search).has('native-header')
+    ? '/home'
+    : '/machines/index/');
 
 createRoot(document.getElementById('root')!).render(
   <I18nProvider i18n={i18n}>
