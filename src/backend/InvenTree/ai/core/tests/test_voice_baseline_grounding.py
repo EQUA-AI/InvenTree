@@ -280,3 +280,261 @@ async def test_exact_ipn_requires_a_revision_and_never_repairs_missing_zeros(sto
         provider.get_part.assert_awaited_once_with(other.pk)
     with patch("ai.core.tools.inventree.read.database._current_user", return_value=None):
         assert resolve_exact_ipn("00123")["resolved"] is False
+
+
+@pytest.mark.asyncio
+async def test_category_location_followup_uses_the_latest_subject_and_full_native_population(
+    stock_fixture, monkeypatch
+):
+    from ai.core.integrations.inventory_tools import get_stock_levels
+    from ai.core.tools import capabilities
+    from ai.core.tools.invocation_guard import bind_capability_run
+    from ai.core.workflows.wf8_lookup import T1LookupWorkflow
+    from asgiref.sync import sync_to_async
+
+    def setup():
+        part, _template, _empty, category = stock_fixture
+        category.name = "PCBA"
+        category.save()
+        child = PartCategory.objects.create(name="PCBA child", parent=category)
+        factory = StockLocation.objects.create(name="Factory")
+        room = StockLocation.objects.create(name="Room 101", parent=factory)
+        second = Part.objects.create(name="Test Board 2", category=child)
+        third = Part.objects.create(name="Test Board 3", category=child)
+        StockItem.objects.filter(part=part).delete()
+        for item, quantity, location in [
+            (part, 40, factory),
+            (part, 15, room),
+            (second, 6, factory),
+            (second, 24, room),
+            (third, 5, room),
+        ]:
+            StockItem.objects.create(part=item, quantity=quantity, location=location, batch="")
+        StockItem.objects.create(part=second, quantity=900, status=60, location=factory, batch="")
+        wire = PartCategory.objects.create(name="Wire")
+        return category, wire, factory, room
+
+    category, wire, factory, room = await sync_to_async(setup)()
+    monkeypatch.setattr(
+        capabilities, "category_lexicon", lambda: frozenset({"pcba", "wire", "widget"})
+    )
+    context = {
+        "conversation_history": [
+            {"role": "user", "content": "Show Wire stock."},
+            {"role": "assistant", "content": "Wire and Widget are empty."},
+            {"role": "user", "content": "How many PCBA are currently in stock?"},
+            {"role": "assistant", "content": "90 PCBA; Wire is unrelated."},
+        ]
+    }
+    selected = await sync_to_async(T1LookupWorkflow._stock_location_category)(
+        "And where are those located?", context
+    )
+    assert selected == category.pk
+    assert capabilities.matched_category_terms(
+        "And where are those located?", context["conversation_history"]
+    ) == ("pcba",)
+    for modality in ("text", "voice"):
+        with bind_capability_run(
+            workflow="wf8",
+            modality=modality,
+            selected_tools=[get_stock_levels],
+            stock_location_category_id=selected,
+        ):
+            # Wrong model arguments cannot replace the server-derived subject.
+            result = await get_stock_levels(category_id=wire.pk)
+        assert Decimal(result["total_in_stock"]) == 90
+        assert {row["location_id"]: Decimal(row["quantity"]) for row in result["locations"]} == {
+            factory.pk: 46,
+            room.pk: 44,
+        }
+        assert result["locations_complete"] is True
+        assert result["part_count"] == 3
+    changed = await sync_to_async(T1LookupWorkflow._stock_location_category)(
+        "Where is Wire stock located?", context
+    )
+    assert changed == wire.pk
+    assert (
+        await sync_to_async(T1LookupWorkflow._stock_location_category)(
+            "Where is stock for part 00123?", context
+        )
+        is None
+    )
+    assert capabilities.matched_category_terms("Hello", context["conversation_history"]) == ()
+    with (
+        bind_capability_run(
+            workflow="wf8",
+            modality="voice",
+            selected_tools=[get_stock_levels],
+            stock_location_category_id=selected,
+        ),
+        patch("ai.core.tools.inventree.read.database._current_user", return_value=None),
+    ):
+        denied = await get_stock_levels(category_id=category.pk)
+    assert denied["resolved"] is False
+    assert "total_in_stock" not in denied
+
+
+def test_category_locations_aggregate_past_the_part_display_cap(stock_fixture):
+    part, _template, _empty, category = stock_fixture
+    location = StockItem.objects.filter(part=part).first().location
+    # Native saves populate the part's MPTT coordinates; bulk_create would
+    # bypass that contract and fail before exercising the aggregate.
+    parts = [
+        Part.objects.create(name=f"Additional board {index}", category=category)
+        for index in range(205)
+    ]
+    StockItem.objects.bulk_create([
+        StockItem(part=row, quantity=1, location=location, batch="") for row in parts
+    ])
+    result = category_stock_summary(category.pk, None, group_by="location")
+    assert result["part_count"] == 206
+    assert len(result["parts"]) == 200 and result["truncated"] is True
+    assert Decimal(result["total_in_stock"]) == 209
+    assert Decimal(result["locations"][0]["quantity"]) == 209
+    assert result["locations_complete"] is True
+
+
+@pytest.mark.asyncio
+async def test_prepared_workflow_binds_the_category_in_both_modalities(stock_fixture, monkeypatch):
+    import time
+
+    from ai.core.integrations.inventory_tools import get_stock_levels
+    from ai.core.tools import capabilities
+    from ai.core.tools.inventree.read.parts import get_part
+    from ai.core.workflows.wf8_lookup import LookupType, T1LookupWorkflow
+    from asgiref.sync import sync_to_async
+
+    _part, _template, _empty, category = stock_fixture
+    name = "pcba" + uuid.uuid4().hex.translate(str.maketrans("0123456789", "ghijklmnop"))
+
+    def rename():
+        category.name = name
+        category.save()
+
+    await sync_to_async(rename)()
+    monkeypatch.setattr(capabilities, "category_lexicon", lambda: frozenset({name}))
+    context = {
+        "conversation_history": [{"role": "user", "content": f"How many {name} are in stock?"}]
+    }
+    received = []
+
+    class Agent:
+        async def run(self, *_args, **_kwargs):
+            received.append(await get_stock_levels(category_id=99999999))
+            return SimpleNamespace(text="There are no PCBA units in stock.", usage_details=None)
+
+        async def run_stream(self, *_args, **_kwargs):
+            received.append(await get_stock_levels(category_id=99999999))
+            yield SimpleNamespace(text="There are no PCBA units in stock.")
+
+    workflow = T1LookupWorkflow()
+    tools = [get_stock_levels, get_part]
+    selected = SimpleNamespace(
+        requires_specialist=False,
+        clarification_required=False,
+        tools=tools,
+        pack_ids=("stock.read", "parts.read"),
+    )
+    with (
+        patch.object(workflow, "_capability_selection", return_value=selected),
+        patch.object(workflow, "_get_agent", new=AsyncMock(return_value=Agent())),
+        patch("ai.core.tools.rbac.tools_for_current_user", new=AsyncMock(return_value=tools)),
+        patch(
+            "ai.core.workflows.wf8_lookup.get_settings",
+            return_value=SimpleNamespace(feature_capability_broker_enforce=True),
+        ),
+        patch("ai.core.agents.factory.prompt_cache_options", return_value={}),
+    ):
+        prepared = await workflow._prepare_run(
+            query="And where are those located?",
+            lookup_type=LookupType.STOCK_CHECK,
+            context=context,
+            start_time=time.perf_counter(),
+        )
+    assert prepared.stock_location_category_id == category.pk
+    assert prepared.runtime_tools == [get_stock_levels]
+    for modality in ("text", "voice"):
+        prepared.modality = modality
+        with patch.object(workflow, "_prepare_run", new=AsyncMock(return_value=prepared)):
+            result = await workflow.execute("And where are those located?", context=context)
+        assert result.success is True
+        assert "totals 4" in result.formatted_response
+        assert "no PCBA units" not in result.formatted_response
+        with patch.object(workflow, "_prepare_run", new=AsyncMock(return_value=prepared)):
+            chunks = [
+                chunk
+                async for chunk in workflow.execute_streaming(
+                    "And where are those located?", context=context
+                )
+            ]
+        assert len(chunks) == 1 and "totals 4" in chunks[0]
+        assert "no PCBA units" not in chunks[0]
+    assert all(
+        item["category_id"] == category.pk and Decimal(item["total_in_stock"]) == 4
+        for item in received
+    )
+
+    class NoReadAgent:
+        async def run(self, *_args, **_kwargs):
+            return SimpleNamespace(text="There are no PCBA units in stock.", usage_details=None)
+
+    prepared.agent = NoReadAgent()
+    with patch.object(workflow, "_prepare_run", new=AsyncMock(return_value=prepared)):
+        result = await workflow.execute("And where are those located?", context=context)
+    assert "could not be verified" in result.formatted_response
+
+
+def test_category_location_subject_resolves_plural_and_clarifies_duplicate_names(
+    stock_fixture, monkeypatch
+):
+    from ai.core.tools import capabilities
+    from ai.core.workflows.wf8_lookup import T1LookupWorkflow
+
+    _part, _template, _empty, category = stock_fixture
+    name = "Board" + uuid.uuid4().hex.translate(str.maketrans("0123456789", "ghijklmnop"))
+    category.name = name
+    category.save()
+    monkeypatch.setattr(
+        capabilities,
+        "category_lexicon",
+        lambda: frozenset({name.casefold(), name.casefold() + "s"}),
+    )
+    query = f"Where is the {name}s stock located?"
+    assert T1LookupWorkflow._stock_location_category(query, {}) == category.pk
+    parent = PartCategory.objects.create(name=f"Another parent {uuid.uuid4().hex[:8]}")
+    duplicate = PartCategory.objects.create(name=name, parent=parent)
+    result = T1LookupWorkflow._stock_location_category(query, {})
+    assert str(category.pk) in result["question"]
+    assert str(duplicate.pk) in result["question"]
+    assert "Which stock category" in result["question"]
+
+
+def test_category_location_answer_requires_fresh_consistent_evidence_and_reports_coverage():
+    from ai.core.workflows.wf8_lookup import category_location_answer
+
+    for evidence in [
+        {},
+        {"resolved": False},
+        {
+            "resolved": True,
+            "category_id": 7,
+            "total_in_stock": "4",
+            "locations_complete": True,
+            "locations": [{"name": "Shelf", "quantity": "0"}],
+        },
+    ]:
+        assert "could not be verified" in category_location_answer(
+            evidence, category_id=7, modality="voice"
+        )
+    partial = {
+        "resolved": True,
+        "category_id": 7,
+        "category_name": "PCBA",
+        "total_in_stock": "1000",
+        "locations_complete": False,
+        "location_count": 400,
+        "locations": [{"name": f"Shelf {index}", "quantity": "1"} for index in range(200)],
+    }
+    text = category_location_answer(partial, category_id=7, modality="voice")
+    assert "totals 1000" in text and "397 more locations" in text
+    assert len(text) < 700
