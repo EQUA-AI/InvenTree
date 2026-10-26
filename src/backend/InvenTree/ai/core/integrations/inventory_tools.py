@@ -169,6 +169,7 @@ async def get_stock_levels(
     category_id: int | None = None,
     minimum_quantity: float | None = None,
     zero_stock: bool = False,
+    highest_stock: bool = False,
 ) -> dict[str, Any] | list[dict[str, Any]]:
     """
     Get stock for a part/location, or count stocked parts in a category subtree.
@@ -188,6 +189,9 @@ async def get_stock_levels(
         zero_stock: Count all parts with exactly zero total stock, including parts
             without stock rows. Optionally restrict to category_id and descendants.
             Cannot combine with minimum_quantity, part_id or location_id.
+        highest_stock: Return every tied highest-stock part over the full catalogue
+            or category subtree. Server aggregation precedes the display cap.
+            Cannot combine with zero_stock, minimum_quantity, part_id or location_id.
 
     Returns:
         For a part: {part_id, part_name, part_ipn, description, units,
@@ -201,7 +205,7 @@ async def get_stock_levels(
         For zero_stock=True without a category, part_count covers the full catalogue.
         When no filter is given: {"resolved": false, "error": ...}.
     """
-    if category_id is not None or zero_stock:
+    if category_id is not None or zero_stock or highest_stock:
         if part_id is not None or location_id is not None:
             return {
                 "resolved": False,
@@ -210,10 +214,15 @@ async def get_stock_levels(
         from asgiref.sync import sync_to_async
 
         return await sync_to_async(category_stock_summary)(
-            category_id, minimum_quantity, zero_stock=zero_stock
+            category_id, minimum_quantity, zero_stock=zero_stock, highest_stock=highest_stock
         )
     if minimum_quantity is not None:
         return {"resolved": False, "error": "minimum_quantity requires category_id"}
+    if part_id is not None:
+        from ai.core.tools.inventree.read.stock import current_stock_summary
+        from asgiref.sync import sync_to_async
+
+        return await sync_to_async(current_stock_summary)(part_id, location_id)
     if location_id is not None:
         return await get_stock_at_location(location_id=location_id)
     if part_id is None:

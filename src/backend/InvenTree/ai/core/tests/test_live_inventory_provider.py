@@ -20,8 +20,8 @@ async def test_total_stock_includes_later_pages():
     )
     assert await provider.get_stock_quantity(42) == 205
     assert provider._client.get_stock.call_args_list == [
-        call(part_id=42, limit=100, offset=0),
-        call(part_id=42, limit=100, offset=100),
+        call(part_id=42, limit=100, offset=0, in_stock=True, include_variants=False),
+        call(part_id=42, limit=100, offset=100, in_stock=True, include_variants=False),
     ]
 
 

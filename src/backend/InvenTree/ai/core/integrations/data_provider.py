@@ -209,7 +209,13 @@ class LiveDataProviderAsync:
         offset = 0
         page_size = 100
         while True:
-            stock = await self._client.get_stock(part_id=part_id, limit=page_size, offset=offset)
+            stock = await self._client.get_stock(
+                part_id=part_id,
+                limit=page_size,
+                offset=offset,
+                in_stock=True,
+                include_variants=False,
+            )
             total += sum(item.get("quantity", 0) for item in stock)
             if len(stock) < page_size:
                 return total

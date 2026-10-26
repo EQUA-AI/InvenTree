@@ -206,11 +206,16 @@ def work_orders_page(
 
         term = str(query).strip()[:100]
         if term:
-            rows = rows.filter(
+            query_filter = (
                 Q(reference__icontains=term)
                 | Q(title__icontains=term)
                 | Q(machine__name__icontains=term)
             )
+            # Numeric primary keys and canonical references are distinct lookup
+            # forms. Both remain inside the already-authorized queryset.
+            if term.isascii() and term.isdigit() and 0 < int(term) < 2**63:
+                query_filter = Q(pk=int(term))
+            rows = rows.filter(query_filter)
             applied_filters['query_applied'] = True
     scope_ids = (
         None if scope_machine_ids is None else {int(pk) for pk in scope_machine_ids}

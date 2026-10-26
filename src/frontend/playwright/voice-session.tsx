@@ -1,4 +1,6 @@
 /** Local-only component fixture: every endpoint is mocked by its browser test. */
+import './test-lingui';
+
 import { i18n } from '@lingui/core';
 import { I18nProvider } from '@lingui/react';
 import { Button, MantineProvider, Stack, TextInput } from '@mantine/core';

@@ -170,7 +170,7 @@ def dispatch_state_for(record) -> str:
     """Honest persisted-playback state for one dispatch record."""
     from ai.core.voice import speech_dispatch
 
-    return speech_dispatch.PLAYBACK_STATE_FOR.get(record.state, "pending")
+    return speech_dispatch.playback_state_for(record)
 
 
 def dispatch_audit_state_for(record) -> str:

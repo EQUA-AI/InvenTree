@@ -228,6 +228,60 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
+it('reports browser-only lifecycle while accepting consecutive turns after failed speech', async () => {
+  const respond = fetcher.getMockImplementation()!;
+  fetcher.mockImplementation(async (url: string, options: RequestInit) => {
+    const response = await respond(url, options);
+    if (!new URL(url).pathname.endsWith('/turns')) return response;
+    const body = await response.json();
+    return {
+      ok: true,
+      json: async () => ({
+        ...body,
+        spoken: {
+          utterance_id: 'failed-output',
+          spoken_summary: 'Hello',
+          spoken_summary_hash: 'hash',
+          playback_state: 'failed'
+        }
+      })
+    };
+  });
+  await controller.start();
+  for (let n = 0; n < 10; n++) {
+    await controller.submitTranscript({
+      text: 'Hello',
+      itemId: `turn-${n}`,
+      confidence: 1,
+      language: 'en-US'
+    });
+    await flush();
+    controller.handleEvent(
+      JSON.stringify({
+        type: 'response.created',
+        response: { id: `resp-${n}`, status: 'in_progress' }
+      })
+    );
+    controller.handleEvent(
+      JSON.stringify({
+        type: 'response.done',
+        response: { id: `resp-${n}`, status: 'completed', output: ['private'] }
+      })
+    );
+    await flush();
+  }
+  expect(requests.filter((r) => r.path.endsWith('/turns'))).toHaveLength(10);
+  const observations = requests.filter((r) => r.path.endsWith('/lifecycle'));
+  expect(observations).toHaveLength(20);
+  expect(observations[1].body).toEqual({
+    type: 'response.done',
+    response_id: 'resp-0',
+    status: 'completed'
+  });
+  expect(decisions.getState().decide).not.toHaveBeenCalled();
+  expect(state.getState().transport).toBe('connected');
+});
+
 it('starts once, gates PTT tracks, and survives minimize', async () => {
   await Promise.all([controller.start(), controller.start()]);
   expect(

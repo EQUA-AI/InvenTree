@@ -16,20 +16,109 @@ from ai.core.maf_compat import ai_function
 logger = logging.getLogger(__name__)
 
 
+def current_stock_summary(
+    part_id: int, location_id: int | None = None, *, include_sublocation: bool = True
+) -> dict[str, Any]:
+    """Read exact-part current stock, independently of template rollups/pages.
+
+    Shared by text and voice. The acting user is resolved server-side; an
+    inaccessible part is never resolved by falling back to a service token.
+    """
+    from ai.core.tools.inventree.read.database import _current_user
+    from django.db import transaction
+    from django.db.models import Sum
+    from part.models import Part
+    from stock.models import StockItem, StockLocation
+    from users.permissions import check_user_role
+
+    user = _current_user()
+    if user is None or not all(check_user_role(user, role, "view") for role in ("part", "stock")):
+        return {"resolved": False, "error": "Part stock is unavailable to you"}
+    if type(part_id) is not int or part_id <= 0:
+        return {"resolved": False, "error": "part_id must be a positive integer"}
+    with transaction.atomic():
+        part = Part.objects.filter(pk=part_id).first()
+        if part is None:
+            return {"resolved": False, "part_id": part_id, "error": "Part not found"}
+        rows = StockItem.objects.filter(StockItem.IN_STOCK_FILTER, part_id=part.pk)
+        location = None
+        if location_id is not None:
+            if type(location_id) is not int or location_id <= 0:
+                return {"resolved": False, "error": "location_id must be a positive integer"}
+            location = StockLocation.objects.filter(pk=location_id).first()
+            if location is None:
+                return {"resolved": False, "error": "Stock location not found"}
+            rows = (
+                rows.filter(location__in=location.get_descendants(include_self=True))
+                if include_sublocation
+                else rows.filter(location=location)
+            )
+        total = rows.aggregate(total=Sum("quantity"))["total"] or Decimal(0)
+        groups = (
+            rows
+            .values("location_id", "location__pathstring", "location__name")
+            .annotate(quantity=Sum("quantity"))
+            .order_by("-quantity", "location_id")
+        )
+        location_count = groups.count()
+        locations = list(groups[:200])
+        allocated = part.allocation_count(include_variants=False) if location is None else None
+        return {
+            "resolved": True,
+            "part_id": part.pk,
+            "part_name": part.name,
+            "part_ipn": part.IPN,
+            "units": part.units or "units",
+            "total_in_stock": str(total),
+            "available_stock": str(max(total - allocated, Decimal(0)))
+            if allocated is not None
+            else None,
+            "allocated_stock": str(allocated) if allocated is not None else None,
+            "location_id": location_id,
+            "location_name": location.pathstring if location else None,
+            "stock_scope": "exact_part_current_stock",
+            "include_variants": False,
+            "item_count": rows.count(),
+            "location_count": location_count,
+            "locations": [
+                {
+                    "location_id": row["location_id"],
+                    "name": row["location__pathstring"] or row["location__name"] or "Unassigned",
+                    "quantity": str(row["quantity"]),
+                }
+                for row in locations
+            ],
+            "locations_complete": location_count <= len(locations),
+        }
+
+
 def category_stock_summary(
-    category_id: int | None, minimum_quantity: float | None, *, zero_stock: bool = False
+    category_id: int | None,
+    minimum_quantity: float | None,
+    *,
+    zero_stock: bool = False,
+    highest_stock: bool = False,
 ) -> dict[str, Any]:
     """Aggregate stock with the existing inventory role boundary."""
     from ai.core.tools.inventree.read.database import _current_user
-    from django.db.models import Q, Sum
+    from django.db.models import DecimalField, Max, Q, Sum
+    from django.db.models.functions import Coalesce
     from part.models import Part, PartCategory
+    from stock.models import StockItem
     from users.permissions import check_user_role
 
     if category_id is not None and (type(category_id) is not int or category_id <= 0):
         return {"error": "category_id must be a positive integer", "resolved": False}
     if type(zero_stock) is not bool or (zero_stock and minimum_quantity is not None):
         return {"error": "zero_stock cannot be combined with minimum_quantity", "resolved": False}
-    if category_id is None and not zero_stock:
+    if type(highest_stock) is not bool or (
+        highest_stock and (zero_stock or minimum_quantity is not None)
+    ):
+        return {
+            "error": "highest_stock cannot combine with zero_stock or minimum_quantity",
+            "resolved": False,
+        }
+    if category_id is None and not zero_stock and not highest_stock:
         return {"error": "category_id is required for a positive-stock summary", "resolved": False}
     try:
         minimum = None if minimum_quantity is None else Decimal(str(minimum_quantity))
@@ -48,15 +137,26 @@ def category_stock_summary(
         except PartCategory.DoesNotExist:
             return {"error": "Category not found", "resolved": False}
         parts = parts.filter(category__in=category.get_descendants(include_self=True))
-    parts = parts.annotate(total=Sum("stock_items__quantity"))
+    current_rows = StockItem.objects.filter(StockItem.IN_STOCK_FILTER)
+    parts = parts.annotate(
+        total=Coalesce(
+            Sum("stock_items__quantity", filter=Q(stock_items__pk__in=current_rows.values("pk"))),
+            Decimal(0),
+            output_field=DecimalField(),
+        )
+    )
     if zero_stock:
         # A part with no stock rows is just as empty as one whose rows sum
         # to zero. Low-stock reports exclude some of these parts entirely.
         parts = parts.filter(Q(total__isnull=True) | Q(total=0))
+    elif highest_stock:
+        maximum = parts.aggregate(maximum=Max("total"))["maximum"]
+        parts = parts.filter(total=maximum) if maximum is not None else parts.none()
     else:
         parts = parts.filter(total__gt=minimum if minimum is not None else 0)
     parts = parts.order_by("pk")
     count = parts.count()
+    total = parts.aggregate(quantity=Sum("total"))["quantity"] or Decimal(0)
     rows = list(parts.values("pk", "name", "category_id", "total")[:200])
     return {
         "resolved": True,
@@ -64,7 +164,12 @@ def category_stock_summary(
         "category_name": category.name if category else None,
         "include_descendants": category is not None,
         "zero_stock": zero_stock,
-        "quantity_greater_than": None if zero_stock else str(minimum if minimum is not None else 0),
+        "highest_stock": highest_stock,
+        "total_in_stock": str(total),
+        "stock_scope": "exact_part_current_stock",
+        "quantity_greater_than": None
+        if zero_stock or highest_stock
+        else str(minimum if minimum is not None else 0),
         "part_count": count,
         "parts": [
             {
@@ -120,56 +225,12 @@ async def get_stock_level(
         stock = await get_stock_level(part_id=42, location_id=5)
         print(f"Stock at {stock['location_name']}: {stock['quantity']}")
     """
-    provider = get_data_provider()
+    from asgiref.sync import sync_to_async
 
-    logger.info(f"Getting stock level for part_id={part_id}, location_id={location_id}")
-
-    # Get part info
-    part = await provider.get_part(part_id)
-    if not part:
-        raise ValueError(f"Part with ID {part_id} not found")
-
-    # Get stock items for this part
-    stock_items = await provider.get_stock_items(part_id=part_id)
-
-    # Filter by location if specified
-    if location_id is not None:
-        if include_sublocation:
-            # Get location hierarchy to include sub-locations
-            locations = await provider.get_locations()
-            location_ids = _get_location_with_children(locations, location_id)
-            stock_items = [s for s in stock_items if s.get("location") in location_ids]
-        else:
-            stock_items = [s for s in stock_items if s.get("location") == location_id]
-
-    # Calculate total quantity
-    total_quantity = sum(item.get("quantity", 0) for item in stock_items)
-    minimum_stock = part.get("minimum_stock") or 0
-
-    # Get location name if specified
-    location_name = None
-    if location_id is not None:
-        locations = await provider.get_locations()
-        for loc in locations:
-            if loc.get("pk") == location_id:
-                location_name = loc.get("name")
-                break
-
-    result = {
-        "part_id": part_id,
-        "part_name": part.get("name"),
-        "quantity": total_quantity,
-        "location_id": location_id,
-        "location_name": location_name,
-        "minimum_stock": minimum_stock,
-        "is_low_stock": total_quantity < minimum_stock,
-        "stock_items_count": len(stock_items),
-        "unit": part.get("units") or "units",
-    }
-
-    logger.info(f"Stock level for part {part_id}: {total_quantity}")
-
-    return result
+    summary = await sync_to_async(current_stock_summary)(
+        part_id, location_id, include_sublocation=include_sublocation
+    )
+    return {**summary, "quantity": summary.get("total_in_stock"), "unit": summary.get("units")}
 
 
 def _get_location_with_children(
@@ -578,9 +639,9 @@ async def get_bom(
     current stock information and recursive expansion.
 
     Args:
-        part_id: The assembly part ID. BOMs live on TEMPLATE parts: when a
-                part search returned a variant (variant_of set), pass the
-                template's ID to see the full BOM.
+        part_id: The exact assembly part ID, including its selected revision.
+                The native API includes applicable inherited lines. Never
+                substitute a template ID for the requested variant.
         include_inherited: Keep BOM lines inherited from ancestor templates
                          (default True; False filters them out client-side)
         recursive: If True, recursively expand sub-assemblies to show all
@@ -610,7 +671,8 @@ async def get_bom(
             - can_build: Quantity that can be built (if include_stock=True)
             - sub_bom: Nested BOM items (if recursive=True and component is assembly)
         - total_items: Total number of unique components
-        - buildable_quantity: How many assemblies can be built with current stock
+        - buildable_quantity: Native assembly buildability, if returned; otherwise unknown
+        - arithmetic_buildable_quantity: On-hand-only estimate, not readiness or available stock
 
     Example:
         # Get flat BOM with stock levels
@@ -633,7 +695,7 @@ async def get_bom(
         return {
             "part_id": part_id,
             "part_name": part.get("name"),
-            "is_active": True,
+            "is_active": part.get("active"),
             "items": [],
             "total_items": 0,
             "buildable_quantity": None,
@@ -660,36 +722,58 @@ async def get_bom(
         "note",
         "sub_part_name",
         "sub_part_ipn",
+        "available_stock",
+        "available_variant_stock",
+        "available_substitute_stock",
+        "can_build",
     )
     bom_items = [{key: row[key] for key in item_fields if key in row} for row in bom_items]
 
     # Filter inherited if requested
     if not include_inherited:
-        bom_items = [b for b in bom_items if not b.get("inherited", False)]
+        # The inherited FLAG controls propagation to assembly variants; it
+        # does not say this row was inherited by the requested assembly.
+        bom_items = [b for b in bom_items if b.get("part", part_id) == part_id]
 
     # Track minimum buildable quantity
-    min_buildable: float | None = None
+    required_by_part: dict[int, Decimal] = {}
+    stock_by_part: dict[int, Decimal] = {}
+    component_parts: dict[int, dict[str, Any] | None] = {}
+    estimate_complete = include_stock
 
     # Enrich each BOM item
     for item in bom_items:
         sub_part_id = item.get("sub_part")
+        if not sub_part_id and not item.get("optional", False):
+            estimate_complete = False
         if sub_part_id:
-            sub_part = await provider.get_part(sub_part_id)
+            if sub_part_id not in component_parts:
+                component_parts[sub_part_id] = await provider.get_part(sub_part_id)
+            sub_part = component_parts[sub_part_id]
+            if not sub_part and not item.get("optional", False):
+                estimate_complete = False
             if sub_part:
                 item["sub_part_name"] = sub_part.get("name")
                 item["sub_part_ipn"] = sub_part.get("IPN")
 
                 if include_stock:
-                    stock_qty = await provider.get_stock_quantity(sub_part_id)
-                    item["in_stock"] = stock_qty
+                    if sub_part_id not in stock_by_part:
+                        stock_by_part[sub_part_id] = Decimal(
+                            str(await provider.get_stock_quantity(sub_part_id))
+                        )
+                    stock_qty = stock_by_part[sub_part_id]
+                    item["in_stock"] = float(stock_qty)
 
                     # Calculate how many assemblies can be built with this component
-                    required_qty = item.get("quantity") or 1
+                    required_qty = Decimal(str(item.get("quantity") or 0))
+                    if required_qty <= 0 and not item.get("optional", False):
+                        estimate_complete = False
                     if required_qty > 0 and not item.get("optional", False):
-                        can_build = int(stock_qty / required_qty)
-                        item["can_build"] = can_build
-                        if min_buildable is None or can_build < min_buildable:
-                            min_buildable = can_build
+                        stock_by_part[sub_part_id] = Decimal(str(stock_qty))
+                        required_by_part[sub_part_id] = (
+                            required_by_part.get(sub_part_id, Decimal(0)) + required_qty
+                        )
+                        item["arithmetic_can_build"] = int(Decimal(str(stock_qty)) // required_qty)
 
                 # Recursive expansion
                 if recursive and sub_part.get("assembly"):
@@ -704,14 +788,21 @@ async def get_bom(
     result = {
         "part_id": part_id,
         "part_name": part.get("name"),
-        "is_active": True,
+        "is_active": part.get("active"),
         "items": bom_items,
         "field_meanings": {
             "allow_variants": "Component variants may substitute for this component",
             "inherited": "This line applies to descendant assembly variants",
         },
         "total_items": len(bom_items),
-        "buildable_quantity": int(min_buildable) if min_buildable is not None else None,
+        "buildable_quantity": part.get("can_build") if include_stock else None,
+        "arithmetic_buildable_quantity": min(
+            (int(stock_by_part[pk] // quantity) for pk, quantity in required_by_part.items()),
+            default=None,
+        )
+        if estimate_complete
+        else None,
+        "buildability_basis": "Native can_build only; arithmetic estimate excludes allocations, substitutions and production readiness",
     }
 
     logger.info(f"BOM for part {part_id}: {len(bom_items)} items")

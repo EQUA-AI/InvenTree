@@ -122,6 +122,17 @@ class VoiceSdpRequest(BaseModel):
     sdp_offer: str = Field(min_length=1)
 
 
+class VoiceLifecycleObservation(BaseModel):
+    """Bounded output-scheduling hint, never proof of playback or assent."""
+
+    model_config = {"extra": "forbid"}
+    type: Literal["response.created", "response.done", "response.cancelled"]
+    response_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+    status: (
+        Literal["in_progress", "completed", "cancelled", "canceled", "failed", "incomplete"] | None
+    ) = None
+
+
 def _principal() -> AIPrincipal:
     principal = get_current_principal()
     if not isinstance(principal, AIPrincipal):
@@ -411,6 +422,29 @@ async def cancel_voice_playback(session_id: str) -> dict:
     settings = _require_voice_enabled()
     session = await _owned_session(_principal(), session_id, settings)
     return await _cancel_playback(session, settings, reason="user_canceled")
+
+
+@router.post("/sessions/{session_id}/lifecycle")
+async def observe_voice_lifecycle(session_id: str, request: VoiceLifecycleObservation) -> dict:
+    """Owner-only output observations; no turn, decision or playback authority."""
+    settings = _require_voice_enabled()
+    session = await _owned_session(_principal(), session_id, settings)
+    # Never mint a channel/dispatcher from a browser observation. In particular,
+    # stale events cannot revive an ended, disconnected or foreign session.
+    from ai.core.voice import speech_dispatch
+
+    dispatcher = speech_dispatch._dispatchers.get(str(session.id))
+    if dispatcher is None or dispatcher.closed:
+        return {"observed": False}
+    observer = getattr(dispatcher.channel, "observe_client_lifecycle", None)
+    if observer is None:
+        return {"observed": False}
+    event = {
+        "type": request.type,
+        "response": {"id": request.response_id, "status": request.status},
+    }
+    outcome = await observer(event)
+    return {"observed": outcome in {"ack", "observed", "canceled", "failed", "late_ignored"}}
 
 
 async def _cancel_playback(session, settings, *, reason: str) -> dict:

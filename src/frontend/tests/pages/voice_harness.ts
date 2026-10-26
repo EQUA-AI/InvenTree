@@ -517,6 +517,9 @@ export async function installVoiceMocks(
   await page.route('**/api/ai/voice/sessions/*/suspend', (route) =>
     route.fulfill({ json: { suspended: true } })
   );
+  await page.route('**/api/ai/voice/sessions/*/lifecycle', (route) =>
+    route.fulfill({ json: { observed: true } })
+  );
 
   await page.route(
     '**/api/ai/voice/sessions/*/cancel',

@@ -351,6 +351,27 @@ class VoiceLiveChannel:
                 return
             await ws.send_json(payload)
 
+    async def observe_client_lifecycle(self, event: dict[str, Any]) -> str:
+        """Reconcile output scheduling from an UNTRUSTED owner observation.
+
+        Voice Live WebRTC routes response.created/done to the browser's data
+        channel, not this control socket. Relaying those bounded observations
+        releases the single output slot without replaying a turn or closing
+        healthy input. They never prove delivery, modify a decision, or grant
+        authority. Provider-socket events retain their verified path.
+        """
+        if (
+            event.get("type") not in {"response.created", "response.done", "response.cancelled"}
+            or self.lifecycle_listener is None
+            or not self._gate.has_active_app_response()
+        ):
+            return "ignored"
+        kind = self._gate.classify(event)
+        if kind != "speech_lifecycle":
+            return "ignored"
+        result = self.lifecycle_listener(event, kind, verified=False)
+        return await result if inspect.isawaitable(result) else result
+
     async def _drain(self) -> None:
         """Read and discard provider events after signaling completes.
 

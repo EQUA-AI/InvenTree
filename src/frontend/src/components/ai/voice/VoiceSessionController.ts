@@ -38,6 +38,7 @@ import {
 } from './types';
 import { VoiceHttpError, endOnPageHide, voiceHttp } from './voiceHttp';
 import { ForegroundBounds, installVoiceLifecycle } from './voiceLifecycle';
+import { VoiceLifecycleRelay } from './voiceLifecycleRelay';
 import { VoiceTiming } from './voiceTiming';
 
 const TERMINAL = ['ended', 'expired', 'failed'];
@@ -55,6 +56,7 @@ export class VoiceSessionController {
   private starting = false;
   private permissionPending = false;
   private submitting = false;
+  private lifecycleRelay = new VoiceLifecycleRelay();
   private held = false;
   private seen = new Set<string>();
   private queue = new TurnQueue<VoiceFinalTranscript>(3, () => this.dropped());
@@ -1030,6 +1032,16 @@ export class VoiceSessionController {
       return;
     }
     if (this.snapshot.hidden || !this.snapshot.session) return;
+    const generation = this.generation;
+    const sessionId = this.snapshot.session.id;
+    this.lifecycleRelay.observe(event, async (observation) => {
+      if (
+        generation !== this.generation ||
+        this.snapshot.session?.id !== sessionId
+      )
+        return;
+      await this.control('lifecycle', observation);
+    });
     this.timing.event(event);
     this.playback.event(event);
     const type = event.type;
@@ -1613,6 +1625,7 @@ export class VoiceSessionController {
     );
   }
   private releaseMedia() {
+    this.lifecycleRelay.reset();
     this.timingGeneration++;
     this.timing.reset();
     this.generation++;
