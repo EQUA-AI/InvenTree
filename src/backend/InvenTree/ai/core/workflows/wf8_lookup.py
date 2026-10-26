@@ -453,6 +453,9 @@ For a BOM use the exact requested assembly/revision; the API includes applicable
 Only native buildable_quantity establishes buildability. arithmetic_buildable_quantity is an
 on-hand-only estimate, never available stock or a statement that production is ready.
 Report only returned components, quantities and flags. Do not add unverified readiness claims.
+Use BOM qualifiers only from qualifier_evidence. Unknown optional/variant flags do not mean
+false. Say "all required" or "only this component allows variants" only when every relevant
+line is known. Keep unavailable flags unknown in both written and spoken answers.
 Earlier conversation establishes the subject, not current facts: re-read current quantities.
 A failed lookup is unavailable, not a verified absence or zero. State unresolved evidence plainly.
 For an ambiguous equipment symptom, ask a focused clarification about the asset and symptom.
