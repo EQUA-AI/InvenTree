@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { compileEvidence } from './chat-voice-report.mjs';
 
-function campaign(t, assertions, extra = {}) {
+function campaign(t, assertions, extra = {}, manifestOptions = {}) {
   const root = mkdtempSync(join(tmpdir(), 'chat-voice-evidence-'));
   t.after(() => rmSync(root, { recursive: true }));
   writeFileSync(
@@ -28,6 +28,7 @@ function campaign(t, assertions, extra = {}) {
     compileEvidence(
       {
         source_sha: 'fixture-source',
+        ...manifestOptions,
         cases: [
           { suite: 'voice', case_id: 'case-1', assertions: items, ...extra }
         ]
@@ -248,4 +249,40 @@ test('the CLI creates a new report and refuses to overwrite retained evidence', 
   const second = spawnSync(process.execPath, [script, manifest, output]);
   assert.notEqual(second.status, 0);
   assert.match(second.stderr.toString(), /EEXIST/);
+});
+
+test('live assertions link and hash raw sources, and fixture passes remain explicit', (t) => {
+  const { make, ref } = campaign(
+    t,
+    undefined,
+    {},
+    { require_raw_evidence: true }
+  );
+  const assertion = {
+    id: 'count',
+    lane: 'live',
+    expected: 4,
+    evidence: [ref('/first/count')]
+  };
+  assert.throws(() => make([assertion]), /raw source evidence/);
+  assert.throws(
+    () =>
+      make([
+        { ...assertion, source_evidence: [ref('/first', 'other-attempt')] }
+      ]),
+    /matching raw/
+  );
+  const result = make([{ ...assertion, source_evidence: [ref('/first')] }]);
+  assert.equal(result.cases[0].status, 'PASS');
+  assert.equal(result.cases[0].fixture_only, false);
+  assert.equal(
+    result.cases[0].assertions[0].source_evidence[0].available,
+    true
+  );
+  assert.equal(result.assertion_counts_by_lane.live.PASS, 1);
+  assert.equal(Object.keys(result.evidence_file_sha256).length, 1);
+  const missing = make([{ ...assertion, source_evidence: [ref('/missing')] }]);
+  assert.equal(missing.cases[0].status, 'UNVERIFIED');
+  const fixture = make([{ ...assertion, lane: 'fixture' }]);
+  assert.equal(fixture.cases[0].fixture_only, true);
 });

@@ -16,6 +16,7 @@ raw evidence are never rewritten.
 ```json
 {
   "source_sha": "EXACT_VERIFIED_CANDIDATE_SHA",
+  "require_raw_evidence": true,
   "cases": [{
     "suite": "voice",
     "case_id": "VOICE-ACCEPTANCE",
@@ -25,6 +26,12 @@ raw evidence are never rewritten.
       "lane": "live",
       "operator": "equals",
       "expected": 10,
+      "source_evidence": [{
+        "file": "continuity.raw.json",
+        "json_pointer": "/turn_responses",
+        "attempt_id": "continuity-1",
+        "source_sha": "EXACT_VERIFIED_CANDIDATE_SHA"
+      }],
       "evidence": [{
         "file": "continuity.json",
         "json_pointer": "/unique_turn_count",
@@ -67,6 +74,14 @@ Counts describe unique suite/case definitions. They are never a sum of unit,
 browser, replay, and live-request totals. Output retains assertion observations,
 independent expected values, lanes, missing coverage reasons, and SHA-256 hashes
 of every evidence file read. A hash verifies bytes, not factual correctness.
+
+New live campaigns must set `require_raw_evidence: true`. Each live attempt
+also links its retained raw response or observation through `source_evidence`,
+using the same attempt ID, source SHA and optional project as the derived
+assertion. The compiler reads and hashes both files; an absent raw pointer
+cannot certify a pass. It reports counts per qualification lane and marks
+fixture-only cases explicitly. Legacy manifests remain readable without
+rewriting their historical grades.
 
 ## Source regression checks
 

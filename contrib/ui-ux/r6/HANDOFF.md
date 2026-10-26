@@ -1,5 +1,26 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## Verified chat/voice retest repairs — 26 October 2026
+
+Implemented the approved plan from the `2f86eb188` retest: private process
+ownership and explicit voice restart; deterministic native exact-stock and
+quantity/category/catalog answers; compact machine scope; supplied-data labels;
+dashboard-grid overflow containment; raw live evidence links and lane counts.
+Read-only logs confirm same-session HTTP requests crossed replicas while speech
+state was process-local. The current deployment still fails the new topology
+guard. This repair adds `voice.0012`; migrate and drain old sessions, then release
+one worker/replica under the existing Multiple revision strategy. Single plus
+sticky HTTP is the documented alternative for multiple replicas.
+
+[Implementation and verification ledger](reports/chat-voice-retest-fixes-20261026.md)
+records 447 backend and 199 frontend passes, migration-operation/old-writer
+compatibility, repeated full-home resize checks, browser corrective replays and
+strict report/routing checks. These are local source/fixture qualification.
+Next: reviewed candidate release with correct routing and exact SHA/digest,
+fresh independent live oracles, then human hearing and physical device routes.
+No push, PR, issue, Azure mutation or business-data write; parent acceptance
+and the original workspace/reports remain unchanged.
+
 ## Combined chat/voice report repairs — 26 October 2026
 
 Implemented critical-IPN review, exact revision clarification, native category
