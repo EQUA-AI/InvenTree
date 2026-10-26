@@ -228,6 +228,79 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
+it('stops dead capture after a closed speech channel and never resubmits the completed turn', async () => {
+  const onTurnResult = vi.fn();
+  controller.listeners.add({ onTurnResult });
+  const respond = fetcher.getMockImplementation()!;
+  fetcher.mockImplementation(async (url: string, options: RequestInit) => {
+    const response = await respond(url, options);
+    if (!new URL(url).pathname.endsWith('/turns')) return response;
+    const body = await response.json();
+    return {
+      ok: true,
+      json: async () => ({
+        ...body,
+        spoken: {
+          utterance_id: 'closed-output',
+          spoken_summary: 'Completed answer',
+          spoken_summary_hash: 'hash',
+          playback_state: 'failed',
+          channel_closed: true,
+          failure_reason: 'ack_bound_exceeded'
+        }
+      })
+    };
+  });
+  await controller.start();
+  await controller.submitTranscript({
+    text: 'Hello',
+    itemId: 'closed-turn',
+    confidence: 1,
+    language: 'en-US'
+  });
+  await flush();
+  expect(state.getState().session).toBeNull();
+  expect(state.getState().notice).toBe('voice_restart_required');
+  expect(state.getState().lastSubmitted?.status).toBe('complete');
+  expect(onTurnResult).toHaveBeenCalledOnce();
+  expect(onTurnResult.mock.calls[0][0].spoken.spoken_summary).toBe(
+    'Completed answer'
+  );
+  expect(track.stop).toHaveBeenCalled();
+  expect(requests.filter((r) => r.path.endsWith('/turns'))).toHaveLength(1);
+  expect(decisions.getState().decide).not.toHaveBeenCalled();
+});
+
+it('requires an explicit restart after a request reaches another replica', async () => {
+  const respond = fetcher.getMockImplementation()!;
+  fetcher.mockImplementation(async (url: string, options: RequestInit) => {
+    const response = await respond(url, options);
+    if (!new URL(url).pathname.endsWith('/turns')) return response;
+    return {
+      ok: false,
+      status: 409,
+      json: async () => ({ detail: 'VOICE_SESSION_OWNER_MISMATCH' })
+    };
+  });
+  await controller.start();
+  await controller.submitTranscript({
+    text: 'Hello',
+    itemId: 'other-replica',
+    confidence: 1,
+    language: 'en-US'
+  });
+  await flush();
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(state.getState().session).toBeNull();
+  expect(state.getState().notice).toBe('voice_restart_required');
+  expect(track.stop).toHaveBeenCalled();
+  expect(requests.filter((r) => r.path.endsWith('/turns'))).toHaveLength(1);
+  expect(
+    requests.filter((r) => r.path.endsWith('/sessions') && r.method === 'POST')
+  ).toHaveLength(1);
+  expect(decisions.getState().decide).not.toHaveBeenCalled();
+});
+
 it('reports browser-only lifecycle while accepting consecutive turns after failed speech', async () => {
   const respond = fetcher.getMockImplementation()!;
   fetcher.mockImplementation(async (url: string, options: RequestInit) => {

@@ -333,8 +333,14 @@ class SessionSpeechDispatcher:
             await self._finish(record, FAILED, "send_bound_exceeded")
             await self._fail_closed("send_bound_exceeded")
             return record
-        except Exception:
+        except Exception as exc:
             # Definitive send failure: release only this ownership.
+            logger.warning(
+                "voice.speech_send_failed session=%s dispatch=%s error_type=%s",
+                self.session_id,
+                record.dispatch_id,
+                type(exc).__name__,
+            )
             record._settled.set()
             self._release(record)
             return await self._finish(record, FAILED, "send_failed")

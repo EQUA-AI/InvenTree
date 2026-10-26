@@ -247,6 +247,8 @@ export interface VoiceSpokenPayload {
   spoken_summary_hash: string;
   playback_state: string;
   playback_audit_state?: 'unavailable' | 'confirmed' | 'uncertain';
+  channel_closed?: boolean;
+  failure_reason?: string | null;
 }
 
 export interface VoicePendingQuestionOption {
@@ -344,6 +346,7 @@ export type ServerVoiceErrorCode =
   | 'VOICE_SESSION_FORBIDDEN'
   | 'VOICE_SESSION_LIMIT'
   | 'VOICE_SESSION_EXPIRED'
+  | 'VOICE_SESSION_OWNER_MISMATCH'
   | 'IDEMPOTENCY_CONFLICT'
   | 'VOICE_SIGNALING_FAILED'
   | 'VOICE_TRANSPORT_UNAVAILABLE'

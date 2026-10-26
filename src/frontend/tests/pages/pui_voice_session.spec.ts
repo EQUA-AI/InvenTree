@@ -17,6 +17,56 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+for (const failure of ['closed-channel', 'other-replica'] as const)
+  test(`${failure} stops capture and requires a restart without resending`, async ({
+    page
+  }, info) => {
+    const sentTurns: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().endsWith('/turns')) sentTurns.push(request.url());
+    });
+    const voice = await installVoiceMocks(page, {
+      capability: { ...defaultCapability, foreground_session: true },
+      onTurn: () =>
+        turnPayload({
+          spoken: {
+            utterance_id: '11111111-1111-1111-1111-111111111111',
+            spoken_summary: 'Completed answer',
+            spoken_summary_hash: 'a'.repeat(64),
+            playback_state: 'failed',
+            channel_closed: true,
+            failure_reason: 'ack_bound_exceeded'
+          }
+        })
+    });
+    if (failure === 'other-replica')
+      await page.route('**/api/ai/voice/sessions/*/turns', (route) =>
+        route.fulfill({
+          status: 409,
+          json: { detail: 'VOICE_SESSION_OWNER_MISMATCH' }
+        })
+      );
+    await page.goto('/playwright/voice-session.html');
+    await startVoice(page);
+    await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
+    await emitTranscript(page, {
+      text: 'Hello',
+      itemId: 'no-replay',
+      confidence: 1
+    });
+    await expect(
+      page
+        .getByRole('paragraph')
+        .filter({ hasText: /Check chat for your request's result/ })
+    ).toBeVisible();
+    expect((await readMockState(page)).trackStopped).toBe(true);
+    expect(voice.sessionCreates).toHaveLength(1);
+    expect(voice.decisionActions).toHaveLength(0);
+    expect(sentTurns).toHaveLength(1);
+    if (failure === 'closed-channel') expect(voice.turns).toHaveLength(1);
+    await page.screenshot({ path: info.outputPath(`${failure}.png`) });
+  });
+
 test('a numeric-leading IPN stays in review until the corrected identifier is confirmed', async ({
   page
 }, info) => {

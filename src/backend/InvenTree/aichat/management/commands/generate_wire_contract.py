@@ -220,7 +220,7 @@ class Command(BaseCommand):
                         if not field.is_required()
                     )
                     if model in (VoiceClientTiming, VoiceTimingReport)
-                    else ('playback_audit_state',)
+                    else ('playback_audit_state', 'channel_closed', 'failure_reason')
                     if model is VoiceSpokenPayload
                     else (
                         'speech_utterance_id',

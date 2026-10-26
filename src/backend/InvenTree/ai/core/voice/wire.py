@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class VoiceTransportsAllowed(BaseModel):
@@ -71,6 +71,9 @@ class VoiceSpokenPayload(BaseModel):
     spoken_summary_hash: str
     playback_state: str
     playback_audit_state: Literal["unavailable", "confirmed", "uncertain"] = "unavailable"
+    # Transport recovery state, never delivery proof or authority to replay.
+    channel_closed: bool = False
+    failure_reason: str | None = Field(default=None, max_length=64)
 
 
 class VoicePendingQuestionOption(BaseModel):
@@ -198,6 +201,7 @@ SERVER_VOICE_ERROR_CODES: tuple[str, ...] = (
     "VOICE_SESSION_FORBIDDEN",
     "VOICE_SESSION_LIMIT",
     "VOICE_SESSION_EXPIRED",
+    "VOICE_SESSION_OWNER_MISMATCH",
     "IDEMPOTENCY_CONFLICT",
     "VOICE_SIGNALING_FAILED",
     "VOICE_TRANSPORT_UNAVAILABLE",

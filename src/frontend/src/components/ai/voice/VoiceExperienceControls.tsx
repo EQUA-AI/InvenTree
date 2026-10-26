@@ -38,6 +38,8 @@ export function noticeText(notice: VoiceNotice): string {
       return t`Audio playback is blocked. Select Resume read-back, or read the text here.`;
     case 'tts_timeout':
       return t`Speech did not start in time. The text remains available; retry playback without resending your request.`;
+    case 'voice_restart_required':
+      return t`The voice connection closed. Check chat for your request's result, then start voice again to continue. Your request was not resubmitted.`;
     case 'mic_silent':
       return t`The microphone is very quiet. Check its placement or your audio route; this warning does not end the session.`;
     case 'route_changed':
