@@ -44,6 +44,7 @@ class CapabilityRunContext:
     principal_user_pk: str | None
     selected_tool_ids: frozenset[str]
     catalog_version: str = CATALOG_VERSION
+    catalog_search_query: str | None = None
 
 
 capability_run_context: ContextVar[CapabilityRunContext | None] = ContextVar(
@@ -57,6 +58,7 @@ def bind_capability_run(
     workflow: str,
     modality: str,
     selected_tools: Sequence[Any],
+    catalog_search_query: str | None = None,
 ) -> Iterator[CapabilityRunContext]:
     """Bind immutable server-selected capabilities across one async agent run."""
     principal = get_current_principal()
@@ -65,6 +67,7 @@ def bind_capability_run(
         modality=modality,
         principal_user_pk=principal.user_pk if principal is not None else None,
         selected_tool_ids=frozenset(tool_name(tool) for tool in selected_tools),
+        catalog_search_query=catalog_search_query,
     )
     token = capability_run_context.set(run_context)
     try:

@@ -109,11 +109,13 @@ async def search_parts(
     is_assembly: bool | None = None,
     is_purchaseable: bool | None = None,
     is_saleable: bool | None = None,
-    is_active: bool = True,
+    is_active: bool | None = True,
     has_stock: bool | None = None,
     low_stock: bool | None = None,
     limit: int = 25,
-) -> list[dict[str, Any]]:
+    offset: int = 0,
+    include_coverage: bool = False,
+) -> list[dict[str, Any]] | dict[str, Any]:
     """
     Search for parts in the inventory system with flexible filtering.
 
@@ -125,12 +127,15 @@ async def search_parts(
                     non-assemblies if False
         is_purchaseable: Filter for purchaseable parts if True
         is_saleable: Filter for saleable parts if True
-        is_active: Filter for active parts (default True). Set False to
-                  include inactive parts.
+        is_active: True for active parts, False for inactive parts, or None
+                   to include both. Defaults to active parts.
         has_stock: Filter for parts that have stock > 0 if True,
                   out of stock if False
         low_stock: Filter for parts below minimum stock threshold if True
         limit: Maximum number of results to return (default 25, max 100)
+        offset: Native pagination offset (default 0).
+        include_coverage: Include exact native count and paging metadata.
+                          Use True for complete catalog keyword listings.
 
     Returns:
         List of matching parts with their details including:
@@ -158,6 +163,15 @@ async def search_parts(
         # Find parts with low stock
         parts = await search_parts(low_stock=True, limit=50)
     """
+    from ai.core.tools.invocation_guard import capability_run_context
+
+    run_context = capability_run_context.get()
+    if run_context is not None and run_context.catalog_search_query is not None:
+        # Only an explicitly unqualified keyword request binds this predicate.
+        # The native API and invocation guard still own all authorization.
+        query, category_id, is_active = run_context.catalog_search_query, None, None
+        is_assembly = is_purchaseable = is_saleable = has_stock = low_stock = None
+        include_coverage = True
     provider = get_data_provider()
 
     logger.info(
@@ -168,12 +182,20 @@ async def search_parts(
     # Clamp limit
     limit = min(max(1, limit), 100)
 
-    # Basic search
-    results = await provider.search_parts(
-        query=query or "",
-        category=category_id,
-        limit=limit,
-    )
+    offset = max(0, offset)
+    if include_coverage:
+        page = await provider.search_parts_page(
+            query=query or "", category=category_id, active=is_active, limit=limit, offset=offset
+        )
+        results = page["results"]
+    else:
+        results = await provider.search_parts(
+            query=query or "",
+            category=category_id,
+            limit=limit,
+            **({"offset": offset} if offset else {}),
+            **({"active": is_active} if is_active is not True else {}),
+        )
 
     # Apply additional filters that may not be supported by the provider
     if is_assembly is not None:
@@ -200,7 +222,43 @@ async def search_parts(
 
     logger.info(f"Found {len(results)} parts matching criteria")
 
-    return results[:limit]
+    results = results[:limit]
+    if include_coverage:
+        count = page["population_count"]
+        native_complete = (
+            count is not None
+            and offset == 0
+            and len(page["results"]) == count
+            and page["has_more"] is False
+        )
+        post_filtered = any(
+            value is not None for value in (is_assembly, is_purchaseable, is_saleable, has_stock)
+        ) or bool(low_stock)
+        population = len(results) if native_complete else None if post_filtered else count
+        return {
+            "results": results,
+            "population_count": population,
+            "returned_count": len(results),
+            "complete_population": native_complete,
+            "has_more": page["has_more"],
+            "display_truncated": not native_complete,
+            "offset": offset,
+            "limit": limit,
+            "filters": {
+                "query": query or "",
+                "category_id": category_id,
+                "active": is_active,
+                "is_assembly": is_assembly,
+                "is_purchaseable": is_purchaseable,
+                "is_saleable": is_saleable,
+                "has_stock": has_stock,
+                "low_stock": low_stock,
+            },
+            "note": "Counts after additional stock/part filters are unknown unless the complete native population was evaluated."
+            if post_filtered and not native_complete
+            else "Use offset and limit for later pages when has_more is true; a page is not the complete population.",
+        }
+    return results
 
 
 @ai_function

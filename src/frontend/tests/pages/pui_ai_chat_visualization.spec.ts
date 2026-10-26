@@ -221,6 +221,114 @@ for (const wire of ['legacy', 'agui'] as const) {
   });
 }
 const artifactDir = process.env.AIMMS_TEST_PRESENTATION_ARTIFACT_DIR;
+for (const name of [
+  'followup-trend-model',
+  'followup-trend-recovered',
+  'followup-status-model',
+  'followup-status-recovered'
+]) {
+  for (const width of [320, 390, 1440])
+    for (const theme of ['light', 'dark'] as const)
+      test(`${name} at ${width}px ${theme}`, async ({ page }, info) => {
+        test.skip(
+          !artifactDir,
+          'Run the native scoped follow-up regressions first.'
+        );
+        const canonical = JSON.parse(
+          readFileSync(join(artifactDir!, `${name}.json`), 'utf8')
+        );
+        await page.setViewportSize({
+          width,
+          height: width === 320 ? 480 : 900
+        });
+        await page.emulateMedia({ colorScheme: theme });
+        await saved(page, {
+          id: name,
+          role: 'assistant',
+          timestamp: '2026-10-25T12:00:00Z',
+          content: canonical.message,
+          ...canonical
+        });
+        const chart = page.getByTestId(
+          name.includes('trend') ? 'presentation-trend' : 'presentation-chart'
+        );
+        await expect(chart.locator('svg[role="img"]')).toBeVisible();
+        await expect(chart.getByRole('table')).toBeVisible();
+        if (name.includes('status')) {
+          await expect(
+            chart.getByRole('cell', { name: '1', exact: true })
+          ).toBeVisible();
+          await expect(
+            chart.getByRole('cell', { name: '3', exact: true })
+          ).toBeVisible();
+          await expect(
+            chart.getByRole('cell', { name: '0', exact: true })
+          ).toBeVisible();
+        }
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth
+          )
+        ).toBe(true);
+        await expect(page.getByTestId('send-ai-chat-message')).toBeInViewport();
+        await chart.locator('svg[role="img"]').scrollIntoViewIfNeeded();
+        await expect(chart.locator('svg[role="img"]')).toBeInViewport();
+        await page.screenshot({
+          path: info.outputPath(`${name}-${width}-${theme}.png`)
+        });
+        const lastRow = chart.getByRole('row').last();
+        await lastRow.scrollIntoViewIfNeeded();
+        await expect(lastRow).toBeInViewport();
+      });
+}
+for (const index of [0, 1, 2, 3, 4])
+  test(`clean native identity ${index}`, async ({ page }, info) => {
+    test.skip(
+      !artifactDir,
+      'Run the native identity follow-up regressions first.'
+    );
+    const canonical = JSON.parse(
+      readFileSync(
+        join(artifactDir!, `followup-identity-${index}.json`),
+        'utf8'
+      )
+    );
+    await saved(page, {
+      id: `identity-${index}`,
+      role: 'assistant',
+      timestamp: '2026-10-25T12:00:00Z',
+      content: canonical.message,
+      ...canonical
+    });
+    await expect(
+      page.getByRole('link', { name: canonical.entities[0].label, exact: true })
+    ).toBeVisible();
+    await expect(page.getByTestId('openui-answer')).not.toContainText(
+      '[UNTRUSTED-CONTENT-'
+    );
+    await expect(page.getByTestId('openui-answer')).toContainText(
+      'Turbo Generation 5'
+    );
+    await page.screenshot({ path: info.outputPath(`identity-${index}.png`) });
+  });
+test('monthly range limit states the supported window', async ({ page }) => {
+  test.skip(!artifactDir, 'Run the native range-limit follow-up first.');
+  const canonical = JSON.parse(
+    readFileSync(join(artifactDir!, 'followup-range-limit.json'), 'utf8')
+  );
+  await saved(page, {
+    id: 'range-limit',
+    role: 'assistant',
+    timestamp: '2026-10-25T12:00:00Z',
+    content: canonical.message,
+    ...canonical
+  });
+  await expect(
+    page.getByText(/Monthly charts support 1-36 calendar months/)
+  ).toBeVisible();
+  await expect(page.getByTestId('presentation-chart')).toHaveCount(0);
+  await expect(page.getByTestId('presentation-trend')).toHaveCount(0);
+});
 for (const name of ['recorded-status', 'recorded-trend', 'provided-pie']) {
   test(`renders actual backend-produced ${name} snapshot`, async ({ page }) => {
     test.skip(

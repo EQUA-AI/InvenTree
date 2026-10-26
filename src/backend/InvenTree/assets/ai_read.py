@@ -267,6 +267,21 @@ def machines_page(
 # ---------------------------------------------------------------------------
 
 
+def machine_display_identity(machine) -> dict[str, Any]:
+    """Bounded UI values for an already authorized machine, without prompt fences.
+
+    Callers must authorize the native record first and escape these values on
+    display. Model-facing consumers continue to use ``machine_identity``.
+    """
+    return {
+        'machine_id': machine.pk,
+        **{
+            key: str(getattr(machine, key) or '').strip()[:255]
+            for key in ('name', 'model', 'serial', 'location')
+        },
+    }
+
+
 def machine_identity(machine) -> dict[str, Any]:
     """The Details tab: what this asset is and where it lives.
 
@@ -912,6 +927,7 @@ __all__ = [
     'machine_ai_read_enabled',
     'machine_anomalies',
     'machine_attachments',
+    'machine_display_identity',
     'machine_fault_history',
     'machine_health',
     'machine_identity',

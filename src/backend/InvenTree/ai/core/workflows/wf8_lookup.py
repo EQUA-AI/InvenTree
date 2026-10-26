@@ -625,6 +625,22 @@ as the specified torque for a tightening sequence.
         fire because scoring reads the current message only. Deterministic and
         observational: no terms, no change.
         """
+        keyword = cls._catalog_keyword(query)
+        if keyword is not None:
+            note = (
+                "[inventory search scope] The user explicitly requested the catalog keyword "
+                + json.dumps(keyword)
+                + ". Use search_parts(query=<that keyword>, category_id=None, "
+                "is_active=None, include_coverage=True). Match across names, descriptions, "
+                "IPNs and keywords. A matching category name or prior category discussion "
+                "does not restrict this request. Preserve the exact keyword. Use returned "
+                "coverage and pagination; do not describe a partial page as all matches."
+            )
+            messages = run_input
+            if isinstance(messages, str):
+                messages = [ChatMessage(role=Role.USER, contents=[TextContent(text=messages)])]
+            return [*messages, ChatMessage(role=Role.USER, contents=[TextContent(text=note)])]
+
         from ai.core.tools.capabilities import matched_category_terms
 
         terms = matched_category_terms(query, (context or {}).get("conversation_history"))
@@ -636,6 +652,55 @@ as the specified torque for a tightening sequence.
         if isinstance(messages, str):
             messages = [ChatMessage(role=Role.USER, contents=[TextContent(text=messages)])]
         return [*messages, ChatMessage(role=Role.USER, contents=[TextContent(text=note)])]
+
+    @staticmethod
+    def _catalog_keyword(query: str) -> str | None:
+        """Recognize an unqualified catalog keyword search, never a category scope.
+
+        Ambiguous or additional-filter requests retain their existing planning
+        path. History cannot replace this explicit new search's scope.
+        """
+        remainder = re.sub(
+            r"\bdo not use (?:a |any )?category filter\b|\bno category filter\b",
+            "",
+            query,
+            flags=re.I,
+        )
+        if re.search(
+            r"\b(?:category|categories|stock|assembly|assemblies|purchaseable|saleable|active|inactive|first|top|limit|machine|asset|bom|compatible|compatibility|installed|supplier|manufacturer|location|customer|client|site|plant|warehouse|only|except|exclude|excluding|under|over|below|above|quantity|threshold|selected|family|group|section)\b",
+            remainder,
+            re.I,
+        ):
+            return None
+        match = re.search(
+            r"\bsearch\s+(?:the\s+)?parts?\s+catalo(?:g|gue)\s+for\s+(?:the\s+)?(?:(?:literal\s+)?keyword\s+)?([^.;?!\n]{1,160})",
+            query,
+            re.I,
+        )
+        if match is None:
+            return None
+        keyword = (
+            re
+            .sub(
+                r"\s+across\s+(?:part\s+)?names?\s+and\s+descriptions?\s*$",
+                "",
+                match[1],
+                flags=re.I,
+            )
+            .strip()
+            .strip("\"'")
+        )
+        if (
+            not keyword
+            or len(keyword) > 100
+            or re.search(
+                r"\b(?:list|show|give|with|where|under|having|except|but|that|which|in|within|from|group|section|family)\b",
+                keyword,
+                re.I,
+            )
+        ):
+            return None
+        return keyword
 
     @staticmethod
     def _with_locale_hint(run_input: Any, context: dict[str, Any] | None) -> Any:
@@ -1344,7 +1409,10 @@ as the specified torque for a tightening sequence.
             enforce = prepared.enforce
             modality = prepared.modality
             with bind_capability_run(
-                workflow="wf8", modality=modality, selected_tools=runtime_tools
+                workflow="wf8",
+                modality=modality,
+                selected_tools=runtime_tools,
+                catalog_search_query=self._catalog_keyword(query),
             ):
                 response = await prepared.agent.run(
                     prepared.run_input, tools=runtime_tools, **prepared.run_kwargs()
@@ -1480,6 +1548,7 @@ as the specified torque for a tightening sequence.
                 workflow="wf8",
                 modality=prepared.modality,
                 selected_tools=prepared.runtime_tools,
+                catalog_search_query=self._catalog_keyword(query),
             ):
                 async for update in prepared.agent.run_stream(
                     prepared.run_input, tools=prepared.runtime_tools, **prepared.run_kwargs()

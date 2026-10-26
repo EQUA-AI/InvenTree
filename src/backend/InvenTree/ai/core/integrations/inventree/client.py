@@ -426,6 +426,35 @@ class InvenTreeClient:
     # Part Operations
     # -------------------------------------------------------------------------
 
+    async def search_parts_page(
+        self,
+        *,
+        query: str = "",
+        category: int | None = None,
+        active: bool | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Keep native count/paging facts for a bounded authorized search page."""
+        params: dict[str, Any] = {"limit": limit, "offset": offset, "category_detail": "true"}
+        if query:
+            params["search"] = _search_terms(query)
+        if category is not None:
+            params["category"] = category
+        if active is not None:
+            params["active"] = str(active).lower()
+        result = await self._request("GET", "/part/", params=params)
+        if isinstance(result, dict) and isinstance(result.get("results"), list):
+            count = result.get("count")
+            count = count if type(count) is int and count >= 0 else None
+            return {
+                "results": result["results"],
+                "population_count": count,
+                "has_more": bool(result.get("next")),
+            }
+        rows = result if isinstance(result, list) else [result]
+        return {"results": rows, "population_count": None, "has_more": None}
+
     async def search_parts(
         self,
         query: str | None = None,

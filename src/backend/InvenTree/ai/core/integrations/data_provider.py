@@ -15,6 +15,18 @@ logger = logging.getLogger(__name__)
 class InventoryProvider(Protocol):
     """Protocol defining the inventory data provider interface."""
 
+    async def search_parts_page(
+        self,
+        *,
+        query: str = "",
+        category: int | None = None,
+        active: bool | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Search a bounded native page while retaining count and paging facts."""
+        ...
+
     async def search_parts(
         self,
         query: str | None = None,
@@ -149,6 +161,20 @@ class LiveDataProviderAsync:
 
         self._client = InvenTreeClient()
         logger.info("🔴 Using LIVE InvenTree API")
+
+    async def search_parts_page(
+        self,
+        *,
+        query: str = "",
+        category: int | None = None,
+        active: bool | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Return native count and paging metadata without fetching another page."""
+        return await self._client.search_parts_page(
+            query=query, category=category, active=active, limit=limit, offset=offset
+        )
 
     async def search_parts(
         self,

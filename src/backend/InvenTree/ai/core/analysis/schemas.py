@@ -206,6 +206,8 @@ class IncompleteReason(_StrictAnalysisModel):
         "retrieval_timeout",
         "synthesis_timeout",
         "facet_budget_exhausted",
+        "render_error",
+        "evidence_validation_failed",
         "capability_boundary",
         "population_cap_exceeded",
     ]

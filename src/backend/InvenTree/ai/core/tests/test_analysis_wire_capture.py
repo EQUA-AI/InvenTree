@@ -133,7 +133,7 @@ def _translate_all(events: list[dict]) -> str:
 
 
 def test_poisoned_synthesis_never_reaches_any_wire(monkeypatch) -> None:
-    """The downgrade happened BEFORE emission: no channel ever saw the poison."""
+    """Recovery happens before emission; every surface has validated facts only."""
     emitter = RecordingEmitter()
     canonical, _run_obj = _branch(
         "enforce", emitter=emitter, synthesize=_poisoned_synthesis, monkeypatch=monkeypatch
@@ -148,8 +148,12 @@ def test_poisoned_synthesis_never_reaches_any_wire(monkeypatch) -> None:
     # The stored canonical (voice-resync surface included) is clean too.
     canonical_blob = json.dumps(canonical)
     assert "catastrophically" not in canonical_blob
-    assert canonical["response_state"] == "incomplete"
-    assert "no conclusion was produced" in canonical["message"].lower()
+    assert "WO-9999" not in canonical_blob
+    assert canonical["response_state"] == "complete"
+    assert "2 matching records" in canonical["message"]
+    assert canonical["evidence_gate"]["synthesis"] == "deterministic_fallback"
+    assert canonical["evidence_gate"]["verdict"] == "pass"
+    assert canonical["evidence_analysis"]["claims"]
 
 
 def test_enforce_serves_the_validated_v2_with_the_attachment(monkeypatch) -> None:
