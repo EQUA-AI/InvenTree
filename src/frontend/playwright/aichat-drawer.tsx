@@ -25,6 +25,7 @@ import { VoiceGlobalIndicator } from '../src/components/ai/voice/VoiceGlobalIndi
 import { VoiceHandsFreeSurface } from '../src/components/ai/voice/VoiceHandsFreeSurface';
 import { GlobalEvidenceViewer } from '../src/components/aichat/MediaEvidenceModal';
 import { AIChatButton, AIChatDrawer } from '../src/components/nav/AIChatDrawer';
+import { MainMenu } from '../src/components/nav/MainMenu';
 import { ApiProvider } from '../src/contexts/ApiContext';
 import { openGlobalAIChat, useAIChatState } from '../src/states/AIChatState';
 import { useUserState } from '../src/states/UserState';
@@ -46,6 +47,9 @@ function DrawerFixture() {
   const opened = useAIChatState((state) => state.isOpen);
   return (
     <Stack p='md' gap='xs'>
+      {new URLSearchParams(window.location.search).has('native-menu') && (
+        <MainMenu />
+      )}
       <Button
         data-testid='fixture-ask-machine'
         onClick={() =>

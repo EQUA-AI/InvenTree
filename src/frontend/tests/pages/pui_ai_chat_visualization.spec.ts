@@ -1,5 +1,5 @@
 /** Real renderer on localhost; API/auth fixtures. Optional actual ORM-produced DTOs. */
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type Page, expect, test } from '@playwright/test';
 import { loadDrawerFixture, prepareDrawerFixture } from './ai_drawer_harness';
@@ -123,6 +123,114 @@ for (const width of [390, 1440])
         });
       });
     }
+
+test.describe('native color-menu and mobile layout transitions', () => {
+  test.use({ reducedMotion: 'no-preference' });
+  for (const type of ['line', 'bar'] as const)
+    for (const theme of ['light', 'dark'] as const) {
+      test(`${type} remains usable across native menu closure and mobile resize in ${theme}`, async ({
+        page
+      }, info) => {
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.emulateMedia({
+          colorScheme: theme === 'light' ? 'dark' : 'light'
+        });
+        await prepareDrawerFixture(page, {
+          voice: false,
+          foundation: { threadDetailMessages: [message(type)] }
+        });
+        await page.goto('/playwright/aichat-drawer.html?native-menu=1');
+        await page
+          .getByRole('button', { name: 'Drawer fixture', exact: true })
+          .click();
+        await page
+          .getByRole('menuitem', { name: 'Change Color Mode', exact: true })
+          .click();
+        await expect(page.getByRole('menu')).toBeHidden();
+        await expect(page.locator('html')).toHaveAttribute(
+          'data-mantine-color-scheme',
+          theme
+        );
+        await page.getByTestId('open-ai-chat').click();
+        await page.getByRole('tab', { name: 'History', exact: true }).click();
+        await page
+          .getByTestId('ai-chat-history-row')
+          .filter({ hasText: 'Server conversation' })
+          .click();
+        const chart = page.getByTestId('presentation-chart');
+        await expect(chart).toBeVisible();
+        for (const size of [
+          { width: 390, height: 844 },
+          { width: 320, height: 480 }
+        ]) {
+          await page.setViewportSize(size);
+          const samples = await page.evaluate(async () => {
+            const observations = [];
+            for (let frame = 0; frame < 30; frame++) {
+              await new Promise<void>((resolve) =>
+                requestAnimationFrame(() => resolve())
+              );
+              const drawer = document
+                .querySelector('[data-testid="ai-chat-drawer"]')!
+                .getBoundingClientRect();
+              const svg = document
+                .querySelector('[data-testid="presentation-chart"] svg')!
+                .getBoundingClientRect();
+              const send = document
+                .querySelector('[data-testid="send-ai-chat-message"]')!
+                .getBoundingClientRect();
+              observations.push({
+                documentWidth: document.documentElement.scrollWidth,
+                viewportWidth: innerWidth,
+                viewportHeight: innerHeight,
+                drawer: {
+                  left: drawer.left,
+                  right: drawer.right,
+                  bottom: drawer.bottom
+                },
+                svg: { left: svg.left, right: svg.right },
+                send: { right: send.right, bottom: send.bottom },
+                chartFits:
+                  svg.left >= drawer.left - 1 && svg.right <= innerWidth + 1,
+                composerFits:
+                  send.right <= innerWidth + 1 && send.bottom <= innerHeight + 1
+              });
+            }
+            return observations;
+          });
+          await info.attach(`${size.width}-transition-geometry`, {
+            body: JSON.stringify(samples),
+            contentType: 'application/json'
+          });
+          writeFileSync(
+            info.outputPath(`${size.width}-transition-geometry.json`),
+            JSON.stringify(samples, null, 2)
+          );
+          expect(
+            samples.every((sample) => sample.chartFits && sample.composerFits),
+            JSON.stringify(
+              samples.filter(
+                (sample) => !sample.chartFits || !sample.composerFits
+              )
+            )
+          ).toBe(true);
+          await expect
+            .poll(() =>
+              page.evaluate(
+                () => document.documentElement.scrollWidth <= innerWidth
+              )
+            )
+            .toBe(true);
+          await chart.locator('tbody tr').last().scrollIntoViewIfNeeded();
+          await expect(chart.locator('tbody tr').last()).toBeInViewport();
+          await page.screenshot({
+            path: info.outputPath(`${type}-${theme}-${size.width}-settled.png`)
+          });
+        }
+      });
+    }
+});
+
 test('history retains the same graphic and values after reload without data queries', async ({
   page
 }) => {
