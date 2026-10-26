@@ -170,6 +170,7 @@ async def get_stock_levels(
     minimum_quantity: float | None = None,
     zero_stock: bool = False,
     highest_stock: bool = False,
+    group_by: str | None = None,
 ) -> dict[str, Any] | list[dict[str, Any]]:
     """
     Get stock for a part/location, or count stocked parts in a category subtree.
@@ -192,6 +193,9 @@ async def get_stock_levels(
         highest_stock: Return every tied highest-stock part over the full catalogue
             or category subtree. Server aggregation precedes the display cap.
             Cannot combine with zero_stock, minimum_quantity, part_id or location_id.
+        group_by: Use "location" with category_id for a full-category location
+            breakdown. Preserves descendants and other aggregate filters;
+            totals cover every matching part before location/detail caps.
 
     Returns:
         For a part: {part_id, part_name, part_ipn, description, units,
@@ -205,6 +209,19 @@ async def get_stock_levels(
         For zero_stock=True without a category, part_count covers the full catalogue.
         When no filter is given: {"resolved": false, "error": ...}.
     """
+    from ai.core.tools.invocation_guard import capability_run_context
+
+    bound = capability_run_context.get()
+    if bound is not None and bound.stock_location_category_id is not None:
+        # Server-derived subject of this unfiltered category-location question.
+        # The native reader below still rechecks current actor permissions.
+        category_id = bound.stock_location_category_id
+        part_id = location_id = minimum_quantity = None
+        zero_stock = highest_stock = False
+        group_by = "location"
+        bound.stock_location_result.clear()
+    if group_by is not None and category_id is None and not (zero_stock or highest_stock):
+        return {"resolved": False, "error": "group_by requires an aggregate category query"}
     if category_id is not None or zero_stock or highest_stock:
         if part_id is not None or location_id is not None:
             return {
@@ -213,9 +230,16 @@ async def get_stock_levels(
             }
         from asgiref.sync import sync_to_async
 
-        return await sync_to_async(category_stock_summary)(
-            category_id, minimum_quantity, zero_stock=zero_stock, highest_stock=highest_stock
+        summary = await sync_to_async(category_stock_summary)(
+            category_id,
+            minimum_quantity,
+            zero_stock=zero_stock,
+            highest_stock=highest_stock,
+            group_by=group_by,
         )
+        if bound is not None and bound.stock_location_category_id is not None:
+            bound.stock_location_result.update(summary)
+        return summary
     if minimum_quantity is not None:
         return {"resolved": False, "error": "minimum_quantity requires category_id"}
     if part_id is not None:

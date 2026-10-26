@@ -42,6 +42,29 @@ from tasks.models import WorkOrder
 PART_SEARCH = "Search the parts catalog for bearing. List the matching part names and internal part numbers. Do not create or change any records."
 
 
+def test_category_followup_ignores_old_topics_and_assistant_category_guesses(monkeypatch):
+    monkeypatch.setattr(
+        capabilities, "category_lexicon", lambda: frozenset({"pcba", "wire", "widget"})
+    )
+    history = [
+        {"role": "user", "content": "Show Wire stock."},
+        {"role": "assistant", "content": "Wire and Widget are empty."},
+        {"role": "user", "content": "How many PCBA are in stock?"},
+        {"role": "assistant", "content": "90 PCBA; Wire is unrelated."},
+    ]
+    assert capabilities.matched_category_terms("And where are those located?", history) == ("pcba",)
+    assert capabilities.matched_category_terms("Where is Wire stock?", history) == ("wire",)
+    assert capabilities.matched_category_terms("Hello", history) == ()
+    history.append({"role": "user", "content": "What is the status of work order 115?"})
+    assert capabilities.matched_category_terms("And where is it?", history) == ()
+    hint = T1LookupWorkflow._with_category_hint(
+        "And where are those located?",
+        "And where are those located?",
+        {"conversation_history": history[:-1]},
+    )[-1].text
+    assert "'pcba'" in hint and "'wire'" not in hint and "'widget'" not in hint
+
+
 @pytest.mark.parametrize(
     "prompt",
     [

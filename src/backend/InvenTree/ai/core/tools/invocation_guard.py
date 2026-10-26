@@ -6,7 +6,7 @@ import logging
 import uuid
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from agent_framework import FunctionInvocationContext, FunctionMiddleware
@@ -45,6 +45,10 @@ class CapabilityRunContext:
     selected_tool_ids: frozenset[str]
     catalog_version: str = CATALOG_VERSION
     catalog_search_query: str | None = None
+    stock_location_category_id: int | None = None
+    # Shared by child tool contexts, private to this run. Only the native
+    # stock reader fills it; model prose cannot certify the returned totals.
+    stock_location_result: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
 
 capability_run_context: ContextVar[CapabilityRunContext | None] = ContextVar(
@@ -59,6 +63,7 @@ def bind_capability_run(
     modality: str,
     selected_tools: Sequence[Any],
     catalog_search_query: str | None = None,
+    stock_location_category_id: int | None = None,
 ) -> Iterator[CapabilityRunContext]:
     """Bind immutable server-selected capabilities across one async agent run."""
     principal = get_current_principal()
@@ -68,6 +73,7 @@ def bind_capability_run(
         principal_user_pk=principal.user_pk if principal is not None else None,
         selected_tool_ids=frozenset(tool_name(tool) for tool in selected_tools),
         catalog_search_query=catalog_search_query,
+        stock_location_category_id=stock_location_category_id,
     )
     token = capability_run_context.set(run_context)
     try:

@@ -98,6 +98,7 @@ def category_stock_summary(
     *,
     zero_stock: bool = False,
     highest_stock: bool = False,
+    group_by: str | None = None,
 ) -> dict[str, Any]:
     """Aggregate stock with the existing inventory role boundary."""
     from ai.core.tools.inventree.read.database import _current_user
@@ -107,6 +108,8 @@ def category_stock_summary(
     from stock.models import StockItem
     from users.permissions import check_user_role
 
+    if group_by not in (None, "location"):
+        return {"resolved": False, "error": "group_by must be location or omitted"}
     if category_id is not None and (type(category_id) is not int or category_id <= 0):
         return {"error": "category_id must be a positive integer", "resolved": False}
     if type(zero_stock) is not bool or (zero_stock and minimum_quantity is not None):
@@ -158,7 +161,7 @@ def category_stock_summary(
     count = parts.count()
     total = parts.aggregate(quantity=Sum("total"))["quantity"] or Decimal(0)
     rows = list(parts.values("pk", "name", "category_id", "total")[:200])
-    return {
+    result = {
         "resolved": True,
         "category_id": category.pk if category else None,
         "category_name": category.name if category else None,
@@ -182,6 +185,33 @@ def category_stock_summary(
         ],
         "truncated": count > len(rows),
     }
+    if group_by == "location":
+        # Restrict to the complete selected part population, including any
+        # threshold/ranking filters. Never aggregate only the displayed page
+        # or add template rollups to their physical component rows.
+        stock = current_rows.filter(part_id__in=parts.values("pk"))
+        groups = (
+            stock
+            .values("location_id", "location__pathstring", "location__name")
+            .annotate(quantity=Sum("quantity"))
+            .order_by("-quantity", "location_id")
+        )
+        location_count = groups.count()
+        locations = list(groups[:200])
+        result.update(
+            group_by="location",
+            location_count=location_count,
+            locations=[
+                {
+                    "location_id": row["location_id"],
+                    "name": row["location__pathstring"] or row["location__name"] or "Unassigned",
+                    "quantity": str(row["quantity"]),
+                }
+                for row in locations
+            ],
+            locations_complete=location_count <= len(locations),
+        )
+    return result
 
 
 @ai_function

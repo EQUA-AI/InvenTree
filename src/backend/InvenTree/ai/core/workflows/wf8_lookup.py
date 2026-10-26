@@ -175,6 +175,7 @@ class _PreparedLookupRun:
     runtime_tools: list[Any]
     modality: str
     enforce: bool
+    stock_location_category_id: int | None = None
     #: M1 (GR-33): ``additional_chat_options`` for this run — the prompt cache
     #: key when the deployment is listed, else empty (nothing is sent).
     chat_options: dict[str, Any] = field(default_factory=dict)
@@ -291,6 +292,51 @@ def _response_usage_metrics(response: Any) -> dict[str, int]:
     return maf_response_usage_metrics(response)
 
 
+def category_location_answer(result: dict, *, category_id: int, modality: str) -> str:
+    """Render this bounded stock question from native evidence, never model prose."""
+    from decimal import Decimal, InvalidOperation
+
+    unavailable = "Current category stock locations could not be verified."
+    if result.get("resolved") is not True or result.get("category_id") != category_id:
+        return unavailable
+    locations = result.get("locations")
+    if not isinstance(locations, list):
+        return unavailable
+    try:
+        total = Decimal(str(result["total_in_stock"]))
+        quantities = [Decimal(str(row["quantity"])) for row in locations]
+        if not total.is_finite() or any(not value.is_finite() for value in quantities):
+            return unavailable
+        # Concurrent inventory changes can make separate read aggregates
+        # disagree. Do not turn an inconsistent snapshot into a factual answer.
+        if result.get("locations_complete") is True and sum(quantities, Decimal(0)) != total:
+            return unavailable
+    except (KeyError, TypeError, InvalidOperation):
+        return unavailable
+    name = " ".join(str(result.get("category_name") or "the selected category").split())
+    heading = f"Current stock for {name} totals {total}."
+    if not locations:
+        return heading + " No current stock locations were returned." if total == 0 else unavailable
+    entries = []
+    for row in locations[: 3 if modality == "voice" else 20]:
+        label = " ".join(str(row.get("name") or f"Location {row.get('location_id')}").split())
+        entry = f"{label}: {row['quantity']}"
+        if (
+            modality == "voice"
+            and len(heading) + sum(len(value) + 2 for value in [*entries, entry]) > 580
+        ):
+            break
+        entries.append(entry)
+    count = result.get("location_count")
+    remaining = max(0, count - len(entries)) if type(count) is int else None
+    answer = heading + (" " + "; ".join(entries) + "." if entries else "")
+    if remaining:
+        answer += f" {remaining} more locations are not listed here."
+    elif result.get("locations_complete") is not True:
+        answer += " Additional locations may be unlisted."
+    return answer
+
+
 class T1LookupWorkflow:
     """
     T1 Lookup Workflow implementation.
@@ -398,6 +444,9 @@ Never replace an exact revision with a template or strip leading zeros from iden
 For a category total use category_id; for the highest-stock part use highest_stock=True.
 Those tools aggregate the full population before capping displayed rows. Never rank a search
 page or add a template rollup to its variants. A locations_complete=false result is partial.
+For category locations use get_stock_levels(category_id=<resolved category>, group_by="location").
+A follow-up about "those" retains the latest user's category, not categories from older turns
+or an assistant's guesses. Read its locations afresh; do not answer zero from missing evidence.
 Resolve an IPN through get_part. If it returns requires_clarification, ask the user to choose
 the exact part/revision from its candidates before stock or BOM reads. Never pick a stocked revision.
 For a BOM use the exact requested assembly/revision; the API includes applicable inheritance.
@@ -690,6 +739,74 @@ as the specified torque for a tightening sequence.
         if isinstance(messages, str):
             messages = [ChatMessage(role=Role.USER, contents=[TextContent(text=messages)])]
         return [*messages, ChatMessage(role=Role.USER, contents=[TextContent(text=note)])]
+
+    @staticmethod
+    def _stock_location_category(
+        query: str, context: dict[str, Any] | None
+    ) -> int | dict[str, str] | None:
+        """Bind an unfiltered category-location subject from the latest user turn.
+
+        A per-run narrowing hint, never an authorization grant. Part/revision,
+        ranking and filtered questions retain their existing resolution paths.
+        """
+        if not re.search(r"\b(?:where|locations?|located|stored|kept)\b", query, re.I):
+            return None
+        from ai.core.tools.capabilities import _lexicon_variants, matched_category_terms
+
+        history = (context or {}).get("conversation_history")
+        terms = matched_category_terms(query, history)
+        if len(terms) != 1:
+            return None
+        subject = query
+        if not re.search(r"\bstock\b", subject, re.I):
+            if not re.search(r"\b(?:those|these|them|they|their|it|its|ones)\b", query, re.I):
+                return None
+            for entry in reversed(history if isinstance(history, (list, tuple)) else []):
+                if not isinstance(entry, dict) or entry.get("role") != "user":
+                    continue
+                subject = str(entry.get("content") or "")
+                if re.search(r"\bstock\b", subject, re.I):
+                    break
+                if not re.search(r"\b(?:those|these|them|they|their|it|its|ones)\b", subject, re.I):
+                    return None
+        if not re.search(r"\bstock\b", subject, re.I) or re.search(
+            r"\d|\b(?:part|ipn|revision|highest|lowest|over|under|above|below|only|except)\b",
+            subject,
+            re.I,
+        ):
+            return None
+        from ai.core.tools.inventree.read.database import _current_user
+        from part.models import PartCategory
+        from users.permissions import check_user_role
+
+        user = _current_user()
+        if user is None or not all(
+            check_user_role(user, role, "view") for role in ("part", "stock")
+        ):
+            return None
+        matches = PartCategory.objects.filter(name__iexact=terms[0])
+        if not matches.exists():
+            # The lexicon recognizes singular/plural forms; resolve them back
+            # to fresh native IDs, rather than leaving the model to guess.
+            ids = [
+                pk
+                for pk, name in PartCategory.objects.values_list("pk", "name")
+                if terms[0] in _lexicon_variants(name)
+            ]
+            matches = PartCategory.objects.filter(pk__in=ids)
+        count = matches.count()
+        if count == 1:
+            return matches.values_list("pk", flat=True).get()
+        if not count:
+            return {
+                "question": "That stock category is no longer available. Which category should I use?"
+            }
+        choices = "; ".join(
+            f"{row.pathstring} (category {row.pk})" for row in matches.order_by("pk")[:5]
+        )
+        return {
+            "question": f"Which stock category do you mean? {choices}. Specify its category ID or path."
+        }
 
     @staticmethod
     def _catalog_keyword(query: str) -> str | None:
@@ -1381,12 +1498,53 @@ as the specified torque for a tightening sequence.
             thread_id=thread_id,
             mode=mode,
         )
+        from ai.core.tools.capabilities import tool_name
+
+        stock_category = None
+        if re.search(r"\b(?:where|locations?|located|stored|kept)\b", query, re.I):
+            stock_category = await sync_to_async(self._stock_location_category)(query, context)
+            if stock_category is not None and not any(
+                tool_name(tool) == "get_stock_levels" for tool in runtime_tools
+            ):
+                stock_category = None
+        if stock_category is not None:
+            if isinstance(stock_category, dict):
+                return LookupResult(
+                    lookup_type=lookup_type,
+                    success=True,
+                    data={"requires_clarification": True},
+                    formatted_response=stock_category["question"],
+                    execution_time_ms=(time.perf_counter() - start_time) * 1000,
+                )
+            runtime_tools = [
+                tool for tool in runtime_tools if tool_name(tool) == "get_stock_levels"
+            ]
+            messages = (
+                [ChatMessage(role=Role.USER, contents=[TextContent(text=run_input)])]
+                if isinstance(run_input, str)
+                else run_input
+            )
+            run_input = [
+                *messages,
+                ChatMessage(
+                    role=Role.USER,
+                    contents=[
+                        TextContent(
+                            text=(
+                                f'[stock location subject] Resolve this location question using get_stock_levels(category_id={stock_category}, group_by="location"). '
+                                "The id is a subject filter only; the tool rechecks authorization and reads current quantities."
+                            )
+                        )
+                    ],
+                ),
+            ]
         return _PreparedLookupRun(
             agent=agent,
             run_input=run_input,
             runtime_tools=runtime_tools,
             modality=modality,
             enforce=enforce,
+            stock_location_category_id=stock_category,
             chat_options=chat_options,
         )
 
@@ -1452,7 +1610,8 @@ as the specified torque for a tightening sequence.
                 modality=modality,
                 selected_tools=runtime_tools,
                 catalog_search_query=self._catalog_keyword(query),
-            ):
+                stock_location_category_id=prepared.stock_location_category_id,
+            ) as bound_run:
                 response = await prepared.agent.run(
                     prepared.run_input, tools=runtime_tools, **prepared.run_kwargs()
                 )
@@ -1469,6 +1628,12 @@ as the specified torque for a tightening sequence.
                     if hasattr(msg, "role") and msg.role == Role.ASSISTANT:
                         response_text = msg.text or ""
                         break
+            if prepared.stock_location_category_id is not None:
+                response_text = category_location_answer(
+                    bound_run.stock_location_result,
+                    category_id=prepared.stock_location_category_id,
+                    modality=modality,
+                )
 
             # S22: a tool proposed a question mid-run (ambiguous machine on
             # search_manuals). The deterministic question replaces the model's
@@ -1588,7 +1753,8 @@ as the specified torque for a tightening sequence.
                 modality=prepared.modality,
                 selected_tools=prepared.runtime_tools,
                 catalog_search_query=self._catalog_keyword(query),
-            ):
+                stock_location_category_id=prepared.stock_location_category_id,
+            ) as bound_run:
                 async for update in prepared.agent.run_stream(
                     prepared.run_input, tools=prepared.runtime_tools, **prepared.run_kwargs()
                 ):
@@ -1602,8 +1768,14 @@ as the specified torque for a tightening sequence.
                         # non-empty reading.
                         usage_metrics = metrics
                     text = getattr(update, "text", "") or ""
-                    if text:
+                    if text and prepared.stock_location_category_id is None:
                         yield text
+                if prepared.stock_location_category_id is not None:
+                    yield category_location_answer(
+                        bound_run.stock_location_result,
+                        category_id=prepared.stock_location_category_id,
+                        modality=prepared.modality,
+                    )
         except Exception as exc:
             _raise_classified(exc)
 

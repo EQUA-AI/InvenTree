@@ -1917,12 +1917,10 @@ def matched_machine_terms(
 def matched_category_terms(query: str, history: Iterable[Any] | None = None) -> tuple[str, ...]:
     """Live category names mentioned in this turn or its replayed transcript.
 
-    Powers the deterministic category hint on lookup turns: on a follow-up
-    ("just the ones over 2000") the noun lives in the *history*, where the
-    selection lexicon signal cannot fire because scoring reads the current
-    message only. Purely observational -- never contributes to pack scoring or
-    write-intent -- and fail-open: no lexicon means no terms. Singular/plural
-    families collapse to one reported term, capped at three.
+    Explicit current mentions win. An anaphoric follow-up can inherit the
+    latest user's subject; assistant text and older subjects cannot replace
+    it. This hint never grants permissions or contributes to write intent.
+    No lexicon means no terms. Singular/plural families collapse, capped at three.
     """
     lexicon = category_lexicon() if category_lexicon_enabled() else frozenset()
     pattern = _lexicon_pattern(lexicon)
@@ -1931,25 +1929,35 @@ def matched_category_terms(query: str, history: Iterable[Any] | None = None) -> 
 
     if not isinstance(history, (list, tuple)):
         history = ()
-    texts = [" ".join(str(query or "").casefold().split())[:_HINT_CONTENT_CAP]]
-    for entry in history:
-        # Only conversational rows feed the hint, mirroring _run_input: a tool
-        # result mentioning a category must not steer the next turn.
-        if isinstance(entry, dict) and entry.get("role") in ("user", "assistant"):
-            content = str(entry.get("content") or "")
-            texts.append(" ".join(content.casefold().split())[:_HINT_CONTENT_CAP])
 
-    found: set[str] = set()
-    for text in texts:
-        for match in pattern.finditer(text):
-            found.add(match.group(0))
-    collapsed = {
-        term
-        for term in found
-        if not (term.endswith("s") and term[:-1] in found)
-        and not (term.endswith("ies") and f"{term[:-3]}y" in found)
-    }
-    return tuple(sorted(collapsed))[:3]
+    def terms(text):
+        found = set(
+            pattern.findall(" ".join(str(text or "").casefold().split())[:_HINT_CONTENT_CAP])
+        )
+        collapsed = {
+            term
+            for term in found
+            if not (term.endswith("s") and term[:-1] in found)
+            and not (term.endswith("ies") and f"{term[:-3]}y" in found)
+        }
+        return tuple(sorted(collapsed))[:3]
+
+    current = terms(query)
+    if current or not _ANAPHORA_RE.search(query or ""):
+        return current
+    # A fresh explicit subject wins. Only user turns establish the subject:
+    # an assistant's wrong answer or an older category cannot replace it.
+    recent = [
+        entry for entry in history if isinstance(entry, dict) and entry.get("role") == "user"
+    ][-_HISTORY_SUBJECT_MESSAGES:]
+    for entry in reversed(recent):
+        content = str(entry.get("content") or "")
+        found = terms(content)
+        if found:
+            return found
+        if content and not _ANAPHORA_RE.search(content):
+            break
+    return ()
 
 
 def _ordered_pack_ids(
