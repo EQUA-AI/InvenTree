@@ -765,11 +765,24 @@ async def get_bom(
         # does not say this row was inherited by the requested assembly.
         bom_items = [b for b in bom_items if b.get("part", part_id) == part_id]
 
+    # Missing native flags are unknown, never false. This also prevents an
+    # arithmetic estimate from silently assuming every unresolved line is required.
+    for item in bom_items:
+        for flag in ("optional", "allow_variants", "inherited", "consumable"):
+            if type(item.get(flag)) is not bool:
+                item[flag] = None
+    optional_complete = bool(bom_items) and all(
+        type(item["optional"]) is bool for item in bom_items
+    )
+    variants_complete = bool(bom_items) and all(
+        type(item["allow_variants"]) is bool for item in bom_items
+    )
+
     # Track minimum buildable quantity
     required_by_part: dict[int, Decimal] = {}
     stock_by_part: dict[int, Decimal] = {}
     component_parts: dict[int, dict[str, Any] | None] = {}
-    estimate_complete = include_stock
+    estimate_complete = include_stock and optional_complete
 
     # Enrich each BOM item
     for item in bom_items:
@@ -823,6 +836,25 @@ async def get_bom(
         "field_meanings": {
             "allow_variants": "Component variants may substitute for this component",
             "inherited": "This line applies to descendant assembly variants",
+            "unknown_flags": "Null means the native flag is unavailable, never false or required",
+        },
+        "qualifier_evidence": {
+            "optional_flags_complete": optional_complete,
+            "variant_flags_complete": variants_complete,
+            "all_components_required": all(item["optional"] is False for item in bom_items)
+            if optional_complete
+            else None,
+            "variant_lines": [
+                {
+                    "bom_item_id": item.get("pk"),
+                    "sub_part_id": item.get("sub_part"),
+                    "name": item.get("sub_part_name"),
+                }
+                for item in bom_items
+                if item["allow_variants"] is True
+            ]
+            if variants_complete
+            else None,
         },
         "total_items": len(bom_items),
         "buildable_quantity": part.get("can_build") if include_stock else None,

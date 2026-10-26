@@ -104,3 +104,8 @@ async def test_bom_retains_independent_flags_without_nested_serializer_noise():
     assert result["items"][0]["sub_part_name"] == "Screw"
     assert all("sub_part_detail" not in r and "part_detail" not in r for r in result["items"])
     assert "sub_part_detail" in rows[0]  # Do not mutate a cached provider response.
+    assert result["qualifier_evidence"]["all_components_required"] is True
+    assert result["qualifier_evidence"]["variant_flags_complete"] is True
+    assert result["qualifier_evidence"]["variant_lines"] == [
+        {"bom_item_id": 11, "sub_part_id": 2, "name": "Screw"}
+    ]

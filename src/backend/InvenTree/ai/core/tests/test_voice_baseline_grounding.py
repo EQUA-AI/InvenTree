@@ -188,8 +188,22 @@ async def test_bom_keeps_native_availability_and_separates_arithmetic_from_readi
         ),
         get_bom_items=AsyncMock(
             return_value=[
-                {"pk": 1, "sub_part": 2, "quantity": 2, "available_stock": 3, "can_build": 1},
-                {"pk": 2, "sub_part": 2, "quantity": 3, "available_stock": 3, "can_build": 1},
+                {
+                    "pk": 1,
+                    "sub_part": 2,
+                    "quantity": 2,
+                    "optional": False,
+                    "available_stock": 3,
+                    "can_build": 1,
+                },
+                {
+                    "pk": 2,
+                    "sub_part": 2,
+                    "quantity": 3,
+                    "optional": False,
+                    "available_stock": 3,
+                    "can_build": 1,
+                },
             ]
         ),
         get_stock_quantity=AsyncMock(return_value=10),
@@ -538,3 +552,23 @@ def test_category_location_answer_requires_fresh_consistent_evidence_and_reports
     text = category_location_answer(partial, category_id=7, modality="voice")
     assert "totals 1000" in text and "397 more locations" in text
     assert len(text) < 700
+
+
+@pytest.mark.asyncio
+async def test_bom_unknown_flags_cannot_certify_required_components_or_variant_exclusivity():
+    provider = SimpleNamespace(
+        get_part=AsyncMock(side_effect=[{"name": "Assembly", "assembly": True}, {"name": "Board"}]),
+        get_bom_items=AsyncMock(return_value=[{"pk": 1, "part": 77, "sub_part": 2, "quantity": 1}]),
+        get_stock_quantity=AsyncMock(return_value=55),
+    )
+    with patch("ai.core.tools.inventree.read.stock.get_data_provider", return_value=provider):
+        result = await get_bom(77)
+    assert result["items"][0]["optional"] is None
+    assert result["items"][0]["allow_variants"] is None
+    assert result["qualifier_evidence"] == {
+        "optional_flags_complete": False,
+        "variant_flags_complete": False,
+        "all_components_required": None,
+        "variant_lines": None,
+    }
+    assert result["arithmetic_buildable_quantity"] is None
