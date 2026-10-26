@@ -120,6 +120,56 @@ def test_ids_are_typed_and_do_not_use_model_or_machine_name_numbers():
     assert machine_candidates("For part ID 24") == frozenset()
 
 
+@pytest.mark.parametrize(
+    "target", ["machine24", "machine 24", "machine ID 24", "machine #24", "machine#24"]
+)
+def test_compact_machine_target_preserves_explicit_scope(target):
+    assert machine_candidates(f"Show work-order counts for {target} over the last12 months") == {24}
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "machinery24",
+        "machine24A",
+        "machine24.2",
+        "machine24-A",
+        "SI-3000",
+        "Aeration Blower No. 2",
+        "part24",
+    ],
+)
+def test_compact_target_never_reinterprets_names_models_or_other_records(target):
+    assert machine_candidates(target) == frozenset()
+
+
+@pytest.mark.parametrize(
+    "text,labels",
+    [
+        (
+            "Create a line chart using supplied synthetic data Jan=4, Feb=0, Mar=7, Apr=9. Label it user-provided test data, not recorded work.",
+            ["Jan", "Feb", "Mar", "Apr"],
+        ),
+        (
+            "Create a bar chart using supplied synthetic data Pump A=4, Pump B=7, Pump C=9. Label it user-provided test data.",
+            ["Pump A", "Pump B", "Pump C"],
+        ),
+        (
+            "Create a pie chart using supplied synthetic data Planned=6, Corrective=3, Inspection=1. Label it user-provided test data.",
+            ["Planned", "Corrective", "Inspection"],
+        ),
+        (
+            "Create a pie chart from user-provided test data only: Planned=6, Corrective=3, Inspection=1.",
+            ["Planned", "Corrective", "Inspection"],
+        ),
+    ],
+)
+def test_live_request_preamble_is_not_a_supplied_chart_label(text, labels):
+    message, data = provided_visualization(text, turn_id="live-regression")
+    assert len(data) == 1, message
+    assert [p["label"] for p in data[0]["points"]] == labels
+
+
 def test_supplied_labels_and_numeric_precision_are_preserved():
     _, data = provided_visualization(
         "Synthetic bar chart comparing Room for Pump A=4, Pump B=7.", turn_id="fixture"
@@ -131,7 +181,8 @@ def test_supplied_labels_and_numeric_precision_are_preserved():
     assert not rejected
 
 
-def test_full_population_machine_charts_and_supplied_data_replay(monkeypatch):
+@pytest.mark.parametrize("target_format", ["machine ID {id}", "machine{id}", "machine #{id}"])
+def test_full_population_machine_charts_and_supplied_data_replay(monkeypatch, target_format):
     ensure_island_tables()
     suffix = os.urandom(5).hex()
     user = get_user_model().objects.create_user(username=f"charts-{suffix}")
@@ -143,7 +194,7 @@ def test_full_population_machine_charts_and_supplied_data_replay(monkeypatch):
     grant = ClientScopeGrant.objects.create(user=user, client=clients[0])
     machines = [
         AssetMachine.objects.create(
-            name=f"Blower {i}",
+            name=f"Blower {i} {suffix}",
             client=client,
             model="Turbo 5",
             serial=f"SER-{suffix}-{i}",
@@ -203,7 +254,8 @@ def test_full_population_machine_charts_and_supplied_data_replay(monkeypatch):
         AIMMS_MAINTENANCE_SCOPE_RESOLVER=fixture_client_resolver,
         AIMMS_PLANT_TIMEZONE="America/Chicago",
     ):
-        prompt = f"For machine ID {machines[0].pk}, show a visual comparison of open and completed work-order counts using recorded data. Do not change any records."
+        target = target_format.format(id=machines[0].pk)
+        prompt = f"For {target}, show a visual comparison of open and completed work-order counts using recorded data. Do not change any records."
         _result, pk = asyncio.run(submit(prompt, "status"))
         saved = ChatTurn.objects.get(pk=pk).canonical_result
         assert saved["evidence_gate"]["verdict"] == "pass", saved
