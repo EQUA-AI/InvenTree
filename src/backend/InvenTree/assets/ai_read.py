@@ -39,6 +39,7 @@ text cannot forge a boundary.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from django.conf import settings
@@ -59,6 +60,53 @@ MAX_ANOMALIES = 25
 MAX_ATTACHMENTS = 50
 MAX_SIGNALS = 50
 MAX_TEXT_CHARS = 2000
+
+
+def _numbered_name_variants(term: str) -> tuple[str, ...]:
+    """Normalize only explicit machine-number markers, never serials or IDs."""
+    words = [
+        'zero',
+        'one',
+        'two',
+        'three',
+        'four',
+        'five',
+        'six',
+        'seven',
+        'eight',
+        'nine',
+        'ten',
+        'eleven',
+        'twelve',
+        'thirteen',
+        'fourteen',
+        'fifteen',
+        'sixteen',
+        'seventeen',
+        'eighteen',
+        'nineteen',
+        'twenty',
+    ]
+    match = re.search(
+        r'\b(?:no\.?|number)\s*(\d{1,4}|' + '|'.join(words) + r')\b', term, re.I
+    )
+    if match is None:
+        return ()
+    token = match[1].lower()
+    number = str(words.index(token)) if token in words else token
+    # Full-name candidates only. These do not turn an unmatched name into a
+    # broad search for a common number across someone else's equipment.
+    return tuple(
+        term[: match.start()] + replacement + term[match.end() :]
+        for replacement in (
+            f'No. {number}',
+            f'No {number}',
+            f'No.{number}',
+            f'number {number}',
+            number,
+        )
+    )
+
 
 #: Fields deliberately withheld from every projection, with the reason. Pinned
 #: by ``test_ai_read.py`` so removing an exclusion has to be a decision.
@@ -224,13 +272,16 @@ def machines_page(
 
         term = str(query).strip()[:100]
         if term:
-            rows = rows.filter(
+            query_filter = (
                 Q(name__icontains=term)
                 | Q(serial__icontains=term)
                 | Q(model__icontains=term)
                 | Q(manufacturer__icontains=term)
                 | Q(location__icontains=term)
             )
+            for candidate in _numbered_name_variants(term):
+                query_filter |= Q(name__iexact=candidate)
+            rows = rows.filter(query_filter)
             applied_filters['query_applied'] = True
     scope_ids = (
         None if scope_machine_ids is None else {int(pk) for pk in scope_machine_ids}

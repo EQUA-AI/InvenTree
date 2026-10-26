@@ -1038,3 +1038,100 @@ def test_unknown_provider_terminal_status_is_not_completion():
         await _one({"id": "resp-1", "status": "failed"}, "failed", "failed")
 
     asyncio.run(run())
+
+
+def test_webrtc_observations_release_output_without_claiming_verified_playback():
+    """Real WebRTC sends lifecycle only on the browser data channel."""
+
+    async def run():
+        dispatcher, channel, ws, playback, closed = _real_dispatcher()
+        for n in range(10):
+            record = await dispatcher.speak(kind="answer", **_payload(ANSWER_TEXT, ANSWER_UID))
+            response = {"id": f"resp-browser-{n}", "status": "in_progress"}
+            assert (
+                await channel.observe_client_lifecycle({
+                    "type": "response.created",
+                    "response": response,
+                })
+                == "ack"
+            )
+            response = {**response, "status": "completed"}
+            assert (
+                await channel.observe_client_lifecycle({
+                    "type": "response.done",
+                    "response": response,
+                })
+                == "observed"
+            )
+            assert record.state == "observed"
+            assert speech_dispatch.playback_state_for(record) == "requested"
+            assert not channel.has_active_app_response()
+            assert not dispatcher.closed
+        assert len(ws.creates()) == 10
+        assert closed == []
+        assert all(state != "done" for _, state in playback.calls)
+        await channel.close()
+
+    asyncio.run(run())
+
+
+def test_webrtc_stale_observations_cannot_release_the_current_output():
+    async def run():
+        dispatcher, channel, _ws, playback, _closed = _real_dispatcher()
+        record = await dispatcher.speak(kind="answer", **_payload(ANSWER_TEXT, ANSWER_UID))
+        await channel.observe_client_lifecycle({
+            "type": "response.created",
+            "response": {"id": "current"},
+        })
+        assert (
+            await channel.observe_client_lifecycle({
+                "type": "response.done",
+                "response": {"id": "stale", "status": "completed"},
+            })
+            == "ignored"
+        )
+        assert record.state == "requested"
+        assert channel.has_active_app_response()
+        assert playback.calls == [(ANSWER_UID, "requested")]
+        await channel.close()
+
+    asyncio.run(run())
+
+
+def test_webrtc_final_replaces_progress_after_browser_ack_and_cancel_terminal():
+    async def run():
+        dispatcher, channel, ws, playback, closed = _real_dispatcher()
+        await dispatcher.speak(kind="status", **_payload(STATUS_TEXT, STATUS_UID))
+        await channel.observe_client_lifecycle({
+            "type": "response.created",
+            "response": {"id": "progress"},
+        })
+        final = asyncio.create_task(
+            dispatcher.speak(kind="answer", **_payload(ANSWER_TEXT, ANSWER_UID))
+        )
+        await _drain_once()
+        assert ws.types() == ["response.create", "response.cancel"]
+        await channel.observe_client_lifecycle({
+            "type": "response.done",
+            "response": {"id": "progress", "status": "cancelled"},
+        })
+        record = await asyncio.wait_for(final, 1)
+        assert record.state == "requested"
+        assert len(ws.creates()) == 2
+        assert closed == []
+        assert (STATUS_UID, "done") not in playback.calls
+        await channel.close()
+
+    asyncio.run(run())
+
+
+def test_slower_rate_is_applied_to_the_session_and_never_sent_as_an_internal_field():
+    async def run():
+        dispatcher, channel, ws, _playback, _closed = _real_dispatcher()
+        await dispatcher.speak(kind="answer", rate=0.8, **_payload(ANSWER_TEXT, ANSWER_UID))
+        assert ws.sent[0]["type"] == "session.update"
+        assert ws.sent[0]["session"]["voice"]["rate"] == "0.8"
+        assert "_aimms_rate" not in ws.creates()[0]["response"]
+        await channel.close()
+
+    asyncio.run(run())

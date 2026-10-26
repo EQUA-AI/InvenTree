@@ -602,6 +602,7 @@ class InvenTreeClient:
         in_stock: bool | None = None,
         limit: int = 100,
         offset: int = 0,
+        include_variants: bool | None = None,
     ) -> list[dict[str, Any]]:
         """
         Get stock items.
@@ -631,6 +632,8 @@ class InvenTreeClient:
             params["location"] = location
         if in_stock is not None:
             params["in_stock"] = str(in_stock).lower()
+        if include_variants is not None:
+            params["include_variants"] = str(include_variants).lower()
 
         result = await self._request("GET", "/stock/", params=params)
 
@@ -752,12 +755,29 @@ class InvenTreeClient:
             "sub_part_detail": "true",
         }
 
-        result = await self._request("GET", "/bom/", params=params)
-
-        if isinstance(result, dict) and "results" in result:
-            return result["results"]
-
-        return result if isinstance(result, list) else [result]
+        rows: list[dict[str, Any]] = []
+        seen: set[int] = set()
+        for _ in range(100):
+            result = await self._request(
+                "GET", "/bom/", params={**params, "limit": 100, "offset": len(rows)}
+            )
+            if not isinstance(result, dict) or "results" not in result:
+                return result if isinstance(result, list) else [result]
+            page = result["results"]
+            if not page:
+                if result.get("next") or result.get("count", 0) > len(rows):
+                    raise ValueError("BOM retrieval incomplete")
+                return rows
+            for item in page:
+                identifier = item.get("pk")
+                if identifier is not None:
+                    if identifier in seen:
+                        raise ValueError("BOM retrieval repeated a row")
+                    seen.add(identifier)
+            rows.extend(page)
+            if not result.get("next") and result.get("count", len(rows)) <= len(rows):
+                return rows
+        raise ValueError("BOM retrieval exceeded its page limit")
 
     async def get_bom_item(self, bom_id: int) -> dict[str, Any] | None:
         """

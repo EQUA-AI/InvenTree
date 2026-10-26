@@ -110,6 +110,18 @@ describe('decision vocabulary', () => {
 });
 
 describe('shouldHoldTranscript', () => {
+  it('holds plain numeric identifiers and preserves their leading zeros', () => {
+    for (const text of [
+      'stock for part 00123',
+      'work order 13',
+      'serial number 0002'
+    ]) {
+      expect(shouldHoldTranscript(text, 1)).toBe(true);
+      expect(
+        detectCriticalSpans(text).some((span) => span.kind === 'identifier')
+      ).toBe(true);
+    }
+  });
   it('never holds a bare decision word', () => {
     expect(shouldHoldTranscript('no', null)).toBe(false);
     expect(shouldHoldTranscript('cancel', 0.2)).toBe(false);

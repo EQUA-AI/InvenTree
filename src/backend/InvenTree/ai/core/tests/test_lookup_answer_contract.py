@@ -98,7 +98,8 @@ async def test_bom_retains_independent_flags_without_nested_serializer_noise():
         (False, True),
     ]
     assert [r["quantity"] for r in result["items"]] == [5, 2]
-    assert result["buildable_quantity"] == 5
+    assert result["buildable_quantity"] is None
+    assert result["arithmetic_buildable_quantity"] == 5
     assert result["total_items"] == 2
     assert result["items"][0]["sub_part_name"] == "Screw"
     assert all("sub_part_detail" not in r and "part_detail" not in r for r in result["items"])

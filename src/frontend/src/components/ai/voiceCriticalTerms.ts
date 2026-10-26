@@ -38,6 +38,10 @@ const PATTERNS: ReadonlyArray<[CriticalTermKind, RegExp]> = [
   ['fault_code', /\b[A-Za-z]\d{3,}\b/g],
   ['identifier', /\b[A-Za-z]{2,}[-_]\d{2,}[A-Za-z0-9-]*\b/g],
   [
+    'identifier',
+    /\b(?:ipn|serial(?:\s+number)?|part(?:\s+number)?|work\s*order|wo)\s*[:#-]?\s*\d[\d ._-]*\b/gi
+  ],
+  [
     'safety',
     /\b(?:loto|lock[\s-]?out|tag[\s-]?out|energi[sz]ed|de-?energi[sz]ed|isolat(?:ed|ion)|pressuri[sz]ed|live|hot\s+work)\b/gi
   ],

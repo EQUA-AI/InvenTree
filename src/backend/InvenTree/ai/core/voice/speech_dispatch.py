@@ -18,6 +18,11 @@ provider-cancelled ``response.done``) is ``CANCELED``, and a
 rejected/failed/uncertain dispatch is ``FAILED``. An interrupted dispatch
 is never completed.
 
+WebRTC sends response lifecycle on the browser data channel. Owner-relayed
+observations can settle output scheduling as ``OBSERVED``, but never as
+verified ``COMPLETED``. Persisted playback remains ``REQUESTED`` and these
+observations have no decision or business-action authority.
+
 Provider ownership is tracked SEPARATELY from local playback state: a
 locally canceled dispatch may still own an outstanding ``response.create``
 or an acknowledged response at the provider. The single owner (``_owner``)
@@ -64,6 +69,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
+import logging
 import time
 import typing
 import uuid
@@ -73,13 +79,16 @@ from typing import Literal
 from ai.core.voice import timing
 from ai.core.voice.speech import build_exact_tts_payload
 
+logger = logging.getLogger(__name__)
+
 SpeechKind = Literal["answer", "status", "prompt"]
-DispatchState = Literal["pending", "requested", "completed", "canceled", "failed"]
+DispatchState = Literal["pending", "requested", "completed", "observed", "canceled", "failed"]
 ProviderState = Literal["none", "create_sent", "response_active", "released"]
 
 PENDING: DispatchState = "pending"
 REQUESTED: DispatchState = "requested"
 COMPLETED: DispatchState = "completed"
+OBSERVED: DispatchState = "observed"
 CANCELED: DispatchState = "canceled"
 FAILED: DispatchState = "failed"
 
@@ -95,11 +104,12 @@ PLAYBACK_STATE_FOR: dict[str, str] = {
     "pending": "pending",
     "requested": "requested",
     "completed": "done",
+    "observed": "requested",
     "canceled": "canceled",
     "failed": "failed",
 }
 
-TERMINAL_STATES = frozenset({COMPLETED, CANCELED, FAILED})
+TERMINAL_STATES = frozenset({COMPLETED, OBSERVED, CANCELED, FAILED})
 
 #: Bounded replacement waits (policy values, tunable after measurement).
 REPLACE_TIMEOUT_S = 2.0
@@ -139,6 +149,10 @@ class DispatchRecord:
     #: Whether a ``response.cancel`` was already sent for this dispatch
     #: (never send competing duplicates).
     cancel_sent: bool = False
+    #: WebRTC lifecycle observations relayed by the owner can release speech
+    #: scheduling, but can never establish provider-verified playback.
+    ack_verified: bool = False
+    terminal_verified: bool = False
     #: The request-local measurement bound at dispatch time: event-driven
     #: durations land here even when provider events arrive in another async
     #: context (the gateway drain), never on a None/wrong-turn capture.
@@ -380,7 +394,9 @@ class SessionSpeechDispatcher:
         self._generation += 1
         await self.cancel(reason=reason)
 
-    async def on_provider_event(self, event: dict, kind: str | None = None) -> str:
+    async def on_provider_event(
+        self, event: dict, kind: str | None = None, *, verified: bool = True
+    ) -> str:
         """Correlate one classified provider event to the owned dispatch.
 
         Returns a content-free outcome code. Attribution is by the single
@@ -413,6 +429,7 @@ class SessionSpeechDispatcher:
                 # real acknowledgement is still awaited under bound.
                 return "stale_ack_ignored"
             record.response_id = response_id
+            record.ack_verified = verified
             record.provider_state = PROVIDER_RESPONSE_ACTIVE
             self._retired_response_ids.add(response_id)
             record.ack_monotonic = self._clock()
@@ -431,7 +448,7 @@ class SessionSpeechDispatcher:
                 # id never terminates another record.
                 return "ignored"
             if event_type == "response.cancelled":
-                return await self._terminate(record, CANCELED, "canceled")
+                return await self._terminate(record, CANCELED, "canceled", verified=verified)
             # ``response.done`` is not blanket completion: map the actual
             # correlated terminal status and never claim an interrupted or
             # failed response was heard. ONLY a positively known ``completed``
@@ -440,12 +457,16 @@ class SessionSpeechDispatcher:
             # COMPLETED (the provider vocabulary is not ours to invent).
             status = str((event.get("response") or {}).get("status") or "").lower()
             if status in ("cancelled", "canceled"):
-                return await self._terminate(record, CANCELED, "provider_cancelled")
+                return await self._terminate(
+                    record, CANCELED, "provider_cancelled", verified=verified
+                )
             if status in ("failed", "incomplete"):
-                return await self._terminate(record, FAILED, "provider_failed")
+                return await self._terminate(record, FAILED, "provider_failed", verified=verified)
             if status == "completed":
-                return await self._terminate(record, COMPLETED, "completed")
-            return await self._terminate(record, FAILED, "provider_status_unknown")
+                return await self._terminate(record, COMPLETED, "completed", verified=verified)
+            return await self._terminate(
+                record, FAILED, "provider_status_unknown", verified=verified
+            )
         if event_type == "error":
             error = event.get("error") or {}
             attribution = str(error.get("event_id") or error.get("response_id") or "")
@@ -468,8 +489,11 @@ class SessionSpeechDispatcher:
             "state": record.state if record else None,
             "kind": record.kind if record else None,
             "dispatch_id": record.dispatch_id if record else None,
+            "reason": record.reason if record else None,
+            "response_id": record.response_id if record else None,
+            "terminal_verified": record.terminal_verified if record else False,
             "utterance_id": record.utterance_id if record else None,
-            "playback_state": PLAYBACK_STATE_FOR.get(record.state) if record else None,
+            "playback_state": playback_state_for(record) if record else None,
             "playback_audit_state": record.playback_audit_state if record else "unavailable",
         }
 
@@ -627,7 +651,9 @@ class SessionSpeechDispatcher:
                 if inspect.isawaitable(result):
                     await asyncio.wait_for(result, self._close_timeout_s)
 
-    async def _terminate(self, record: DispatchRecord, state: DispatchState, reason: str) -> str:
+    async def _terminate(
+        self, record: DispatchRecord, state: DispatchState, reason: str, *, verified: bool = True
+    ) -> str:
         # The provider lifecycle reached its terminal event: ownership is
         # released even when local playback already settled (interrupted is
         # never completed; a late completion never resurrects a cancel).
@@ -635,6 +661,9 @@ class SessionSpeechDispatcher:
         if record.state in TERMINAL_STATES:
             return "late_ignored"
         record.terminal_monotonic = self._clock()
+        record.terminal_verified = verified and record.ack_verified
+        if state == COMPLETED and not record.terminal_verified:
+            state = OBSERVED
         record.state = state
         record.reason = reason
         record._terminal_event.set()
@@ -663,9 +692,17 @@ class SessionSpeechDispatcher:
 
     async def _emit(self, record: DispatchRecord) -> None:
         """Reconcile audit once without relabelling audio truth or replaying work."""
+        if record.state == FAILED:
+            logger.warning(
+                "voice.speech_dispatch_failed session=%s dispatch=%s utterance=%s reason=%s",
+                self.session_id,
+                record.dispatch_id,
+                record.utterance_id,
+                record.reason,
+            )
         if self._on_playback is None or not record.utterance_id:
             return
-        playback_state = PLAYBACK_STATE_FOR.get(record.state)
+        playback_state = playback_state_for(record)
         if playback_state is None:
             return
         record._playback_audit_sequence += 1
@@ -688,6 +725,18 @@ class SessionSpeechDispatcher:
             audit_state = "uncertain"
         if sequence == record._playback_audit_sequence:
             record.playback_audit_state = audit_state
+
+
+def playback_state_for(record: DispatchRecord) -> str:
+    """Keep client output observations separate from verified delivery.
+
+    Azure WebRTC sends response.created/done on the browser data channel,
+    not the backend control socket. Owner reports prevent scheduling from
+    deadlocking, but never establish playback completion or action assent.
+    """
+    if record.state == COMPLETED and not record.terminal_verified:
+        return "requested"
+    return PLAYBACK_STATE_FOR.get(record.state, "pending")
 
 
 # -- one dispatcher per session --------------------------------------------- #

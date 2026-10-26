@@ -372,6 +372,23 @@ the SUM of its stock item quantities, so aggregate with SUM(...) GROUP BY the pa
 filter with HAVING; a threshold compared against a single stock row misses any part whose
 stock is split across locations or batches."""
 
+    STOCK_SOURCE_RULES = """
+For current part quantities and locations use get_stock_levels with the exact resolved part_id.
+Its total_in_stock and available_stock have different meanings: on-hand versus unallocated.
+Never replace an exact revision with a template or strip leading zeros from identifiers.
+For a category total use category_id; for the highest-stock part use highest_stock=True.
+Those tools aggregate the full population before capping displayed rows. Never rank a search
+page or add a template rollup to its variants. A locations_complete=false result is partial.
+For a BOM use the exact requested assembly/revision; the API includes applicable inheritance.
+Only native buildable_quantity establishes buildability. arithmetic_buildable_quantity is an
+on-hand-only estimate, never available stock or a statement that production is ready.
+Report only returned components, quantities and flags. Do not add unverified readiness claims.
+Earlier conversation establishes the subject, not current facts: re-read current quantities.
+A failed lookup is unavailable, not a verified absence or zero. State unresolved evidence plainly.
+For an ambiguous equipment symptom, ask a focused clarification about the asset and symptom.
+Do not generate a repair plan, cost estimate or operating instruction without applicable evidence.
+"""
+
     READ_SYSTEM_PROMPT = """You are the AIMMS manufacturing assistant.
 For factual inventory, order, email, Kanban, or document questions, answer only from the
 provided read tools and never invent data. Call the minimum tools needed. Never repeat a
@@ -990,7 +1007,8 @@ as the specified torque for a tightening sequence.
                     if read_only
                     else self.SYSTEM_PROMPT
                 )
-                + self.CONTEXT_SOURCE_RULES,
+                + self.CONTEXT_SOURCE_RULES
+                + (self.STOCK_SOURCE_RULES if not clarify else ""),
                 name=(
                     "T1 Clarification Agent"
                     if clarify

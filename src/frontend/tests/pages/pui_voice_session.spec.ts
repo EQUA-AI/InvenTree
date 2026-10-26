@@ -17,6 +17,62 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+test('browser-only lifecycle observations preserve consecutive turns and carry no answer content', async ({
+  page
+}, testInfo) => {
+  const observations: Record<string, unknown>[] = [];
+  const voice = await installVoiceMocks(page, {
+    capability: { ...defaultCapability, foreground_session: true },
+    onTurn: () =>
+      turnPayload({
+        spoken: {
+          utterance_id: '11111111-1111-1111-1111-111111111111',
+          spoken_summary: 'Hello',
+          spoken_summary_hash: 'a'.repeat(64),
+          playback_state: 'requested'
+        }
+      })
+  });
+  await page.route('**/api/ai/voice/sessions/*/lifecycle', async (route) => {
+    observations.push(route.request().postDataJSON());
+    await route.fulfill({ json: { observed: true } });
+  });
+  await page.goto('/playwright/voice-session.html');
+  await startVoice(page);
+  await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
+  for (let n = 0; n < 10; n++) {
+    await emitTranscript(page, {
+      text: 'Hello',
+      itemId: `consecutive-${n}`,
+      confidence: 1
+    });
+    await expect.poll(() => voice.turns.length).toBe(n + 1);
+    await page.evaluate((index) => {
+      const mock = (window as any).__voiceMock;
+      mock.emit('response.created', {
+        response: { id: `response-${index}`, status: 'in_progress' }
+      });
+      mock.emit('response.done', {
+        response: {
+          id: `response-${index}`,
+          status: 'completed',
+          output: ['private answer']
+        }
+      });
+    }, n);
+    await expect.poll(() => observations.length).toBe((n + 1) * 2);
+  }
+  expect(observations[1]).toEqual({
+    type: 'response.done',
+    response_id: 'response-0',
+    status: 'completed'
+  });
+  expect(voice.sessionCreates).toHaveLength(1);
+  expect(voice.decisionActions).toHaveLength(0);
+  await page.screenshot({ path: testInfo.outputPath('consecutive-voice.png') });
+  await page.getByTestId('voice-end').click();
+});
+
 test('synthetic interim/final RTP fixture reports once without decision authority or business replay', async ({
   page
 }) => {
@@ -237,6 +293,7 @@ test('optional numeric timing cannot acknowledge delivery or retry a business tu
   const body = voice.turns[0].body as { timing: Record<string, number> };
   expect(Object.keys(body.timing).sort()).toEqual([
     'final_to_submit_ms',
+    'ms_queue',
     'speech_to_final_ms'
   ]);
   expect(

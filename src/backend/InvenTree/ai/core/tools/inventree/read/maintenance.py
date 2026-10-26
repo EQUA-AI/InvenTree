@@ -76,6 +76,16 @@ async def search_work_orders(
 
     from ai.core.analysis.scope_context import current_turn_scope
 
+    # Normalize only an entire identifier slot, never a free-text title or
+    # a quantity embedded in a request. The native reader rechecks scope.
+    if query:
+        import re
+
+        from ai.core.decisions.resolver import _reference
+
+        slot = re.sub(r"^(?:work\s*order|wo)\s+", "", query.strip(), flags=re.I)
+        query = _reference(slot) or query
+
     scope = current_turn_scope()
     scope_kwargs: dict[str, Any] = {}
     if scope is not None and scope.explicit:
