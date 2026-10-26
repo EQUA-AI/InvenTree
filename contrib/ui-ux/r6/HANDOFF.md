@@ -480,6 +480,18 @@ cleanup records pass. Structural/provider CSV audit preserves all 60 task rows,
 28 contract rows and dispositions; inherited R8 additions still fail the fixed
 R6 tracking validator. Next: human review and upstream migration policy decision.
 Push/PR and deployment acceptance remain separate.
+## Combined chat/voice report repairs — 26 October 2026
+
+Implemented critical-IPN review, exact revision clarification, native category
+location continuity/aggregation, BOM qualifier evidence and viewport transition
+clipping repairs. Added an assertion-based read-only report compiler and a
+disposable native regression runner. [Execution and contract ledger](reports/chat-voice-followup-20261026.md)
+records 380 backend, 158 frontend, 78 chat-browser, 26 voice-browser and seven
+compiler passes, plus the 15 baseline-identical broker failures. These are source
+and fixture checks. Updated deployment, live failure-case reruns, restricted-role
+coverage and human/physical audio acceptance remain open; original campaign
+reports and parent acceptance states are preserved.
+
 ## Chat retest follow-up implementation — 25 October 2026
 
 Scoped analysis now recovers rejected model claims once from the same native
