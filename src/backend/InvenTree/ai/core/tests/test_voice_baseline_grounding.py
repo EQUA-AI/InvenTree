@@ -246,3 +246,37 @@ async def test_public_stock_tools_use_the_live_native_summary(stock_fixture):
     assert Decimal(single["quantity"]) == 4
     assert unified["resolved"] is True
     assert Decimal(unified["total_in_stock"]) == 4
+
+
+@pytest.mark.asyncio
+async def test_exact_ipn_requires_a_revision_and_never_repairs_missing_zeros(stock_fixture):
+    from ai.core.tools.inventree.read.parts import get_part, resolve_exact_ipn
+    from asgiref.sync import sync_to_async
+
+    def setup():
+        part, _template, _empty, category = stock_fixture
+        part.revision = "REV-A"
+        part.save()
+        other = Part.objects.create(
+            name="Other revision", IPN="00123", revision="REV-B", category=category
+        )
+        return other
+
+    other = await sync_to_async(setup)()
+    provider = SimpleNamespace(
+        get_part=AsyncMock(return_value={"pk": other.pk, "IPN": "00123", "revision": "REV-B"}),
+        get_stock_quantity=AsyncMock(return_value=0),
+    )
+    with patch("ai.core.tools.inventree.read.parts.get_data_provider", return_value=provider):
+        ambiguous = await get_part(ipn="00123")
+        assert ambiguous["requires_clarification"] is True
+        assert {row["revision"] for row in ambiguous["candidates"]} == {"REV-A", "REV-B"}
+        provider.get_part.assert_not_awaited()
+        missing = await get_part(ipn="123")
+        assert missing["found"] is False
+        provider.get_part.assert_not_awaited()
+        resolved = await get_part(ipn="00123", revision="REV-B")
+        assert resolved["pk"] == other.pk and resolved["in_stock"] == 0
+        provider.get_part.assert_awaited_once_with(other.pk)
+    with patch("ai.core.tools.inventree.read.database._current_user", return_value=None):
+        assert resolve_exact_ipn("00123")["resolved"] is False

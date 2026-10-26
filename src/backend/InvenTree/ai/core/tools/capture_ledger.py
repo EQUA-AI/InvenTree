@@ -94,6 +94,17 @@ class ToolCaptureLedger:
             and machine_candidates
         ):
             capture["machine_candidates"] = machine_candidates
+        if str(tool_id) == "get_part" and payload.get("requires_clarification") is True:
+            candidates = payload.get("candidates")
+            if isinstance(candidates, list):
+                capture["part_candidates"] = [
+                    {key: row.get(key) for key in ("pk", "name", "IPN", "revision")}
+                    for row in candidates[:20]
+                    if isinstance(row, dict)
+                    and type(row.get("pk")) is int
+                    and row["pk"] > 0
+                    and isinstance(row.get("IPN"), str)
+                ]
         self.captures.append(capture)
         _harvest_observed(payload, self.observed, depth=0)
         _harvest_entity_refs(payload, self.entity_refs, depth=0)
@@ -117,6 +128,14 @@ class ToolCaptureLedger:
         """Return the first captured ambiguous manual-machine option set."""
         for capture in self.captures:
             candidates = capture.get("machine_candidates")
+            if isinstance(candidates, list) and len(candidates) >= 2:
+                return candidates
+        return []
+
+    def ambiguous_part_candidates(self) -> list[dict[str, Any]]:
+        """Native exact-IPN ambiguity, retained across async tool task contexts."""
+        for capture in self.captures:
+            candidates = capture.get("part_candidates")
             if isinstance(candidates, list) and len(candidates) >= 2:
                 return candidates
         return []

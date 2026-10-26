@@ -15,10 +15,48 @@ from ai.core.maf_compat import ai_function
 logger = logging.getLogger(__name__)
 
 
+def resolve_exact_ipn(ipn: str, revision: str | None = None) -> int | dict[str, Any]:
+    """Resolve an exact identifier under native part-read permission.
+
+    IPNs need not be unique across revisions. Never choose the first search
+    hit, prefer a stocked revision, or reconstruct zeros lost during ASR.
+    """
+    from ai.core.tools.inventree.read.database import _current_user
+    from part.models import Part
+    from users.permissions import check_user_role
+
+    user = _current_user()
+    if user is None or not check_user_role(user, "part", "view"):
+        return {"found": False, "resolved": False, "error": "Part lookup is unavailable to you"}
+    matches = Part.objects.filter(IPN=ipn)
+    if revision is not None:
+        matches = matches.filter(revision=revision)
+    count = matches.count()
+    if count == 1:
+        return matches.values_list("pk", flat=True).get()
+    if count == 0:
+        return {
+            "found": False,
+            "resolved": False,
+            "note": "No exact IPN/revision match. Ask the user to check the identifier; do not substitute a search hit.",
+        }
+    candidates = list(matches.order_by("pk").values("pk", "name", "IPN", "revision")[:20])
+    return {
+        "found": False,
+        "resolved": False,
+        "requires_clarification": True,
+        "note": "Several parts share this IPN. Ask the user to choose the exact part/revision before reporting stock or BOM facts.",
+        "candidates": candidates,
+        "candidate_count": count,
+        "truncated": count > len(candidates),
+    }
+
+
 @ai_function
 async def get_part(
     part_id: int | None = None,
     ipn: str | None = None,
+    revision: str | None = None,
 ) -> dict[str, Any] | None:
     """
     Get detailed information about a specific part by ID or Internal Part Number (IPN).
@@ -28,6 +66,8 @@ async def get_part(
     Args:
         part_id: The unique ID of the part to retrieve
         ipn: The Internal Part Number (IPN) to look up
+        revision: Optional exact revision when looking up an IPN. Otherwise
+                  multiple matching revisions require user clarification.
 
     Returns:
         Part details including:
@@ -64,20 +104,17 @@ async def get_part(
     if part_id is not None and ipn is not None:
         raise ValueError("Provide either part_id or ipn, not both")
 
-    provider = get_data_provider()
+    if revision is not None and ipn is None:
+        raise ValueError("revision requires ipn; part_id already identifies an exact revision")
+    if ipn is not None:
+        from asgiref.sync import sync_to_async
 
-    if part_id is not None:
-        logger.info(f"Getting part by ID: {part_id}")
-        part = await provider.get_part(part_id)
-    else:
-        logger.info(f"Getting part by IPN: {ipn}")
-        # Search by IPN and return first match
-        parts = await provider.search_parts(query=ipn, limit=10)
-        # Filter for exact IPN match
-        part = next((p for p in parts if p.get("IPN") == ipn), None)
-        if not part and parts:
-            # If no exact match, try the first result
-            part = parts[0]
+        resolved = await sync_to_async(resolve_exact_ipn)(ipn, revision)
+        if isinstance(resolved, dict):
+            return resolved
+        part_id = resolved
+    provider = get_data_provider()
+    part = await provider.get_part(part_id)
 
     if part:
         # Enrich with stock quantity
@@ -149,9 +186,9 @@ async def search_parts(
         - is_assembly: Whether part has BOM
         - is_purchaseable: Can be purchased
         - is_saleable: Can be sold
-        - is_template / variant_of: BOMs live on TEMPLATE parts. When a hit
-          has variant_of set, it is a variant — fetch the BOM with the
-          variant_of (template) part ID to see the complete line list.
+        - is_template / variant_of: Preserve the exact selected part/revision
+          when requesting a BOM. The native API includes applicable inherited
+          lines; do not replace a variant with its template.
 
     Example:
         # Search by keyword

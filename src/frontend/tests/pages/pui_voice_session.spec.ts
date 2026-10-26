@@ -17,6 +17,42 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+test('a numeric-leading IPN stays in review until the corrected identifier is confirmed', async ({
+  page
+}, info) => {
+  const voice = await installVoiceMocks(page, {
+    capability: { ...defaultCapability, foreground_session: true }
+  });
+  await page.goto('/playwright/voice-session.html');
+  await startVoice(page);
+  await expect(page.getByTestId('voice-state-badge')).toHaveText('Listening');
+  await emitTranscript(page, {
+    text: 'Where is stock for 2.01 PCBA located?',
+    itemId: 'ipn-asr',
+    confidence: 1
+  });
+  await expect(page.getByTestId('voice-pending-transcript')).toContainText(
+    '2.01 PCBA'
+  );
+  expect(voice.turns).toHaveLength(0);
+  const corrected = 'Where is stock for 002.01-PCBA located?';
+  await emitTranscript(page, {
+    text: corrected,
+    itemId: 'ipn-corrected',
+    confidence: 1
+  });
+  await expect(page.getByTestId('voice-pending-transcript')).toContainText(
+    corrected
+  );
+  expect(voice.turns).toHaveLength(0);
+  await page.screenshot({ path: info.outputPath('voice-ipn-review.png') });
+  await page.getByTestId('voice-confirm-transcript').click();
+  await expect.poll(() => voice.turns.length).toBe(1);
+  expect(voice.turns[0].body?.transcript).toBe(corrected);
+  expect(voice.decisionActions).toHaveLength(0);
+  await page.getByTestId('voice-end').click();
+});
+
 test('browser-only lifecycle observations preserve consecutive turns and carry no answer content', async ({
   page
 }, testInfo) => {

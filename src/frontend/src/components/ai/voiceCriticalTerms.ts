@@ -37,6 +37,15 @@ const PATTERNS: ReadonlyArray<[CriticalTermKind, RegExp]> = [
   ['quantity', /\b\d+\s?(?:pcs?|pieces?|units?|sets?)\b/gi],
   ['fault_code', /\b[A-Za-z]\d{3,}\b/g],
   ['identifier', /\b[A-Za-z]{2,}[-_]\d{2,}[A-Za-z0-9-]*\b/g],
+  ['identifier', /\b[A-Za-z][A-Za-z0-9]*[._-]\d[A-Za-z0-9._-]*\b/g],
+  // Numeric-leading IPNs remain critical after ASR drops zeros, punctuation
+  // or adds spaces. Detect the received shape; never reconstruct an identifier.
+  ['identifier', /\b\d[\d._-]*[-_][A-Za-z][A-Za-z0-9._-]*\b/g],
+  [
+    'identifier',
+    /\b\d+(?:\s*[._]\s*\d+)+(?:\s*[-_]\s*|\s*)[A-Za-z]{2,}[A-Za-z0-9._-]*\b/gi
+  ],
+  ['identifier', /\b0\d+(?:[._-][A-Za-z0-9]+)*\b/g],
   [
     'identifier',
     /\b(?:ipn|serial(?:\s+number)?|part(?:\s+number)?|work\s*order|wo)\s*[:#-]?\s*\d[\d ._-]*\b/gi

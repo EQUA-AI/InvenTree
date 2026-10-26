@@ -13,12 +13,14 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ai.core.tests.settings")
 os.environ.setdefault("INVENTREE_TOKEN", "test-token")
 
 import django
+import pytest
 
 django.setup()
 
 
 from ai.core.questions.promotion import (
     consume_question_proposal,
+    pending_question_proposal,
     promote_captured_manual_question,
     promote_lexicon_options,
     promote_machine_candidates,
@@ -30,13 +32,24 @@ from ai.core.questions.schema import (
     render_question_text,
 )
 from ai.core.tools.capabilities import matched_machine_terms
-from ai.core.tools.capture_ledger import bind_tool_captures, record_tool_result
+from ai.core.tools.capture_ledger import bind_tool_captures, record_tool_result, tool_capture_ledger
 
 CANDIDATES = [
     {"machine_id": 42, "name": "Influent Pump Station No. 1", "serial": "TC-INF-PS1-001"},
     {"machine_id": 43, "name": "Clarifier Drive 2", "serial": "TC-CLA-DR2-001"},
     {"machine_id": 44, "name": "UF/RO Skid 1", "serial": ""},
 ]
+
+
+@pytest.fixture(autouse=True)
+def _isolated_question_capture_context():
+    ledger = tool_capture_ledger.set(None)
+    question = pending_question_proposal.set(None)
+    try:
+        yield
+    finally:
+        pending_question_proposal.reset(question)
+        tool_capture_ledger.reset(ledger)
 
 
 def test_machine_candidates_promote_with_refs_and_recommendation():
@@ -79,6 +92,64 @@ def test_fewer_than_two_options_is_not_a_question():
 def test_proposal_contextvar_is_consume_once():
     set_question_proposal({"source": "manual_search_ambiguity"})
     assert consume_question_proposal() == {"source": "manual_search_ambiguity"}
+    assert consume_question_proposal() is None
+
+
+def test_exact_ipn_revisions_replace_an_arbitrary_answer_with_native_choices():
+    from ai.core.workflows.wf8_lookup import T1LookupWorkflow, apply_question_replacement
+
+    bind_tool_captures()
+    consume_question_proposal()
+    copy_context().run(
+        record_tool_result,
+        "get_part",
+        {
+            "requires_clarification": True,
+            "candidates": [
+                {"pk": 88, "name": "Board", "IPN": "002.01-PCBA", "revision": "REV-A"},
+                {"pk": 907, "name": "Board", "IPN": "002.01-PCBA", "revision": "REV-B"},
+            ],
+        },
+    )
+    with patch(
+        "ai.core.config.get_settings", return_value=SimpleNamespace(feature_question_cards=True)
+    ):
+        assert promote_captured_manual_question(modality="voice") is True
+    text = apply_question_replacement("The stocked revision has 55 units.", modality="voice")
+    assert "REV-A" in text and "REV-B" in text and "002.01-PCBA" in text
+    assert "55 units" not in text
+    proposal = consume_question_proposal()
+    assert all(not option.get("recommended") for option in proposal["options"])
+    selected = proposal["options"][1]
+    hint = T1LookupWorkflow._with_question_resolution(
+        "Where is its stock?", {"question_resolution": {"option": selected}}
+    )[-1].text
+    assert "part 907" in hint
+
+
+def test_ipn_ambiguity_remains_a_plain_question_when_question_cards_are_disabled():
+    from ai.core.workflows.wf8_lookup import apply_question_replacement
+
+    bind_tool_captures()
+    consume_question_proposal()
+    record_tool_result(
+        "get_part",
+        {
+            "requires_clarification": True,
+            "candidates": [
+                {"pk": 88, "name": "Board", "IPN": "002.01-PCBA", "revision": "REV-A"},
+                {"pk": 907, "name": "Board", "IPN": "002.01-PCBA", "revision": "REV-B"},
+            ],
+        },
+    )
+    with patch(
+        "ai.core.config.get_settings", return_value=SimpleNamespace(feature_question_cards=False)
+    ):
+        assert promote_captured_manual_question(modality="voice") is False
+        text = apply_question_replacement("Revision A has 55 units.", modality="voice")
+    assert "55 units" not in text
+    assert "part 88" in text and "part 907" in text and "REV-A" in text and "REV-B" in text
+    assert len(text) < 700
     assert consume_question_proposal() is None
 
 

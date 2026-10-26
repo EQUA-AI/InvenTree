@@ -110,6 +110,25 @@ describe('decision vocabulary', () => {
 });
 
 describe('shouldHoldTranscript', () => {
+  it.each([
+    'Where is stock for 002.01-PCBA located?',
+    'Where is stock for 2.01 PCBA located?',
+    'Where is stock for 2.01PCBA located?',
+    'For 2.01 pcba, what is the on-hand stock?',
+    'Where is stock for 002 . 01 - PCBA located?',
+    'Look up 00123',
+    'Show the BOM for 123-BOARD',
+    'Show the BOM for D.123'
+  ])('holds numeric-leading identifiers without altering %s', (text) => {
+    for (const confidence of [null, 1]) {
+      expect(shouldHoldTranscript(text, confidence)).toBe(true);
+    }
+    const spans = detectCriticalSpans(text);
+    expect(spans.some((span) => span.kind === 'identifier')).toBe(true);
+    for (const span of spans) {
+      expect(span.text).toBe(text.slice(span.start, span.end));
+    }
+  });
   it('holds plain numeric identifiers and preserves their leading zeros', () => {
     for (const text of [
       'stock for part 00123',
