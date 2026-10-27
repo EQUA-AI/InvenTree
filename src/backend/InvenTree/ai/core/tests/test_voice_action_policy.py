@@ -82,6 +82,20 @@ def test_document_attachments_need_a_screen_review():
     assert "screen" in policy.ineligible_reason
 
 
+def test_investigation_evidence_requires_screen_review_and_cannot_execute_by_voice():
+    policy = action_policy("investigation.artifact")
+    assert policy is not None
+    assert policy.review == "full"
+    assert policy.voice_review_allowed is False
+    assert policy.voice_execution_allowed is False
+    assert "screen" in policy.ineligible_reason
+    with patch(
+        "ai.core.voice.tool_actions.get_settings",
+        return_value=SimpleNamespace(feature_voice_action_policy_enforce=True),
+    ):
+        assert _policy_block("investigation.artifact") == policy.ineligible_reason
+
+
 def test_proposal_rail_defaults():
     hold = action_policy("work_order.hold")
     assert hold is not None and hold.voice_execution_allowed and hold.review == "brief"
