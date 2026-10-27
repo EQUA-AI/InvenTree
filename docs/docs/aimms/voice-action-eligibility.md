@@ -31,6 +31,7 @@ Every business write requires a read-back and an explicit spoken confirmation (o
 | proposal | `work_order.cancel` | irreversible | `confirm cancel order` | is now cancelled | full | yes | yes | — |
 | proposal | `work_order.create` | reversible | short assent | has been created | brief | yes | no | creating work orders by voice needs a screen preview (F-WO-2) |
 | proposal | `schedule.optimize` | irreversible | `confirm optimize schedule` | schedule has been optimized | full | yes | no | batch scheduling must be reviewed on screen (F-WO-2) |
+| proposal | `investigation.artifact` | reversible | short assent | investigation evidence published | full | no | no | investigation evidence must be reviewed on screen (F-OTHER) |
 | proposal | `memory.remember` | irreversible | `confirm memory change` | memory change applied | full | no | no | memory changes must be reviewed on screen (F-OTHER) |
 | proposal | `memory.update` | irreversible | `confirm memory change` | memory change applied | full | no | no | memory changes must be reviewed on screen (F-OTHER) |
 | proposal | `memory.forget` | irreversible | `confirm memory change` | memory change applied | full | no | no | memory changes must be reviewed on screen (F-OTHER) |
