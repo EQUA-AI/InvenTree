@@ -180,7 +180,7 @@ def test_live_exact_part_and_under_threshold_prompts_use_native_evidence(
         "Which PCBA parts have under 10 stock at Room 101?",
         f"Show stock for part {part.pk} batch TEST.",
     ]:
-        assert resolve_stock_query(filtered) is None
+        assert resolve_stock_query(filtered)["evidence"]["resolved"] is False
     precise = resolve_stock_query("Which PCBA parts have stock under 4.0000000000000001?")
     assert precise["evidence"]["quantity_value"] == "4.0000000000000001"
     assert resolve_stock_query("Show stock for part 002.01-PCBA.") is None
@@ -307,7 +307,11 @@ async def test_bom_fetches_every_page_and_refuses_repeated_pages():
 async def test_bom_keeps_native_availability_and_separates_arithmetic_from_readiness():
     provider = SimpleNamespace(
         get_part=AsyncMock(
-            side_effect=[{"name": "Assembly", "assembly": True}, {"name": "Bolt"}, {"name": "Bolt"}]
+            side_effect=[
+                {"pk": 77, "name": "Assembly", "assembly": True},
+                {"pk": 2, "name": "Bolt"},
+                {"pk": 2, "name": "Bolt"},
+            ]
         ),
         get_bom_items=AsyncMock(
             return_value=[
@@ -342,7 +346,10 @@ async def test_bom_keeps_native_availability_and_separates_arithmetic_from_readi
 async def test_bom_inheritance_flag_is_not_mistaken_for_the_defining_assembly():
     provider = SimpleNamespace(
         get_part=AsyncMock(
-            side_effect=[{"name": "Assembly", "assembly": True}, {"name": "Own component"}]
+            side_effect=[
+                {"pk": 77, "name": "Assembly", "assembly": True},
+                {"pk": 2, "name": "Own component"},
+            ]
         ),
         get_bom_items=AsyncMock(
             return_value=[
@@ -360,7 +367,7 @@ async def test_bom_inheritance_flag_is_not_mistaken_for_the_defining_assembly():
 @pytest.mark.asyncio
 async def test_unresolved_required_component_cannot_produce_a_buildability_estimate():
     provider = SimpleNamespace(
-        get_part=AsyncMock(side_effect=[{"name": "Assembly", "assembly": True}, None]),
+        get_part=AsyncMock(side_effect=[{"pk": 77, "name": "Assembly", "assembly": True}, None]),
         get_bom_items=AsyncMock(return_value=[{"part": 77, "sub_part": 2, "quantity": 1}]),
         get_stock_quantity=AsyncMock(),
     )
@@ -680,7 +687,12 @@ def test_category_location_answer_requires_fresh_consistent_evidence_and_reports
 @pytest.mark.asyncio
 async def test_bom_unknown_flags_cannot_certify_required_components_or_variant_exclusivity():
     provider = SimpleNamespace(
-        get_part=AsyncMock(side_effect=[{"name": "Assembly", "assembly": True}, {"name": "Board"}]),
+        get_part=AsyncMock(
+            side_effect=[
+                {"pk": 77, "name": "Assembly", "assembly": True},
+                {"pk": 2, "name": "Board"},
+            ]
+        ),
         get_bom_items=AsyncMock(return_value=[{"pk": 1, "part": 77, "sub_part": 2, "quantity": 1}]),
         get_stock_quantity=AsyncMock(return_value=55),
     )
@@ -746,3 +758,243 @@ async def test_catalog_duplicate_category_names_require_native_selection(stock_f
         result = await resolve_catalog_query("List parts specifically in the Bearings category.")
     assert result["evidence"]["requires_clarification"] is True
     assert str(first) in result["text"] and str(second) in result["text"]
+
+
+def test_received_word_threshold_matches_typed_population_with_honest_spoken_coverage(
+    stock_fixture, monkeypatch
+):
+    from ai.core.tools import capabilities
+    from ai.core.tools.stock_queries import resolve_stock_query
+
+    _part, _, _, category = stock_fixture
+    category.name = "PCBA"
+    category.save()
+    for n in range(3):
+        Part.objects.create(name=f"Additional {n}", category=category)
+    monkeypatch.setattr(capabilities, "category_lexicon", lambda: frozenset({"pcba"}))
+    typed = resolve_stock_query("Which PCBA parts have under10 units in stock?")
+    spoken = resolve_stock_query(
+        "Which PCBA parts have under ten units in stock?", {"modality": "voice"}
+    )
+    assert spoken["evidence"] == typed["evidence"]
+    assert spoken["evidence"]["part_count"] == 6
+    assert spoken["text"].count("revision ") <= 3
+    assert "3 more matching parts are not listed" in spoken["text"]
+    assert "only" not in spoken["text"].lower()
+
+
+def test_location_amounts_compact_identity_and_unavailable_exclusion(stock_fixture):
+    from ai.core.tools.stock_queries import resolve_stock_query
+
+    part = stock_fixture[0]
+    room = StockLocation.objects.create(name="Room 101")
+    StockItem.objects.create(part=part, quantity=15, location=room, batch="")
+    answer = resolve_stock_query(
+        f"Where is stock for part{part.pk} located? Include on-hand, allocated and available amounts."
+    )
+    assert "Allocated 0" in answer["text"] and "available 19" in answer["text"]
+    for label in ("Room101", "Room 101", f"location ID {room.pk}"):
+        answer = resolve_stock_query(f"What stock is at {label} for part{part.pk}?")
+        assert Decimal(answer["evidence"]["total_in_stock"]) == 15
+        assert answer["evidence"]["location_id"] == room.pk
+        assert "not verified" in answer["text"] or answer["evidence"]["allocated_stock"] is None
+    StockLocation.objects.create(name="Room 101")
+    assert resolve_stock_query(f"What stock is at Room101 for part{part.pk}?")["evidence"][
+        "requires_clarification"
+    ]
+    part.revision = "REV-A"
+    part.save()
+    conflict = resolve_stock_query(f"Show stock for part{part.pk} (IPN00123, REV-B).")
+    assert conflict["evidence"]["resolved"] is False
+    conflict = resolve_stock_query(f"Show stock for part{part.pk} (IPN99999, REV-A).")
+    assert conflict["evidence"]["resolved"] is False
+    assert "IPN" in conflict["text"]
+    unsupported = resolve_stock_query(f"Show stock for part{part.pk} except quarantined stock.")
+    assert unsupported["evidence"]["filters_verified"] is False
+
+
+@pytest.mark.asyncio
+async def test_exact_record_workflow_rechecks_native_identity_in_both_modalities(stock_fixture):
+    from ai.core.tools.inventree.read.maintenance import get_work_order_overview
+    from ai.core.workflows.wf8_lookup import T1LookupWorkflow
+    from asgiref.sync import sync_to_async
+
+    def seed():
+        return WorkOrder.objects.create(
+            title="Blower low airflow and motor thermal trips",
+            lifecycle_status="planned",
+            status="review",
+        )
+
+    work = await sync_to_async(seed)()
+    for modality in ("text", "voice"):
+        workflow = T1LookupWorkflow()
+        with (
+            patch(
+                "ai.core.tools.rbac.tools_for_current_user",
+                new=AsyncMock(return_value=[get_work_order_overview]),
+            ),
+            patch(
+                "ai.core.tools.inventree.read.maintenance._current_user",
+                return_value=SimpleNamespace(is_authenticated=True, is_active=True),
+            ),
+            patch.object(ai_read, "maintenance_ai_read_enabled", return_value=True),
+            patch.object(ai_read, "work_order_scope_filter", return_value=Q(pk=work.pk)),
+            patch.object(
+                workflow,
+                "_get_agent",
+                new=AsyncMock(side_effect=AssertionError("No model-selected record")),
+            ),
+        ):
+            result = await workflow.execute(
+                f"What is the status of work order {work.pk}?", context={"modality": modality}
+            )
+            evidence = result.data["native_record"]
+            assert evidence["requested_id"] == evidence["returned_id"] == work.pk
+            assert evidence["tool_arguments"] == {"work_order_id": work.pk}
+            assert "planned" in result.formatted_response and "review" in result.formatted_response
+            assert "thermal trips" in result.formatted_response
+            assert "[UNTRUSTED-CONTENT-" not in result.formatted_response
+            assert "[UNTRUSTED-CONTENT-BEGIN]" in evidence["record"]["title"]
+            unavailable = await workflow.execute(
+                "What is the status of work order 99999999?", context={"modality": modality}
+            )
+            assert unavailable.data["native_record"]["resolved"] is False
+
+
+@pytest.mark.asyncio
+async def test_bom_exact_received_target_and_component_identity_reject_substitution(stock_fixture):
+    from ai.core.tools.record_queries import resolve_record_query
+
+    provider = SimpleNamespace(
+        get_part=AsyncMock(
+            side_effect=lambda pk: {
+                "pk": pk,
+                "name": "Doohickey" if pk == 87 else "Screw",
+                "IPN": "D.123" if pk == 87 else "M3x8",
+                "revision": "",
+                "assembly": pk == 87,
+            }
+        ),
+        get_bom_items=AsyncMock(
+            return_value=[
+                {
+                    "pk": 1,
+                    "part": 87,
+                    "sub_part": 66,
+                    "quantity": "4",
+                    "optional": False,
+                    "allow_variants": False,
+                    "inherited": True,
+                }
+            ]
+        ),
+    )
+    with patch("ai.core.tools.inventree.read.stock.get_data_provider", return_value=provider):
+        answer = await resolve_record_query(
+            "Show the BOM for Part 87.", {"modality": "voice"}, {"get_bom"}
+        )
+        assert answer["evidence"]["requested_id"] == answer["evidence"]["returned_id"] == 87
+        assert "D.123" in answer["text"] and "revision not recorded" in answer["text"]
+        assert "quantity 4" in answer["text"] and "variants allowed no" in answer["text"]
+        original = provider.get_bom_items.return_value[0]
+        provider.get_bom_items.return_value = [{**original, "pk": n} for n in range(1, 5)]
+        bounded = await resolve_record_query(
+            "Show the BOM for Part 87.", {"modality": "voice"}, {"get_bom"}
+        )
+        assert "4 lines" in bounded["text"]
+        assert bounded["text"].count("Component part") <= 3
+        assert "more lines are not listed here" in bounded["text"]
+        assert len(bounded["text"]) <= 700
+        for wrong in (88, 999):
+            provider.get_part = AsyncMock(
+                return_value={"pk": wrong, "name": "Wrong board", "assembly": True}
+            )
+            refused = await resolve_record_query("Show the BOM for Part 87.", None, {"get_bom"})
+            assert refused["evidence"]["resolved"] is False
+            assert "Wrong board" not in refused["text"]
+        provider.get_part = AsyncMock(
+            side_effect=[{"pk": 87, "assembly": True}, {"pk": 88, "name": "Wrong component"}]
+        )
+        refused = await resolve_record_query("Show the BOM for Part 87.", None, {"get_bom"})
+        assert refused["evidence"]["resolved"] is False
+        assert "Wrong component" not in refused["text"]
+    with (
+        patch("ai.core.tools.inventree.read.database._current_user", return_value=None),
+        patch(
+            "ai.core.tools.inventree.read.stock.get_bom",
+            new=AsyncMock(side_effect=AssertionError("No privileged lookup")),
+        ),
+    ):
+        assert (await resolve_record_query("Show the BOM for Part 87.", None, {"get_bom"}))[
+            "evidence"
+        ]["resolved"] is False
+
+
+@pytest.mark.asyncio
+async def test_word_work_order_target_mismatch_cannot_be_narrated():
+    from ai.core.tools.record_queries import resolve_record_query
+
+    read = AsyncMock(return_value={"work_order_id": 116, "title": "Wrong factory job"})
+    received = "What is the status of work order one hundred fifteen?"
+    with patch("ai.core.tools.inventree.read.maintenance.get_work_order_overview", new=read):
+        result = await resolve_record_query(
+            received, {"modality": "voice"}, {"get_work_order_overview"}
+        )
+    read.assert_awaited_once_with(115)
+    assert result["evidence"]["requested_id"] == 115
+    assert result["evidence"]["returned_id"] == 116
+    assert result["evidence"]["resolved"] is False
+    assert "Wrong factory job" not in result["text"]
+
+
+@pytest.mark.asyncio
+async def test_filtered_keyword_retains_native_keyword_population_and_current_stock(stock_fixture):
+    from ai.core.tools.catalog_queries import resolve_catalog_query
+
+    part, template, empty, _ = stock_fixture
+    ids = [part.pk, template.pk, empty.pk]
+    provider = SimpleNamespace(
+        search_parts_page=AsyncMock(
+            return_value={
+                "results": [{"pk": pk, "active": True} for pk in ids],
+                "population_count": 3,
+                "has_more": False,
+            }
+        )
+    )
+    with patch("ai.core.tools.inventree.read.parts.get_data_provider", return_value=provider):
+        result = await resolve_catalog_query("List parts matching bearing with active stock only.")
+    assert result["evidence"]["resolved"]
+    assert [row["pk"] for row in result["evidence"]["results"]] == [part.pk]
+    assert result["evidence"]["evaluated_count"] == 3
+    assert result["evidence"]["applied_filters"]["category_id"] is None
+    assert result["evidence"]["results"][0]["total_in_stock"] == "4"
+    provider.search_parts_page.assert_awaited_once_with(
+        query="bearing", category=None, active=True, limit=100, offset=0
+    )
+
+
+@pytest.mark.asyncio
+async def test_stock_category_switch_leaves_entity_focus_alone(stock_fixture, monkeypatch):
+    from ai.core.focus.commands import maybe_handle
+    from ai.core.tools import capabilities
+    from ai.core.tools.stock_queries import resolve_stock_query, stock_category_switch
+    from asgiref.sync import sync_to_async
+
+    category = stock_fixture[3]
+    category.name = "Wire"
+    await sync_to_async(category.save)()
+    monkeypatch.setattr(capabilities, "category_lexicon", lambda: frozenset({"wire"}))
+    for received in ("Switch to wire, how much stock is there?", "Switch to wire stock now."):
+        snapshot = {"focus": {"kind": "machine", "pk": 24}, "version": 2}
+        run = SimpleNamespace(content=received, focus_snapshot=snapshot)
+        assert await maybe_handle(SimpleNamespace(), run) is None
+        assert run.focus_snapshot == snapshot
+        result = await sync_to_async(resolve_stock_query)(received)
+        assert Decimal(result["evidence"]["total_in_stock"]) == 4
+    assert not await sync_to_async(stock_category_switch)("Switch to machine Wire stock now.")
+    await sync_to_async(PartCategory.objects.create)(name="Wire")
+    result = await sync_to_async(resolve_stock_query)("Switch to wire stock now.")
+    assert result["evidence"]["requires_clarification"]
+    assert "authorized target" not in result["text"]

@@ -406,6 +406,50 @@ def test_false_no_records_contradicts_nonzero_count() -> None:
     assert "absence_contradicts_counts" in verdict.codes()
 
 
+def test_zero_bucket_cannot_certify_global_absence_in_positive_series():
+    from ai.core.analysis.evidence import facts_from_group_rows
+    from ai.core.analysis.validator import check_contradiction
+
+    store = EvidenceStore()
+    rows = facts_from_group_rows(
+        store,
+        [{"bucket": "2026-06", "event_count": 0}, {"bucket": "2026-07", "event_count": 4}],
+        retrieval_id="ret_series",
+        as_of=AS_OF,
+        source_class="work_order",
+        source_revision="snapshot",
+        grouping="bucket",
+    )
+    store.add_calculation(
+        operation="bucket_count",
+        input_refs=tuple(rows),
+        values={"population_count": FactValue("int", 4)},
+        complete_population=True,
+    )
+    # The rejected model selected only a zero month, omitting July's four.
+    claim = _claim(fact_refs=[rows[0]], render_template="analysis.absence_of_records")
+    assert check_contradiction([claim], store)[0].code == "absence_contradicts_counts"
+
+
+def test_filtered_zero_count_can_be_absent_with_nonzero_evaluated_population():
+    from ai.core.analysis.validator import check_contradiction
+
+    store = EvidenceStore()
+    calc = store.add_calculation(
+        operation="count",
+        input_refs=(),
+        values={"count": FactValue("int", 0), "population_count": FactValue("int", 4)},
+        complete_population=True,
+    )
+    claim = _claim(
+        claim_type="calculation",
+        evidence_classification="calculated",
+        calculation_output_refs=[calc],
+        render_template="analysis.absence_of_records",
+    )
+    assert check_contradiction([claim], store)[0].outcome is CheckOutcome.PASS
+
+
 def test_unrecorded_step_cannot_be_presented_as_noncompliance() -> None:
     """Poison 8: not-recorded rendered as an answer-grade finding."""
     store, _, _ = _grounded_case()

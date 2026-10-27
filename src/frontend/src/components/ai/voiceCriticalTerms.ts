@@ -29,7 +29,31 @@ export interface CriticalSpan {
   kind: CriticalTermKind;
 }
 
+const NUMBER_WORD =
+  'zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|point';
+const NUMBER_PHRASE = `(?:${NUMBER_WORD})(?:[ -]+(?:${NUMBER_WORD}|and))*`;
 const PATTERNS: ReadonlyArray<[CriticalTermKind, RegExp]> = [
+  [
+    'identifier',
+    new RegExp(
+      `\\b(?:ipn|serial(?:\\s+number)?|part(?:\\s+(?:number|id))?|work\\s*order|wo)\\s*[:#-]?\\s+(?:${NUMBER_PHRASE})\\b`,
+      'gi'
+    )
+  ],
+  [
+    'quantity',
+    new RegExp(
+      `\\b(?:under|below|above|over|exactly|at least|at most|less than|more than|no more than|no less than|first)\\s+(?:${NUMBER_PHRASE})\\b`,
+      'gi'
+    )
+  ],
+  [
+    'quantity',
+    new RegExp(
+      `\\b(?:${NUMBER_PHRASE})\\s+(?:units?|pieces?|sets?|pcs?)\\b`,
+      'gi'
+    )
+  ],
   [
     'measurement',
     /\b\d+(?:[.,]\d+)?\s?(?:psi|bar|°?\s?[cf]\b|nm|kv|v|kw|w|a|amps?|volts?|mm|cm|in(?:ch(?:es)?)?|hz|rpm|gpm|lpm|h(?:ours?)?|min(?:utes?)?|%)\b/gi
@@ -46,9 +70,10 @@ const PATTERNS: ReadonlyArray<[CriticalTermKind, RegExp]> = [
     /\b\d+(?:\s*[._]\s*\d+)+(?:\s*[-_]\s*|\s*)[A-Za-z]{2,}[A-Za-z0-9._-]*\b/gi
   ],
   ['identifier', /\b0\d+(?:[._-][A-Za-z0-9]+)*\b/g],
+  ['identifier', /\bpart\s*\d+[A-Za-z][A-Za-z0-9._-]*\b/gi],
   [
     'identifier',
-    /\b(?:ipn|serial(?:\s+number)?|part(?:\s+number)?|work\s*order|wo)\s*[:#-]?\s*\d[\d ._-]*\b/gi
+    /\b(?:ipn|serial(?:\s+number)?|part(?:\s+(?:number|id))?|work\s*order(?:\s+id)?|wo)\s*[:#-]?\s*\d[\d ._-]*\b/gi
   ],
   [
     'safety',

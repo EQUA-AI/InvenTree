@@ -344,6 +344,92 @@ for (const wire of ['legacy', 'agui'] as const) {
   });
 }
 const artifactDir = process.env.AIMMS_TEST_PRESENTATION_ARTIFACT_DIR;
+if (process.env.AIMMS_REQUIRE_NATIVE_DTOS === '1') {
+  if (!artifactDir)
+    throw new Error('Native DTO directory is required for qualification.');
+  for (const name of [
+    'followup-trend-model',
+    'followup-trend-recovered',
+    'followup-status-model',
+    'followup-status-recovered',
+    'followup-range-limit',
+    'recorded-status',
+    'recorded-trend',
+    'provided-pie',
+    'native-history',
+    ...[0, 1, 2, 3, 4].map((n) => `followup-identity-${n}`)
+  ])
+    JSON.parse(readFileSync(join(artifactDir, `${name}.json`), 'utf8'));
+}
+
+test('native older pages preserve their cursor, order and unique messages after reload', async ({
+  page
+}, info) => {
+  test.skip(!artifactDir, 'Run native history page qualification first.');
+  const pages = JSON.parse(
+    readFileSync(join(artifactDir!, 'native-history.json'), 'utf8')
+  );
+  const id = pages.latest.thread_id;
+  await prepareDrawerFixture(page, { voice: false });
+  const cursors: string[] = [];
+  await page.route('**/api/ai/threads**', async (route) => {
+    const url = new URL(route.request().url());
+    if (route.request().method() !== 'GET') return route.fallback();
+    if (url.pathname.endsWith('/threads'))
+      return route.fulfill({
+        json: {
+          threads: [
+            { ...pages.latest, last_activity: pages.latest.updated_at }
+          ],
+          shared_threads: [],
+          has_more: false,
+          capabilities: {}
+        }
+      });
+    if (!url.pathname.endsWith(`/threads/${id}`)) return route.fallback();
+    const before = url.searchParams.get('before_sequence');
+    if (before) cursors.push(before);
+    return route.fulfill({
+      json:
+        before === '5'
+          ? pages.middle
+          : before === '2'
+            ? pages.earliest
+            : pages.latest
+    });
+  });
+  for (let replay = 0; replay < 2; replay++) {
+    await loadDrawerFixture(page);
+    await page.getByRole('tab', { name: 'History', exact: true }).click();
+    await page
+      .getByTestId('ai-chat-history-row')
+      .filter({ hasText: 'Native cursor qualification' })
+      .click();
+    await expect(
+      page.getByText('Native saved message 7', { exact: true })
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Load earlier messages' }).click();
+    await expect(
+      page.getByText('Native saved message 2', { exact: true })
+    ).toHaveCount(1);
+    await page.getByRole('button', { name: 'Load earlier messages' }).click();
+    for (let n = 1; n <= 7; n++)
+      await expect(
+        page.getByText(`Native saved message ${n}`, { exact: true })
+      ).toHaveCount(1);
+    // DOM order must follow the native sequence; count checks alone miss reversal.
+    const text = await page.getByTestId('ai-chat-messages').innerText();
+    for (let n = 1; n < 7; n++)
+      expect(text.indexOf(`Native saved message ${n}`)).toBeLessThan(
+        text.indexOf(`Native saved message ${n + 1}`)
+      );
+    await expect(
+      page.getByRole('button', { name: 'Load earlier messages' })
+    ).toHaveCount(0);
+  }
+  expect(cursors).toEqual(['5', '2', '5', '2']);
+  await page.screenshot({ path: info.outputPath('native-history-pages.png') });
+});
 for (const name of [
   'followup-trend-model',
   'followup-trend-recovered',

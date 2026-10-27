@@ -432,6 +432,11 @@ async def maybe_handle(service: NormalizedTurnService, run: TurnRun) -> dict[str
     focus gets an unavailable clarification — never unscoped guessing and
     never a fallback to a different record.
     """
+    from ai.core.tools.stock_queries import stock_category_switch
+    from asgiref.sync import sync_to_async
+
+    if await sync_to_async(stock_category_switch)(run.content):
+        return None
     command = parse_focus_command(run.content)
     if command is not None:
         return await _handle_switch(service, run, command)

@@ -750,10 +750,19 @@ async def get_bom(
     part = await provider.get_part(part_id)
     if not part:
         raise ValueError(f"Part with ID {part_id} not found")
+    if type(part.get("pk")) is not int or part.get("pk") != part_id:
+        raise ValueError("BOM assembly identity did not match the requested part")
+
+    identity = {
+        "part_ipn": part.get("IPN"),
+        "part_revision": part.get("revision"),
+        "source_revision": part.get("last_updated") or part.get("updated_at"),
+    }
 
     if not part.get("assembly"):
         return {
             "part_id": part_id,
+            **identity,
             "part_name": part.get("name"),
             "is_active": part.get("active"),
             "items": [],
@@ -826,6 +835,8 @@ async def get_bom(
             if not sub_part and not item.get("optional", False):
                 estimate_complete = False
             if sub_part:
+                if type(sub_part.get("pk")) is not int or sub_part.get("pk") != sub_part_id:
+                    raise ValueError("BOM component identity did not match its line")
                 item["sub_part_name"] = sub_part.get("name")
                 item["sub_part_ipn"] = sub_part.get("IPN")
 
@@ -860,6 +871,7 @@ async def get_bom(
 
     result = {
         "part_id": part_id,
+        **identity,
         "part_name": part.get("name"),
         "is_active": part.get("active"),
         "items": bom_items,

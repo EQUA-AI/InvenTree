@@ -6,6 +6,26 @@ import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 
+export const assertionContracts = Object.freeze({
+  exact_record: [
+    'requested_id',
+    'invoked_id',
+    'returned_id',
+    'native_fields',
+    'source_revision',
+    'permission_refusal'
+  ],
+  reviewed_transcript: [
+    'raw_received',
+    'held_before_send',
+    'confirm_once',
+    'discard_zero'
+  ],
+  stock_threshold: ['matching_population', 'exact_boundary', 'spoken_coverage'],
+  chart_series: ['machine_scope', 'full_series', 'prose_consistency'],
+  older_history: ['native_cursor', 'complete_order', 'deduplicated_messages']
+});
+
 function atPointer(value, pointer) {
   assert(
     typeof pointer === 'string' && (pointer === '' || pointer.startsWith('/')),
@@ -35,6 +55,12 @@ function matches(actual, operator, expected) {
         'contains requires strings'
       );
       return actual.includes(expected);
+    case 'not_contains':
+      assert(
+        typeof actual === 'string' && typeof expected === 'string',
+        'not_contains requires strings'
+      );
+      return !actual.includes(expected);
     case 'one_of':
       assert(Array.isArray(expected), 'one_of requires an expected array');
       return expected.some((value) => isDeepStrictEqual(actual, value));
@@ -96,6 +122,15 @@ export function compileEvidence(manifest, root) {
       Array.isArray(definition.assertions) && definition.assertions.length,
       `Required assertions missing: ${key}`
     );
+    if (definition.assertion_contract) {
+      const required = assertionContracts[definition.assertion_contract];
+      assert(required, 'Unknown assertion contract');
+      for (const id of required)
+        assert(
+          definition.assertions.some((item) => item.id === id),
+          `Missing required ${definition.assertion_contract} assertion: ${id}`
+        );
+    }
     const assertionIds = new Set();
     const assertions = definition.assertions.map((item) => {
       assert(

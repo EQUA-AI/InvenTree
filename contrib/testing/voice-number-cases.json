@@ -1,0 +1,58 @@
+[
+	{
+		"text": "Which PCBA parts have under ten units in stock?",
+		"canonical": "Which PCBA parts have under 10 units in stock?",
+		"hold": true
+	},
+	{
+		"text": "Where is stock for part eighty-eight located?",
+		"canonical": "Where is stock for part 88 located?",
+		"hold": true
+	},
+	{
+		"text": "What is the status of work order one hundred fifteen?",
+		"canonical": "What is the status of work order 115?",
+		"hold": true
+	},
+	{
+		"text": "Which PCBA parts have stock exactly five point zero zero zero zero one?",
+		"canonical": "Which PCBA parts have stock exactly 5.00001?",
+		"hold": true
+	},
+	{
+		"text": "Stock for part ID 88.",
+		"canonical": "Stock for part id 88.",
+		"hold": true
+	},
+	{
+		"text": "Where is stock for 002.01-PCBA?",
+		"canonical": "Where is stock for 002.01-PCBA?",
+		"hold": true
+	},
+	{
+		"text": "Show stock for part 002.01-PCBA.",
+		"canonical": "Show stock for part 002.01-PCBA.",
+		"hold": true
+	},
+	{
+		"text": "Show stock for part88A.",
+		"canonical": "Show stock for part88A.",
+		"hold": true
+	},
+	{
+		"text": "Show the first two keyword matches for bearing.",
+		"canonical": "Show the first 2 keyword matches for bearing.",
+		"hold": true
+	},
+	{
+		"text": "Stock under twenty five six units.",
+		"canonical": "Stock under twenty five six units.",
+		"hold": true,
+		"ambiguous": true
+	},
+	{
+		"text": "What needs attention today?",
+		"canonical": "What needs attention today?",
+		"hold": false
+	}
+]

@@ -1312,6 +1312,13 @@ async def run_analysis(
             })
             if verdict.outcome is CheckOutcome.PASS:
                 break
+            if source == "model" and any(
+                code in verdict.codes()
+                for code in ("absence_contradicts_counts", "absence_without_zero_count")
+            ):
+                # Preserve the valid chart and recover prose from the complete
+                # authorized store, rather than keeping a selected zero bucket.
+                break
             if verdict.outcome is CheckOutcome.DOWNGRADE and attempt == 0:
                 dropped = set(verdict.dropped_claim_ids)
                 claims = [claim for claim in claims if claim.claim_id not in dropped]

@@ -1326,6 +1326,21 @@ as the specified torque for a tightening sequence.
 
         tools = await tools_for_current_user(self._base_tools_for(is_voice=is_voice))
 
+        from ai.core.tools.capabilities import tool_name
+        from ai.core.tools.record_queries import resolve_record_query
+
+        native_record = await resolve_record_query(
+            query, context, {tool_name(tool) for tool in tools}
+        )
+        if native_record is not None:
+            return LookupResult(
+                lookup_type=lookup_type,
+                success=True,
+                data={"native_record": native_record["evidence"]},
+                formatted_response=native_record["text"],
+                execution_time_ms=(time.perf_counter() - start_time) * 1000,
+            )
+
         # Narrow stock questions have native aggregate contracts. Resolve them
         # before model pack selection can omit stock reads or substitute SQL.
         # The reader rechecks the current actor; the offered tool is only a
