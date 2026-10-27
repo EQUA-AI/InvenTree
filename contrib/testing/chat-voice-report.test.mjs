@@ -5,7 +5,44 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { compileEvidence } from './chat-voice-report.mjs';
+import { assertionContracts, compileEvidence } from './chat-voice-report.mjs';
+
+test('new regression contracts cannot pass by omitting identity, review, coverage or prose', (t) => {
+  for (const [name, ids] of Object.entries(assertionContracts)) {
+    const { make } = campaign(t, [], { assertion_contract: name });
+    const items = ids.map((id) => ({
+      id,
+      lane: 'live',
+      coverage_status: 'UNVERIFIED',
+      reason: 'Independent native assertion not yet run'
+    }));
+    assert.throws(() => make(items.slice(1)), /Missing required/);
+    assert.equal(make(items).cases[0].status, 'UNVERIFIED');
+  }
+});
+
+test('prose contradictions fail even when the count is correct', (t) => {
+  const { make, ref, root } = campaign(t);
+  writeFileSync(
+    join(root, 'raw.json'),
+    JSON.stringify({
+      count: 4,
+      message:
+        'No matching records exist in the fully evaluated population of 4 records.'
+    })
+  );
+  const report = make([
+    { id: 'count', lane: 'live', expected: 4, evidence: [ref('/count')] },
+    {
+      id: 'prose',
+      lane: 'live',
+      operator: 'not_contains',
+      expected: 'No matching records exist',
+      evidence: [ref('/message')]
+    }
+  ]);
+  assert.equal(report.cases[0].status, 'FAIL');
+});
 
 function campaign(t, assertions, extra = {}, manifestOptions = {}) {
   const root = mkdtempSync(join(tmpdir(), 'chat-voice-evidence-'));

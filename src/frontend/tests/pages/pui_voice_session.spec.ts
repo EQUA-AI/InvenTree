@@ -17,6 +17,37 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+for (const decision of ['confirm', 'discard'] as const)
+  test(`number-word part ID requires review; ${decision} sends the received wording at most once`, async ({
+    page
+  }, info) => {
+    const voice = await installVoiceMocks(page, {
+      capability: { ...defaultCapability, foreground_session: true }
+    });
+    await page.goto('/playwright/voice-session.html');
+    await startVoice(page);
+    const received = 'Where is stock for part eighty-eight located?';
+    await emitTranscript(page, {
+      text: received,
+      itemId: `word-id-${decision}`
+    });
+    await expect(page.getByTestId('voice-pending-transcript')).toContainText(
+      received
+    );
+    expect(voice.turns).toHaveLength(0);
+    await page.screenshot({ path: info.outputPath(`word-id-${decision}.png`) });
+    await page.getByTestId(`voice-${decision}-transcript`).click();
+    if (decision === 'confirm') {
+      await expect.poll(() => voice.turns.length).toBe(1);
+      expect(voice.turns[0].body?.transcript).toBe(received);
+    } else {
+      await expect(page.getByTestId('voice-pending-transcript')).toHaveCount(0);
+      expect(voice.turns).toHaveLength(0);
+    }
+    expect(voice.decisionActions).toHaveLength(0);
+    await page.getByTestId('voice-end').click();
+  });
+
 for (const failure of ['closed-channel', 'other-replica'] as const)
   test(`${failure} stops capture and requires a restart without resending`, async ({
     page

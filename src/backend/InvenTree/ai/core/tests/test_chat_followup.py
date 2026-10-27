@@ -243,14 +243,21 @@ def _structured_model(view, intent, *, broken):
             {"name": "aggregate", "status": "answered", "claim_ids": ["c2"]},
         ]
     facets.append({"name": "limitations", "status": "not_applicable", "claim_ids": []})
-    if broken:
+    if broken == "absence" and intent == "trend_analysis":
+        claims[0]["render_template"] = "analysis.absence_of_records"
+        claims[0]["fact_refs"] = [
+            row["fact_id"]
+            for row in view["facts"]
+            if row["kind"] == "group_row" and row["values"].get("event_count") == "0"
+        ]
+    elif broken is True:
         claims[0]["render_template"] = "analysis.record_line"
     return SynthesisClaimSet.model_validate_json(
         json.dumps({"facets": facets, "claims": claims, "assumptions": [], "unknowns": []})
     )
 
 
-@pytest.mark.parametrize("broken_model", [False, True])
+@pytest.mark.parametrize("broken_model", [False, True, "absence"])
 def test_four_record_scoped_charts_model_recovery_identity_and_authority(monkeypatch, broken_model):
     ensure_island_tables()
     suffix = os.urandom(5).hex()
@@ -346,11 +353,14 @@ def test_four_record_scoped_charts_model_recovery_identity_and_authority(monkeyp
                 assert saved["response_state"] == "complete", saved
                 assert saved["evidence_gate"]["verdict"] == "pass"
                 assert saved["evidence_gate"]["synthesis"] == (
-                    "deterministic_fallback" if broken_model else "model"
+                    "deterministic_fallback"
+                    if broken_model is True or (broken_model == "absence" and case == "trend")
+                    else "model"
                 )
                 dataset = saved["presentation_data"][0]
                 assert saved["evidence_analysis"]["coverage"]["population_count"] == 4
                 if case == "trend":
+                    assert "No matching records exist" not in saved["message"]
                     assert len(dataset["samples"]) == 12
                     assert sum(point["value"] for point in dataset["samples"]) == 4
                     assert (
@@ -372,7 +382,9 @@ def test_four_record_scoped_charts_model_recovery_identity_and_authority(monkeyp
                 assert ChatTurn.objects.get(pk=result.turn_id).canonical_result == saved
                 thread.refresh_from_db()
                 assert thread.analysis_scope_version == 0 and thread.focus_version == 0
-                if directory := os.environ.get("AIMMS_TEST_PRESENTATION_ARTIFACT_DIR"):
+                if (
+                    directory := os.environ.get("AIMMS_TEST_PRESENTATION_ARTIFACT_DIR")
+                ) and broken_model != "absence":
                     path = Path(directory)
                     path.mkdir(parents=True, exist_ok=True)
                     (

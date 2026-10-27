@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -17,6 +18,25 @@ import {
  */
 
 describe('detectCriticalSpans', () => {
+  it('agrees with backend numeric-field vectors while preserving received wording', () => {
+    const cases = JSON.parse(
+      readFileSync(
+        new URL(
+          '../../../../../contrib/testing/voice-number-cases.json',
+          import.meta.url
+        ),
+        'utf8'
+      )
+    );
+    for (const item of cases) {
+      for (const confidence of [null, 1])
+        expect(shouldHoldTranscript(item.text, confidence), item.text).toBe(
+          item.hold
+        );
+      for (const span of detectCriticalSpans(item.text))
+        expect(item.text.slice(span.start, span.end)).toBe(span.text);
+    }
+  });
   it('routes numeric and number-word target corrections without interpreting them', () => {
     for (const text of [
       'No, I meant 3812.',

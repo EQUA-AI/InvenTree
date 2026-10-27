@@ -431,6 +431,36 @@ def check_contradiction(claims: Sequence[AnalysisClaim], store: EvidenceStore) -
             for ref in claim.calculation_output_refs
             if (calculation := store.calculations.get(ref)) is not None
         ]
+        if template.categorical_kind == "absence":
+            # A global absence sentence cannot select empty buckets from an
+            # otherwise positive series. Follow the cited calculation's full
+            # input population and any sibling calculation over the SAME set.
+            handles = set(claim.evidence_refs)
+            calculations = [
+                store.calculations[ref]
+                for ref in claim.calculation_output_refs
+                if ref in store.calculations
+            ]
+            handles.update(
+                calc.evidence_set_handle for calc in calculations if calc.evidence_set_handle
+            )
+            calculations.extend(
+                calc
+                for calc in store.calculations.values()
+                if calc.evidence_set_handle
+                and calc.evidence_set_handle in handles
+                and calc not in calculations
+            )
+            inputs = set(claim.fact_refs)
+            inputs.update(ref for calc in calculations for ref in calc.input_refs)
+            retrievals = {store.facts[ref].retrieval_id for ref in inputs if ref in store.facts}
+            referenced_counts.extend(calc.rendered_values().get("count") for calc in calculations)
+            referenced_counts.extend(
+                fact.rendered_values().get(key)
+                for fact in store.facts.values()
+                if fact.kind == "group_row" and fact.retrieval_id in retrievals
+                for key in ("count", "event_count", "group_count")
+            )
         if template.categorical_kind == "absence" and any(
             count not in (None, "0") for count in referenced_counts
         ):
@@ -440,6 +470,12 @@ def check_contradiction(claims: Sequence[AnalysisClaim], store: EvidenceStore) -
                     CheckOutcome.DOWNGRADE,
                     "absence_contradicts_counts",
                     (claim.claim_id,),
+                )
+            )
+        elif template.categorical_kind == "absence" and "0" not in referenced_counts:
+            results.append(
+                CheckResult(
+                    "C09", CheckOutcome.DOWNGRADE, "absence_without_zero_count", (claim.claim_id,)
                 )
             )
     return results or [CheckResult("C09", CheckOutcome.PASS, "contradiction")]

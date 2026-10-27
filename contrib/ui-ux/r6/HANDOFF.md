@@ -1,5 +1,21 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## fcf7 campaign follow-up — 26 October 2026
+
+Implemented the next approved repair plan: reviewed word-number IDs and
+thresholds; deterministic exact work status/BOM with identity tracing; complete
+stock fields and exact named locations; preserved keyword/filter scope;
+inventory-category continuity; full-series absence validation and native older
+history qualification. [Execution and release ledger](reports/chat-voice-fcf7-fixes-20261026.md)
+records 517 backend checks, 87 preservation checks, 175 frontend units,
+57 chart/history and 34 voice recording-browser passes, with overlaps and
+intermediate corrections distinguished. Native DTO qualification has no skips.
+The supplied fcf7 campaign proves the preceding topology repair/migration was
+applied; its remaining voice failures are not attributed to the old routing
+fault. New candidate deployment, recorded session drain, live restricted roles,
+live older-page rerun and human/physical audio acceptance remain open. Original
+reports and the other worktree are preserved; no push, PR or issue.
+
 ## Verified chat/voice retest repairs — 26 October 2026
 
 Implemented the approved plan from the `2f86eb188` retest: private process
@@ -7,10 +23,10 @@ ownership and explicit voice restart; deterministic native exact-stock and
 quantity/category/catalog answers; compact machine scope; supplied-data labels;
 dashboard-grid overflow containment; raw live evidence links and lane counts.
 Read-only logs confirm same-session HTTP requests crossed replicas while speech
-state was process-local. The current deployment still fails the new topology
-guard. This repair adds `voice.0012`; migrate and drain old sessions, then release
-one worker/replica under the existing Multiple revision strategy. Single plus
-sticky HTTP is the documented alternative for multiple replicas.
+state was process-local. That campaign failed the topology guard. The later
+supplied fcf7 campaign reports applied `voice.0012` and a passing single-worker,
+single-replica topology. Single plus sticky HTTP remains the documented
+alternative for multiple replicas; record drain explicitly for the next release.
 
 [Implementation and verification ledger](reports/chat-voice-retest-fixes-20261026.md)
 records 447 backend and 199 frontend passes, migration-operation/old-writer

@@ -83,9 +83,9 @@ async def test_bom_retains_independent_flags_without_nested_serializer_noise():
     provider = SimpleNamespace(
         get_part=AsyncMock(
             side_effect=[
-                {"name": "Assembly", "assembly": True},
-                {"name": "Screw", "IPN": "SCREW"},
-                {"name": "Bracket", "IPN": "BRACKET"},
+                {"pk": 1, "name": "Assembly", "assembly": True},
+                {"pk": 2, "name": "Screw", "IPN": "SCREW"},
+                {"pk": 3, "name": "Bracket", "IPN": "BRACKET"},
             ]
         ),
         get_bom_items=AsyncMock(return_value=rows),

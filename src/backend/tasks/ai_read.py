@@ -400,6 +400,7 @@ def work_order_overview(work_order) -> dict[str, Any]:
         'work_order_type': work_order.work_order_type,
         'priority': work_order.priority,
         'lifecycle_version': work_order.lifecycle_version,
+        'board_status': work_order.status,
         'machine': {
             'machine_id': work_order.machine_id,
             'name': fence(work_order.machine.name, limit=255),
