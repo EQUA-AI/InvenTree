@@ -1,5 +1,16 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## Selective chat/voice port to IoT - 27 October 2026
+
+The approved 17-commit chat/voice series is copied locally onto published
+`IOT-Merge` baseline `721c72f08`, preserving target governance and build changes.
+The [port qualification ledger](reports/chat-voice-iot-port-20261027.md) records
+the exact commit map, conflict decisions, new PostgreSQL compatibility tests,
+passing focused checks, reproduced target-baseline failures and browser reruns.
+This is a local integration candidate awaiting human review, not a published
+branch or a deployment. Older source and Azure sections below retain their
+historical scope and do not qualify this candidate.
+
 ## Real local rehearsal and Azure follow-through — in progress
 
 Fable's final independent65f review passes97.1/100 with zero mandatory UI
