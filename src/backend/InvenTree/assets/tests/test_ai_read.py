@@ -245,6 +245,161 @@ class MachineSearchTests(MachineAiReadTestCase):
         )
 
 
+class NumberedMachineSearchTests(MachineAiReadTestCase):
+    """Spoken number aliases retain native scope and honest ambiguity."""
+
+    def setUp(self):
+        """Create padded names plus misleading numeric and foreign neighbors."""
+        super().setUp()
+        self.pump = AssetMachine.objects.create(
+            name='Station A / Pump 08', client=self.client_tenant
+        )
+        self.foreign_pump = AssetMachine.objects.create(
+            name='Station B / Pump 08', client=self.other_client
+        )
+        for name in ('Pump 18', 'Pump 80', 'Pump 8A', 'Pump 8.5', 'Pump 8-10'):
+            AssetMachine.objects.create(name=name, client=self.client_tenant)
+
+    def test_padded_machine_number_accepts_natural_speech(self):
+        """Word, digit and explicit number-marker forms find the same record."""
+        for query in (
+            'Pump eight', 'Pump zero eight', 'Pump 8', 'Pump 08', 'Pump 008',
+            'Pump number eight', 'Pump No. 8', 'Pump No. zero eight', 'Pump #8',
+            'Pump8',
+            'Pump08',
+            'Station A / Pump eight',
+        ):
+            with self.subTest(query=query):
+                page = ai_read.machines_page(self.actor, query=query)
+                self.assertEqual(page['rows'], [self.pump])
+                self.assertEqual(page['population_count'], 1)
+
+    def test_multiword_numbers_and_native_markers_match(self):
+        """Natural tens and digit-by-digit pronunciation are bounded aliases."""
+        machine = AssetMachine.objects.create(
+            name='Aeration Blower No. 021', client=self.client_tenant
+        )
+        for query in (
+            'Blower twenty one', 'Blower twenty-one', 'Blower zero two one',
+            'Blower 21', 'Blower No. 0021',
+        ):
+            with self.subTest(query=query):
+                self.assertEqual(
+                    ai_read.machines_page(self.actor, query=query)['rows'], [machine]
+                )
+
+    def test_alias_never_crosses_actor_or_analysis_scope(self):
+        """Name equivalence narrows an authorized population, never grants one."""
+        self.assertEqual(
+            ai_read.machines_page(self.actor, query='Station B / Pump eight')['rows'], []
+        )
+        self.assertEqual(
+            ai_read.machines_page(
+                self.actor, query='Pump eight',
+                scope_machine_ids=[self.machine.pk], enforce=True,
+            )['rows'],
+            [],
+        )
+        _SCOPES.clear()
+        self.assertEqual(ai_read.machines_page(self.actor, query='Pump eight')['rows'], [])
+
+    def test_collision_remains_multiple_candidates_and_truncation_is_honest(self):
+        """Padding is not permission to prefer one of two matching machines."""
+        other = AssetMachine.objects.create(
+            name='Station C / Pump 8', client=self.client_tenant
+        )
+        page = ai_read.machines_page(self.actor, query='Pump eight', limit=1)
+        self.assertEqual(page['population_count'], 2)
+        self.assertEqual(page['returned_count'], 1)
+        self.assertFalse(page['complete_population'])
+        from ai.core.focus.resolution import search_focus_candidates
+
+        candidates = search_focus_candidates(self.actor, 'machine', 'Pump eight')
+        self.assertEqual({row.id for row in candidates.candidates}, {self.pump.pk, other.pk})
+        self.assertFalse(candidates.has_more)
+        truncated = search_focus_candidates(self.actor, 'machine', 'Pump eight', limit=1)
+        self.assertTrue(truncated.has_more)
+
+    def test_focus_selection_uses_the_same_alias_and_canonical_identity(self):
+        """The deterministic spoken focus rail does not need a model to repair names."""
+        from ai.core.focus.commands import parse_focus_command
+        from ai.core.focus.resolution import search_focus_candidates
+
+        for spoken in ('Pump eight', 'Pump zero eight', 'Pump 08'):
+            command = parse_focus_command(f'Focus on machine {spoken}')
+            self.assertIsNone(command.numeric_id)
+            page = search_focus_candidates(
+                self.actor, command.kind, command.query, command.numeric_id
+            )
+            self.assertEqual([row.id for row in page.candidates], [self.pump.pk])
+            self.assertEqual(page.candidates[0].label, self.pump.name)
+
+    def test_literal_word_name_remains_a_candidate(self):
+        """A literal recorded spelling is retained, not replaced by a digit guess."""
+        literal = AssetMachine.objects.create(
+            name='Pump Eight', client=self.client_tenant
+        )
+        page = ai_read.machines_page(self.actor, query='Pump eight')
+        self.assertEqual({row.pk for row in page['rows']}, {self.pump.pk, literal.pk})
+
+    def test_multiple_equipment_numbers_stay_in_their_named_slots(self):
+        """A station number and a pump number cannot be interchanged."""
+        machine = AssetMachine.objects.create(
+            name='Station 018 / Pump 009', client=self.client_tenant
+        )
+        AssetMachine.objects.create(
+            name='Station 009 / Pump 018', client=self.client_tenant
+        )
+        page = ai_read.machines_page(
+            self.actor, query='Station eighteen / Pump nine'
+        )
+        self.assertEqual(page['rows'], [machine])
+        self.assertEqual(page['population_count'], 1)
+
+    def test_numbered_candidates_and_clarification_share_the_same_comparison(self):
+        """An ambiguity discovered natively can be resolved by a full spoken label."""
+        from ai.core.focus.resolution import search_focus_candidates
+        from ai.core.questions.answers import interpret_question_answer
+
+        other = AssetMachine.objects.create(
+            name='Station C / Pump 8', client=self.client_tenant
+        )
+        candidates = search_focus_candidates(self.actor, 'machine', 'Pump eight')
+        options = [
+            {'id': str(row.id), 'label': row.label}
+            for row in candidates.candidates
+        ]
+        self.assertEqual(interpret_question_answer('Pump eight', options).outcome, 'unmatched')
+        answer = interpret_question_answer('Station C Pump eight', options, modality='voice')
+        self.assertEqual(answer.option_id, str(other.pk))
+
+    def test_focus_alias_rechecks_native_read_switch_and_scope(self):
+        """Search hints cannot bypass the native reader or revoked scope."""
+        from ai.core.focus.resolution import search_focus_candidates
+
+        with self.settings(AIMMS_MACHINE_AI_READ_ENABLED=False):
+            self.assertEqual(
+                search_focus_candidates(self.actor, 'machine', 'Pump eight').candidates, ()
+            )
+        _SCOPES.clear()
+        self.assertEqual(
+            search_focus_candidates(self.actor, 'machine', 'Pump eight').candidates, ()
+        )
+
+    def test_alias_does_not_rewrite_serials_models_or_arbitrary_words(self):
+        """Identifiers remain literal even when their suffix resembles equipment speech."""
+        machine = AssetMachine.objects.create(
+            name='Literal reference', serial='SERIAL-008', model='MODEL-008',
+            client=self.client_tenant,
+        )
+        for query in ('SERIAL-eight', 'SERIAL-8', 'MODEL-eight', 'MODEL-8', 'pump ate'):
+            with self.subTest(query=query):
+                self.assertEqual(ai_read.machines_page(self.actor, query=query)['rows'], [])
+        self.assertEqual(
+            ai_read.machines_page(self.actor, query='SERIAL-008')['rows'], [machine]
+        )
+
+
 class ProjectionTests(MachineAiReadTestCase):
     """Every machine-page tab is projected, and nothing withheld leaks."""
 

@@ -2,8 +2,9 @@
 
 import re
 
-from ai.core.decisions.resolver import _DIGITS, WorkOrderIntent, _reference, _under_thousand
+from ai.core.decisions.resolver import WorkOrderIntent, _reference
 from ai.core.decisions.work_order_review import readable
+from common.spoken_numbers import decimal_slot
 
 
 class InventoryAmbiguity(ValueError):
@@ -16,29 +17,13 @@ class InventoryAmbiguity(ValueError):
 
 def _quantity(value):
     """Decode only the quantity slot; no homophones, estimates or unit conversion."""
-    value = value.strip().lower()
-    if re.fullmatch(r"\d+(?:\.\d+)?", value):
-        return value
-    if not re.fullmatch(r"[a-z]+(?:[ -][a-z]+)*", value):
-        return None
-    pieces = value.replace("-", " ").split(" point ")
-    if len(pieces) > 2:
-        return None
-    whole = _under_thousand(pieces[0].split())
-    if whole is None:
-        return None
-    if len(pieces) == 1:
-        return str(whole)
-    fraction = pieces[1].split()
-    if not fraction or len(fraction) > 8 or any(word not in _DIGITS for word in fraction):
-        return None
-    return str(whole) + "." + "".join(str(_DIGITS[word]) for word in fraction)
+    return decimal_slot(value)
 
 
 def parse_stock_intent(content):
     """Recognize only the four governed movements; never infer quantities."""
     text = content.strip().rstrip(".!?")
-    quantity = r"(?P<quantity>[a-z0-9. -]{1,100}?)"
+    quantity = r"(?P<quantity>[a-z0-9,. -]{1,100}?)"
     stock_id = r"(?P<stock_item_id>[a-z0-9, -]{1,120}?)"
     patterns = (
         (
@@ -65,7 +50,9 @@ def parse_stock_intent(content):
         ),
     )
     for action, pattern in patterns:
-        match = re.fullmatch(pattern + r"(?: because (?P<reason>.+))?", text, re.I)
+        match = re.fullmatch(
+            r"(?:please\s+)?" + pattern + r"(?: because (?P<reason>.+))?", text, re.I
+        )
         if match:
             params = {key: value for key, value in match.groupdict().items() if value is not None}
             reason = params.pop("reason", "")

@@ -66,6 +66,10 @@ async def search_machines(query: str | None = None, limit: int = 10) -> dict[str
 
     Use this first when the user names a machine in conversation, to turn that
     spoken name into a machine_id for the other machine tools.
+    Numbered names accept equivalent speech and zero padding, such as
+    "Pump eight" for "Pump 08". Keep the returned name and ID authoritative.
+    If several machines match, ask for the station or location; never choose
+    the first result merely because it was returned first.
 
     Args:
       query: Optional text to match against machine name, serial, model,

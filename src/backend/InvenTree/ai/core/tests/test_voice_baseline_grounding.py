@@ -14,8 +14,8 @@ from ai.core.tools.inventree.read.stock import (
     get_bom,
 )
 from assets import ai_read as machine_reads
-from assets.ai_read import _numbered_name_variants
 from assets.models import AssetMachine
+from common.spoken_numbers import equipment_number_reference
 from django.db.models import Q
 from part.models import Part, PartCategory
 from stock.models import StockItem, StockLocation
@@ -250,10 +250,12 @@ def test_work_order_numeric_lookup_stays_inside_the_authorized_population():
         assert ai_read.work_orders_page(user, query=str(hidden.pk))["rows"] == []
 
 
-def test_numbered_machine_names_do_not_strip_leading_zeros_or_normalize_serials():
-    assert "Pump No. 2" in _numbered_name_variants("Pump number two")
-    assert "Pump No. 002" in _numbered_name_variants("Pump number 002")
-    assert _numbered_name_variants("SERIAL-002") == ()
+def test_numbered_machine_names_preserve_literal_digits_and_do_not_parse_serials():
+    assert equipment_number_reference("Pump number two") == (5, 15, "2")
+    assert equipment_number_reference("Pump number 002") == (5, 15, "002")
+    assert equipment_number_reference("SERIAL-002") is None
+    assert equipment_number_reference("No. eight") is None
+    assert equipment_number_reference("8") is None
 
 
 def test_numbered_machine_alias_resolves_only_inside_the_authorized_population():
@@ -269,6 +271,30 @@ def test_numbered_machine_alias_resolves_only_inside_the_authorized_population()
             visible
         ]
         assert machine_reads.machines_page(user, query=f"Pump number three {suffix}")["rows"] == []
+
+
+@pytest.mark.parametrize(
+    "spoken_name",
+    ["Pump eight", "Pump zero eight", "Pump 8", "Pump 08", "Pump number eight", "Pump No. 8"],
+)
+def test_spoken_machine_number_finds_padded_name_not_similar_numbers(spoken_name):
+    visible = AssetMachine.objects.create(name="Station / Pump 08")
+    decoys = [
+        AssetMachine.objects.create(name=name)
+        for name in ("Station / Pump 18", "Station / Pump 80", "Station / Pump 8A")
+    ]
+    with (
+        patch.object(machine_reads, "machine_ai_read_enabled", return_value=True),
+        patch(
+            "tasks.scope.machine_scope_filter",
+            return_value=Q(pk__in=[visible.pk, *(row.pk for row in decoys)]),
+        ),
+    ):
+        page = machine_reads.machines_page(
+            SimpleNamespace(is_authenticated=True), query=spoken_name
+        )
+    assert page["rows"] == [visible]
+    assert page["population_count"] == 1
 
 
 @pytest.mark.asyncio
