@@ -21,6 +21,7 @@ import {
   VOICE_CONFIRM_RE,
   VOICE_DISCARD_RE,
   VOICE_STOP_RE,
+  isBareDecisionUtterance,
   isVoiceTargetCorrection,
   normalizeDecisionUtterance,
   shouldHoldTranscript
@@ -43,6 +44,8 @@ import { VoiceTiming } from './voiceTiming';
 
 const TERMINAL = ['ended', 'expired', 'failed'];
 const FILLER = /^(?:uh|um|hmm+|mm+|mhm|huh|erm|ah|oh)[.!?,\s]*$/i;
+const TRANSCRIPT_CORRECTION =
+  /^(?:correction[:,]?|replace (?:the )?transcript[:,]?)\s+\S/i;
 export class VoiceSessionController {
   private host = '';
   private threadId: string | undefined;
@@ -745,6 +748,7 @@ export class VoiceSessionController {
     if (
       !this.snapshot.session ||
       this.snapshot.hidden ||
+      transcript.reviewIssue ||
       this.seen.has(transcript.itemId)
     )
       return;
@@ -925,6 +929,7 @@ export class VoiceSessionController {
     }
   }
   private async requestHoldPrompt(held: VoiceFinalTranscript) {
+    if (held.reviewIssue) return;
     const generation = this.generation;
     this.stopLocal();
     const epoch = this.outputEpoch;
@@ -974,7 +979,7 @@ export class VoiceSessionController {
   }
   confirmPending = async () => {
     const held = this.snapshot.pendingConfirm;
-    if (!held || this.snapshot.hidden) return;
+    if (!held || held.reviewIssue || this.snapshot.hidden) return;
     if (held === this.warmupHold) {
       // A warm-up confirm is an approved action only once connected, and
       // only while every fence captured when the words were held still
@@ -1158,7 +1163,9 @@ export class VoiceSessionController {
       language: this.snapshot.session.locale,
       decisionContext: decisionContext(this.decisions.getState().decision)
     };
-    if (!value.itemId) return;
+    // A repeated provider final for a previously admitted item must not
+    // reopen transcript review or become a second request.
+    if (!value.itemId || this.seen.has(value.itemId)) return;
     // VOICE-H08: a warm-up final is preserved for visible explicit
     // review/confirmation — never auto-executed or replayed on connection,
     // with no prompt, provider dispatch or business submit while
@@ -1177,6 +1184,11 @@ export class VoiceSessionController {
         this.discardPending();
         return;
       }
+      if (held.itemId === value.itemId && held.text === value.text) return;
+      if (!TRANSCRIPT_CORRECTION.test(text)) {
+        this.holdConflict(held, value);
+        return;
+      }
       const revision = {
         ...value,
         revision: (held.revision ?? 1) + 1,
@@ -1186,13 +1198,18 @@ export class VoiceSessionController {
       return;
     }
     const floor = this.snapshot.capability?.confidence_floor ?? 0.85;
+    // Optional review applies to new requests. Existing decision replies and
+    // explicit target corrections keep their server-owned guarded path;
+    // confirming a held transcript never recursively holds the same words.
     if (
       !(
         this.decisions.getState().decision?.state === 'presented' &&
         (value.confidence === null || value.confidence >= floor) &&
         isVoiceTargetCorrection(text)
       ) &&
-      shouldHoldTranscript(text, value.confidence, floor)
+      (shouldHoldTranscript(text, value.confidence, floor) ||
+        (this.preferences().voiceReviewEveryRequest === true &&
+          !isBareDecisionUtterance(text)))
     ) {
       this.hold({ ...value, revision: 1 });
       return;
@@ -1212,6 +1229,29 @@ export class VoiceSessionController {
     this.listeners.forEach((listener) => listener.onFinalTranscript?.(value));
     void this.requestHoldPrompt(value);
   }
+  private holdConflict(
+    held: VoiceFinalTranscript,
+    received: VoiceFinalTranscript
+  ) {
+    const blocked: VoiceFinalTranscript = {
+      ...held,
+      reviewIssue: 'multiple_segments'
+    };
+    if (this.warmupHold === held) this.warmupHold = blocked;
+    this.update({
+      pendingConfirm: blocked,
+      holdPrompt: null,
+      revisions: [
+        ...this.snapshot.revisions,
+        { ...received, reviewIssue: 'multiple_segments' as const }
+      ].slice(-20)
+    });
+    this.listeners.forEach((listener) =>
+      listener.onFinalTranscript?.(received)
+    );
+    if (!held.reviewIssue && this.snapshot.transport === 'connected')
+      void this.cancelOutput(false);
+  }
   /**
    * VOICE-H08: preserve a completed warm-up final for visible explicit
    * review/confirmation while the transport is not connected. No review
@@ -1222,6 +1262,12 @@ export class VoiceSessionController {
     if (VOICE_CONFIRM_RE.test(command) || VOICE_DISCARD_RE.test(command))
       return;
     const held = this.snapshot.pendingConfirm;
+    if (held && held.itemId === value.itemId && held.text === value.text)
+      return;
+    if (held && !TRANSCRIPT_CORRECTION.test(value.text)) {
+      this.holdConflict(held, value);
+      return;
+    }
     const revision = held
       ? {
           ...value,
@@ -1424,8 +1470,18 @@ export class VoiceSessionController {
         stream,
         cap.mic_silence_rms,
         cap.mic_silence_window_s * 1000,
-        () => this.snapshot.mic === 'listening',
-        () => this.update({ notice: 'mic_silent' })
+        () =>
+          this.snapshot.mic === 'listening' &&
+          !this.submitting &&
+          !['pending', 'playing'].includes(this.snapshot.playback),
+        () => this.update({ notice: 'mic_silent' }),
+        () => {
+          // An input warning must not survive a recovered microphone or
+          // replace a newer connection/playback notice.
+          if (this.snapshot.notice === 'mic_silent') {
+            this.update({ notice: null });
+          }
+        }
       );
       this.devices = await navigator.mediaDevices
         .enumerateDevices()

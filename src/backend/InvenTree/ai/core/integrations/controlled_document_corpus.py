@@ -251,6 +251,20 @@ def search_corpus(
     from ai.core.analysis.scope_context import current_turn_scope
 
     scope_context = current_turn_scope()
+    from ai.core.integrations.local_controlled_documents import local_retrieval_enabled
+
+    if local_retrieval_enabled(get_settings()):
+        return _search_local_corpus(
+            user=user,
+            query=query,
+            machine=machine,
+            machine_resolver=machine_resolver,
+            document_class=document_class,
+            top_k=top_k,
+            asset_ids=asset_ids,
+            fleet_wide=fleet_wide,
+            scope_context=scope_context,
+        )
     scope_asset_ids: tuple[str, ...] | None = None
     if asset_ids is not None or fleet_wide:
         # S8a orchestrator call: the caller already froze the asset set (or
@@ -481,6 +495,121 @@ def search_corpus(
     }
 
 
+def _search_local_corpus(
+    *,
+    user,
+    query,
+    machine,
+    machine_resolver,
+    document_class,
+    top_k,
+    asset_ids,
+    fleet_wide,
+    scope_context,
+) -> dict[str, Any]:
+    """Use the same exact-machine, approved local reader as diagnostics."""
+    from ai.core.contracts.retrieval import NO_RELEVANT_PASSAGE, build_envelope, record_envelope
+    from ai.core.integrations.local_controlled_documents import search_local_manuals
+    from ai.core.tools.diagnostics import fence_untrusted_content
+    from assets.models import AssetMachine
+
+    machine_ids: list[int] = []
+    machine_filter = "scope_unresolved"
+    if not fleet_wide:
+        if asset_ids is not None:
+            machine_ids = list(
+                AssetMachine.objects.filter(serial__in=asset_ids, active=True).values_list(
+                    "pk", flat=True
+                )[:20]
+            )
+        elif scope_context is not None and scope_context.explicit and scope_context.enforce:
+            machine_ids = sorted(scope_context.machine_ids)[:20]
+        elif machine:
+            if machine_resolver is None:
+                from assets.ai_read import machines_in_scope
+
+                candidates = [
+                    {"machine_id": row.pk, "name": row.name, "serial": row.serial or ""}
+                    for row in machines_in_scope(user, query=str(machine)[:100], limit=3)
+                ]
+            else:
+                candidates = machine_resolver(user, str(machine)[:100])
+            if len(candidates) > 1:
+                _propose_machine_question(candidates)
+                return {
+                    "chunks": [],
+                    "returned_count": 0,
+                    "machine_filter": "ambiguous",
+                    "machine_candidates": candidates,
+                }
+            if len(candidates) == 1 and type(candidates[0].get("machine_id")) is int:
+                machine_ids = [candidates[0]["machine_id"]]
+        if scope_context is not None and scope_context.explicit and scope_context.enforce:
+            machine_ids = [pk for pk in machine_ids if pk in scope_context.machine_ids]
+    if machine_ids:
+        machine_filter = "scope_applied"
+    hits = []
+    for machine_id in machine_ids:
+        hits.extend(
+            search_local_manuals(
+                user=user,
+                machine_id=machine_id,
+                query=query,
+                limit=top_k,
+                document_class=document_class,
+            )
+        )
+    hits.sort(key=lambda hit: (-hit["score"], hit["document_pk"], hit["page"]))
+    chunks = [
+        {
+            "excerpt": fence_untrusted_content(hit["excerpt"]),
+            "score": hit["score"],
+            "citation": {
+                "document": hit["title"],
+                "document_id": hit["document_id"],
+                "revision": hit["revision"],
+                "source_file_name": hit["source_filename"],
+                "source_sha256": hit["source_sha256"],
+                "section_id": f"page {hit['page']}",
+                "section_path": f"page {hit['page']}",
+                "chunk_id": f"{hit['selection_id']}:page:{hit['page']}",
+                "as_of": hit["as_of"].isoformat(),
+                "asset_id": hit["asset_id"],
+                "excerpt_hash": hashlib.sha256(hit["excerpt"].encode("utf-8")).hexdigest(),
+            },
+        }
+        for hit in hits[:top_k]
+    ]
+    envelope = build_envelope(
+        source_class="controlled_document",
+        population_type="document_chunks",
+        operation="lexical_search",
+        filters={"machine_filter": machine_filter},
+        coverage={
+            "population_count": len(chunks),
+            "returned_count": len(chunks),
+            "complete_population": False,
+            "display_truncated": False,
+            "cursor": None,
+        },
+        source_state={
+            "registered": bool(chunks),
+            "indexed": bool(chunks),
+            "searchable_now": bool(chunks),
+            "current": bool(chunks),
+            "applicable": bool(chunks),
+        },
+        warnings=() if chunks else (NO_RELEVANT_PASSAGE,),
+    )
+    record_envelope("search_manuals", envelope)
+    return {
+        "chunks": chunks,
+        "returned_count": len(chunks),
+        "machine_filter": machine_filter,
+        "retrieval": envelope,
+    }
+
+
 def search_pinned_document(
     *,
     user,
@@ -498,11 +627,18 @@ def search_pinned_document(
     back into production, with excerpts fenced exactly like the corpus
     path (the hash stays over the raw truncated text).
     """
+    from ai.core.config import get_settings
     from ai.core.integrations.controlled_document_search import (
         search_selected_document,
     )
+    from ai.core.integrations.local_controlled_documents import local_retrieval_enabled
     from ai.core.tools.diagnostics import fence_untrusted_content
 
+    if local_retrieval_enabled(get_settings()):
+        raise ControlledDocumentSearchError(
+            "Selected-document search needs an authorized machine scope",
+            code="CONTROLLED_DOCUMENT_UNAVAILABLE",
+        )
     kwargs: dict[str, Any] = {}
     if search_client is not None:
         kwargs["search_client"] = search_client

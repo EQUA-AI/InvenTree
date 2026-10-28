@@ -393,7 +393,8 @@ export function CloseoutPanel({
         apiUrl(ApiEndpoints.work_order_closeout_capture_extract, woId, {
           capId: capture.id
         }),
-        {}
+        {},
+        { timeout: 80_000 }
       );
       notifications.show({
         message: t`Extraction proposal ready for review`,

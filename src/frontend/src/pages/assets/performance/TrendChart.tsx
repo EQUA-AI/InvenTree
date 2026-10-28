@@ -31,7 +31,8 @@ import { MetaText } from '../health/common';
 import { useDisplayClock } from '../health/mimic/observedTime';
 import {
   PerformanceTestNotice,
-  usePerformanceTestAlarms
+  usePerformanceTestAlarms,
+  usePerformanceTestHistory
 } from './PerformanceTestAlarms';
 import { ThresholdKey } from './ThresholdKey';
 import { presentationTicks } from './axisPresentation';
@@ -150,6 +151,7 @@ export function ChartTitleProvider({
 export function TrendChart(props: Readonly<TrendChartProps>) {
   const bindingIds = props.series.flatMap((line) => line.bindingIds ?? []);
   const tests = usePerformanceTestAlarms(bindingIds);
+  const history = usePerformanceTestHistory(bindingIds);
   const failures = useHistoryReadFailures();
   const failed = props.series.filter(
     (line) =>
@@ -184,7 +186,7 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
     () =>
       [
         ...props.series,
-        ...tests.flatMap((alarm) => {
+        ...history.flatMap((alarm) => {
           const measured = props.series.find(
             (line) =>
               line.bindingIds?.length === 1 &&
@@ -194,13 +196,22 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
           if (
             !measured ||
             alarm.unitMismatch ||
-            Date.parse(alarm.triggered_at) > props.windowEnd
+            Date.parse(alarm.triggered_at) > props.windowEnd ||
+            (alarm.status === 'resolved' &&
+              Date.parse(alarm.resolved_at ?? '') < props.windowStart)
           )
             return [];
-          const coincident = tests.filter(
+          const visibleEnd = (entry: (typeof history)[number]) =>
+            entry.status === 'resolved'
+              ? Math.min(Date.parse(entry.resolved_at ?? ''), props.windowEnd)
+              : props.windowEnd;
+          const coincident = history.filter(
             (entry) =>
               !entry.unitMismatch &&
               entry.test_value === alarm.test_value &&
+              Date.parse(entry.triggered_at) <= props.windowEnd &&
+              visibleEnd(entry) >= props.windowStart &&
+              Math.abs(visibleEnd(entry) - visibleEnd(alarm)) < 1000 &&
               props.series.some(
                 (line) =>
                   line.bindingIds?.length === 1 &&
@@ -215,7 +226,10 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
               key: `test-${alarm.anomaly_id}-${measured.key}`,
               measuredKey: measured.key,
               bindingIds: [],
-              label: t`TEST ${measured.label}: ${formatValue(alarm.test_value, 1, alarm.unit)}`,
+              label:
+                alarm.status === 'resolved'
+                  ? t`TEST ${measured.label}: ${formatValue(alarm.test_value, 1, alarm.unit)} (resolved)`
+                  : t`TEST ${measured.label}: ${formatValue(alarm.test_value, 1, alarm.unit)}`,
               color: scheme === 'dark' ? 'red.3' : 'red.9',
               synthetic: true,
               stepped: true,
@@ -232,7 +246,7 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
         ...s,
         color: legibleColor(s.color, theme, scheme)
       })),
-    [props.series, theme, scheme, tests, props.windowEnd]
+    [props.series, theme, scheme, history, props.windowStart, props.windowEnd]
   );
   const visible = useMemo(
     () => visibleExerciseSeries(series, hidden),
@@ -256,7 +270,7 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
         visible
           .filter((line) => line.synthetic)
           .flatMap((line) => {
-            const alarm = tests.find((entry) =>
+            const alarm = history.find((entry) =>
               line.key.startsWith(`test-${entry.anomaly_id}-`)
             );
             return alarm
@@ -264,7 +278,10 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
                   {
                     key: line.key,
                     value: alarm.test_value,
-                    since: Date.parse(alarm.triggered_at)
+                    since: Date.parse(alarm.triggered_at),
+                    ...(alarm.status === 'resolved'
+                      ? { until: Date.parse(alarm.resolved_at ?? '') }
+                      : {})
                   }
                 ]
               : [];
@@ -272,7 +289,14 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
         props.windowStart,
         props.windowEnd
       ),
-    [props.rows, visible, tests, props.windowStart, props.windowEnd]
+    [props.rows, visible, history, props.windowStart, props.windowEnd]
+  );
+  const resolvedInWindow = history.some(
+    (alarm) =>
+      alarm.status === 'resolved' &&
+      !alarm.unitMismatch &&
+      Date.parse(alarm.triggered_at) <= props.windowEnd &&
+      Date.parse(alarm.resolved_at ?? '') >= props.windowStart
   );
 
   const toggle = (key: string) =>
@@ -282,7 +306,7 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
   // the maximised view gets them too - the same node, and the same state,
   // because `hidden` lives here.
   const chips =
-    (props.toggleable || tests.length > 0) && series.length > 1 ? (
+    (props.toggleable || history.length > 0) && series.length > 1 ? (
       <Group gap={4} wrap='wrap'>
         {series.map((line) => {
           const checked = visible.some((entry) => entry.key === line.key);
@@ -359,6 +383,9 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
           )
         )}
       />
+      {resolvedInWindow && (
+        <MetaText size='xs'>{t`Resolved TEST trace is a synthetic exercise, not measured telemetry.`}</MetaText>
+      )}
       {failureText &&
         props.rows.some((row) =>
           visible.some((line) => typeof row[line.key] === 'number')
@@ -367,7 +394,7 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
         {...chartProps}
         rows={rows}
         measuredRows={props.rows}
-        toggleable={props.toggleable || tests.length > 0}
+        toggleable={props.toggleable || history.length > 0}
         series={visible}
         referenceLines={referenceLines}
       />
@@ -395,6 +422,9 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
                 )
               )}
             />
+            {resolvedInWindow && (
+              <MetaText size='xs'>{t`Resolved TEST trace is a synthetic exercise, not measured telemetry.`}</MetaText>
+            )}
             {failureText &&
               props.rows.some((row) =>
                 visible.some((line) => typeof row[line.key] === 'number')
@@ -404,7 +434,7 @@ export function TrendChart(props: Readonly<TrendChartProps>) {
             {...chartProps}
             rows={rows}
             measuredRows={props.rows}
-            toggleable={props.toggleable || tests.length > 0}
+            toggleable={props.toggleable || history.length > 0}
             series={visible}
             referenceLines={referenceLines}
             height={Math.max(240, window.innerHeight - controlsHeight - 140)}

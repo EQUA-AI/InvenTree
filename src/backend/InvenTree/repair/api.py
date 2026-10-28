@@ -11,6 +11,8 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.urls import include, path
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -18,11 +20,19 @@ from tasks.models import WorkOrderCommand
 from tasks.scope import ScopeError, scoped_machines, scoped_work_orders
 from tasks.services import scheduling
 from tasks.services.work_orders import (
+    CommandConflict,
+    IdempotencyConflict,
+    IllegalTransition,
     ReadinessBlocked,
+    StaleVersion,
     WorkOrderCommandError,
     WorkOrderScopeError,
 )
 from tasks.workorder_mutations import ObjectInputMixin, object_data, parent_id
+from tasks.workorder_serializers import (
+    TransitionCommandSerializer,
+    WorkOrderReadinessSerializer,
+)
 
 import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER
@@ -403,6 +413,71 @@ class RepairPacketAdvance(RepairPacketAction):
         return Response(data, status=200 if ok else 400)
 
 
+class RepairPacketWorkTransition(RepairPacketAction):
+    """Preview or perform intermediate Work transitions through its packet."""
+
+    @extend_schema(
+        parameters=[OpenApiParameter('action', enum=['plan', 'mark_ready', 'verify'])],
+        responses=WorkOrderReadinessSerializer,
+        description='Canonical readiness with packet_id, packet_status, '
+        'work_order_id and lifecycle_status. Action defaults from the Work state.',
+    )
+    def get(self, request, pk):
+        """Return canonical readiness for plan, mark_ready or verify."""
+        packet = _get_packet(request.user, pk)
+        try:
+            readiness = services.repair_work_transition_readiness(
+                packet, actor=request.user, action=request.query_params.get('action')
+            )
+        except (ScopeError, WorkOrderScopeError):
+            raise Http404 from None
+        except services.RepairWorkTransitionError as exc:
+            return Response({'code': exc.code, 'detail': str(exc)}, status=400)
+        return Response({**readiness, **WorkOrderReadinessSerializer(readiness).data})
+
+    @extend_schema(
+        request=TransitionCommandSerializer,
+        responses=OpenApiTypes.OBJECT,
+        description='Return the native Work CommandResult. Only planned, ready '
+        'and verifying targets are supported; start and closeout use their own routes.',
+    )
+    def post(self, request, pk):
+        """Apply only the supported targets using native command validation."""
+        packet = _get_packet(request.user, pk)
+        serializer = TransitionCommandSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            result = services.transition_repair_packet_work(
+                packet, actor=request.user, **serializer.validated_data
+            )
+        except (ScopeError, WorkOrderScopeError):
+            raise Http404 from None
+        except ReadinessBlocked as exc:
+            readiness = WorkOrderReadinessSerializer(exc.readiness).data
+            return Response(
+                {
+                    'code': exc.code,
+                    'detail': str(exc),
+                    'blockers': readiness['blockers'],
+                    'readiness': readiness,
+                },
+                status=409,
+            )
+        except (
+            StaleVersion,
+            IllegalTransition,
+            CommandConflict,
+            IdempotencyConflict,
+        ) as exc:
+            return Response({'code': exc.code, 'detail': str(exc)}, status=409)
+        except (services.RepairWorkTransitionError, WorkOrderCommandError) as exc:
+            return Response(
+                {'code': getattr(exc, 'code', 'COMMAND_INVALID'), 'detail': str(exc)},
+                status=400,
+            )
+        return Response(asdict(result))
+
+
 class RepairPacketClose(APIView):
     """Finalize a packet-owned repair through the shared closeout service.
 
@@ -716,6 +791,7 @@ class RepairPacketStart(APIView):
         payload['ok'] = True
         payload['work_order_id'] = result.work_order_id
         payload['lifecycle_status'] = result.lifecycle_status
+        payload['result'] = asdict(result)
         return Response(payload)
 
 
@@ -981,6 +1057,11 @@ repair_api_urls = [
                 '<int:pk>/advance/',
                 RepairPacketAdvance.as_view(),
                 name='repair-packet-advance',
+            ),
+            path(
+                '<int:pk>/work-transition/',
+                RepairPacketWorkTransition.as_view(),
+                name='repair-packet-work-transition',
             ),
             path(
                 '<int:pk>/close/',

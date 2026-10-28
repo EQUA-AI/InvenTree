@@ -114,6 +114,17 @@ export function repairPacket(ownsWork = true) {
 
 export async function mockWork(page: Page, overview = workOrder()) {
   const reads: URL[] = [];
+  await page.route('**/api/tasks/work-orders/*/repair-scope-draft/', (route) =>
+    route.fulfill({
+      json: {
+        work_order_id: overview.id,
+        machine_id: overview.machine,
+        repair_packet_id: overview.repair_packet?.id ?? null,
+        lifecycle_version: overview.lifecycle_version,
+        draft: null
+      }
+    })
+  );
   await page.route('**/api/kanban/work-orders/', (route) =>
     route.fulfill({ json: [workOrder(), workOrder(86)] })
   );

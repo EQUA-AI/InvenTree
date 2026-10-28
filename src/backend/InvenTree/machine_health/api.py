@@ -54,6 +54,12 @@ from .services.display_time import (
     recorded_telemetry_as_live,
     to_display,
 )
+from .services.historical import (
+    historical_metadata,
+    historical_range,
+    historical_signal_rows,
+    resolve_historical_source,
+)
 from .services.ingestion import IngestionError, coerce_datetime, ingest_readings
 from .services.preliminary import analyze_anomaly
 from .services.series import MAX_SERIES_TARGETS, SeriesError, read_series
@@ -109,10 +115,37 @@ class MachineHealthSignals(_MachineHealthView):
     def get(self, request, pk):
         """Return every active binding for the machine."""
         machine = _machine(request, pk)
+        start = end = None
+        historical_source = resolve_historical_source(
+            machine, request.query_params.get('history_source')
+        )
+        if request.query_params.get('from') or request.query_params.get('to'):
+            try:
+                start = coerce_datetime(request.query_params.get('from'))
+                end = coerce_datetime(request.query_params.get('to'))
+            except IngestionError as exc:
+                return Response(
+                    {'code': 'INVALID_WINDOW', 'detail': str(exc)}, status=400
+                )
+            if end <= start or (end - start).total_seconds() > LIVE_WINDOW_SECONDS:
+                return Response(
+                    {
+                        'code': 'INVALID_WINDOW',
+                        'detail': 'The history window must be positive and at most 30 days.',
+                    },
+                    status=400,
+                )
+        if historical_source is not None:
+            rows, metadata = historical_signal_rows(machine, historical_source)
+            return Response({
+                **metadata,
+                'count': len(rows),
+                'results': MachineSignalSerializer(rows, many=True).data,
+            })
         rows = signal_rows(machine)
         from machine_health.services.test_alarms import signal_test_alarms
 
-        tests = signal_test_alarms(machine)
+        tests = signal_test_alarms(machine, start=start, end=end)
         for row in rows:
             row['test_alarms'] = tests.get(row['binding_id'], [])
         return Response({
@@ -298,6 +331,9 @@ class MachineHealthSeries(_MachineHealthView):
     def get(self, request, pk):
         """Read the requested series, or say why the request is invalid."""
         machine = _machine(request, pk)
+        historical_source = resolve_historical_source(
+            machine, request.query_params.get('history_source')
+        )
 
         raw_ids = request.query_params.get('bindings', '')
         raw_keys = request.query_params.get('keys', '')
@@ -347,6 +383,11 @@ class MachineHealthSeries(_MachineHealthView):
                 start=start,
                 end=end,
                 points=request.query_params.get('points'),
+                **(
+                    {'historical_source': historical_source}
+                    if historical_source is not None
+                    else {}
+                ),
             )
         except SeriesError as exc:
             return Response({'code': exc.code, 'detail': str(exc)}, status=400)
@@ -371,6 +412,20 @@ class MachineHealthDataRange(_MachineHealthView):
     def get(self, request, pk):
         """Return the station's recorded data range, or say there is none."""
         machine = _machine(request, pk)
+        historical_source = resolve_historical_source(
+            machine, request.query_params.get('history_source')
+        )
+        if historical_source is not None:
+            span = historical_range(machine, historical_source)
+            return Response({
+                **historical_metadata(machine, historical_source),
+                'available': span is not None,
+                **(
+                    {'from': span[0].isoformat(), 'to': span[1].isoformat()}
+                    if span
+                    else {'reason': 'NOT_DISCOVERED'}
+                ),
+            })
         station = machine if machine.asset_type == 'pumphouse' else machine.parent
         status = live_status(station) if station is not None else None
         source_id = (status or {}).get('source', {}) or {}

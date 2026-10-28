@@ -103,6 +103,7 @@ from .procedure_execution_api import (
     WorkOrderDeviationList,
 )
 from .procurement_api import ProcurementAcknowledgment, ProcurementSourceSelection
+from .repair_scope_draft_api import RepairScopeDraft
 from .report_api import WorkAcceptedReport, WorkCaptureMedia, WorkCaptureMediaUpload
 from .scope import (
     ScopeError,
@@ -1714,6 +1715,11 @@ tasks_api_urls = [
             path('', WorkOrderList.as_view(), name='work-order-list'),
             path('<int:pk>/time/', WorkTime.as_view(), name='work-order-time'),
             path('<int:pk>/', WorkOrderDetail.as_view(), name='work-order-detail'),
+            path(
+                '<int:pk>/repair-scope-draft/',
+                RepairScopeDraft.as_view(),
+                name='work-order-repair-scope-draft',
+            ),
             path(
                 '<int:pk>/readiness/',
                 WorkOrderReadiness.as_view(),

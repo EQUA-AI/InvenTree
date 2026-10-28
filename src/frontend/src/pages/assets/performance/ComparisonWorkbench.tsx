@@ -49,7 +49,8 @@ import {
   type WindowSpec,
   resolveWindow,
   useMachineSeries,
-  useMachineSignals
+  useMachineSignals,
+  usePerformanceHistorySource
 } from './usePerformanceData';
 
 export function ComparisonWorkbench({
@@ -610,10 +611,15 @@ function MatchedMachine({
   window: WindowSpec;
   onShift: (shift: number | undefined) => void;
 }>) {
+  const historySource = usePerformanceHistorySource();
   const signals = useMachineSignals(machineId, false);
   const mapped = useMemo(
-    () => resolveParameters(signals.isError ? [] : (signals.data ?? [])),
-    [signals.data, signals.isError]
+    () =>
+      resolveParameters(
+        signals.isError ? [] : (signals.data ?? []),
+        historySource !== undefined
+      ),
+    [signals.data, signals.isError, historySource]
   );
   // A known role and exact dictionary scale qualify a technical comparison;
   // uncatalogued tags have no cross-machine meaning and are never guessed.

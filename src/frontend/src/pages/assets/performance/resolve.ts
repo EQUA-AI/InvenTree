@@ -104,12 +104,13 @@ export function resolveSignal(signal: MachineSignal): ResolvedParameter {
  * sensors numbered, whatever order the API listed them in.
  */
 export function resolveParameters(
-  signals: readonly MachineSignal[]
+  signals: readonly MachineSignal[],
+  includeRecordedMappings = false
 ): ResolvedParameter[] {
   // Retired critical bindings remain in Health coverage as missing evidence;
   // they are not current channels for Performance or saved display views.
   const resolved = signals
-    .filter((signal) => signal.active !== false)
+    .filter((signal) => includeRecordedMappings || signal.active !== false)
     .map(resolveSignal);
   const categoryRank = new Map<ParameterCategory, number>();
   for (const [rank, category] of [

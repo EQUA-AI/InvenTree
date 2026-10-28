@@ -15,6 +15,7 @@ either dead-end or navigate somewhere wrong, and both are worse than no chip.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 MAX_ENTITIES = 12
@@ -88,6 +89,34 @@ def resolve_observed_record_roots(
         if len(roots) >= MAX_ENTITIES:
             break
     return tuple(roots)
+
+
+def observed_work_order_roots(user: Any, observed_entities: Any) -> list[Any]:
+    """Reauthorize observed work identities that diagnostic roots do not list."""
+    if user is None:
+        return []
+    from tasks.ai_read import authorized_work_order
+
+    identities = sorted(
+        {
+            entity_id
+            for model, entity_id in observed_entities
+            if model == "workorder" and type(entity_id) is int and entity_id > 0
+        },
+        reverse=True,
+    )[:MAX_ENTITIES]
+    roots = []
+    for entity_id in identities:
+        work = authorized_work_order(user, entity_id)
+        if work is not None and work.pk == entity_id:
+            roots.append(
+                SimpleNamespace(
+                    entity_type="work_order",
+                    entity_id=work.pk,
+                    display_name=work.reference or f"Work order {work.pk}",
+                )
+            )
+    return roots
 
 
 def build_entity_manifest(

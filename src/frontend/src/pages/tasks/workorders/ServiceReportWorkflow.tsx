@@ -374,7 +374,15 @@ export function ServiceReportWorkflow({
                       ? t`SAP writeback`
                       : t`Recovery notification`}
                     : {effect.status}
-                    {effect.result_reference && ` · ${effect.result_reference}`}
+                    {effect.result_reference &&
+                      ` · ${
+                        effect.effect_type === 'test_recovery' &&
+                        /^notification requested:\d+$/.test(
+                          effect.result_reference
+                        )
+                          ? t`Notification requested for ${Number(effect.result_reference.split(':')[1])} recipient(s)`
+                          : effect.result_reference
+                      }`}
                     {effect.last_error && ` · ${effect.last_error}`}
                   </Text>
                 ))}

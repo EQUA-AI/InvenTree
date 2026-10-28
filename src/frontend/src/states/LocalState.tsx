@@ -9,6 +9,7 @@ import { api } from '../App';
 import type { VoicePreferences } from '../components/ai/voice/types';
 import {
   DEFAULT_VOICE_PROGRESS_MODE,
+  DEFAULT_VOICE_REVIEW_EVERY_REQUEST,
   mergeVoicePreferences
 } from '../components/ai/voice/types';
 import { useUserState } from './UserState';
@@ -60,6 +61,7 @@ export const useLocalState = create<LocalStateProps>()(
       voiceListeningMode: 'continuous',
       voiceEarcons: true,
       voiceSrAnnounceTranscripts: false,
+      voiceReviewEveryRequest: DEFAULT_VOICE_REVIEW_EVERY_REQUEST,
       voiceConsentVersion: '',
       voiceLocale: 'en-US',
       voiceOutputVoice: 'en-US-AvaNeural',

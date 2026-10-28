@@ -864,6 +864,12 @@ def advance_packet(
                 return False, 'Spend / procurement approval pending'
 
         if to == PacketStatus.EXECUTING:
+            if locked.work_order_id is not None:
+                return (
+                    False,
+                    'This packet owns a work order; use Start repair so the '
+                    'packet and work order start in the same transaction.',
+                )
             ok, msg = locked.can_advance()
             if not ok:
                 return False, msg
@@ -1109,6 +1115,126 @@ def _scoped_locked_packet_work(actor, work_order_id):
         raise WorkOrderScopeError('Work unavailable') from None
     _require_scope(actor, work_order)
     return work_order
+
+
+class RepairWorkTransitionError(Exception):
+    """The requested intermediate packet-owned Work transition is unavailable."""
+
+    code = 'REPAIR_WORK_TRANSITION_INVALID'
+
+
+_PACKET_WORK_TRANSITIONS = {
+    WorkOrderLifecycle.PLANNED: (
+        'plan',
+        {PacketStatus.DRAFT, PacketStatus.DIAGNOSED, PacketStatus.APPROVED},
+    ),
+    WorkOrderLifecycle.READY: (
+        'mark_ready',
+        {PacketStatus.DRAFT, PacketStatus.DIAGNOSED, PacketStatus.APPROVED},
+    ),
+    WorkOrderLifecycle.VERIFYING: ('verify', {PacketStatus.EXECUTING}),
+}
+
+
+def _locked_repair_transition_work(packet, actor):
+    """Lock the owning packet before authorizing and locking its linked Work."""
+    from tasks.scope import ScopeError
+
+    from .scope import require_repair_packet_scope
+
+    locked = RepairPacket.objects.select_for_update().get(pk=packet.pk)
+    require_repair_packet_scope(actor, locked)
+    if locked.work_order_id is None:
+        raise RepairWorkTransitionError('This packet has no linked work order.')
+    work_order = _scoped_locked_packet_work(actor, locked.work_order_id)
+    locked.work_order = work_order
+    require_repair_packet_scope(actor, locked)
+    if getattr(work_order, 'repair_packet', None) != locked:
+        raise ScopeError('The packet does not own this work order.')
+    return locked, work_order
+
+
+def _packet_work_transition_action(packet, to_status):
+    """Restrict the adapter to intermediate transitions in their packet states."""
+    transition = _PACKET_WORK_TRANSITIONS.get(to_status)
+    if transition is None:
+        raise RepairWorkTransitionError(
+            'Only planned, ready and verifying are supported; use the owning '
+            'Start repair or closeout action for execution and completion.'
+        )
+    action, packet_states = transition
+    if packet.status not in packet_states:
+        raise RepairWorkTransitionError(
+            f'Work action {action} is unavailable for packet state {packet.status}.'
+        )
+    return action
+
+
+@transaction.atomic
+def repair_work_transition_readiness(packet, *, actor, action=None) -> dict:
+    """Preview the same canonical readiness used by the owning Work adapter."""
+    from tasks.services.finalization import PacketFinalization
+    from tasks.services.readiness import evaluate_work_order_readiness
+
+    locked, work_order = _locked_repair_transition_work(packet, actor)
+    if action is None:
+        action = {
+            WorkOrderLifecycle.DRAFT: 'plan',
+            WorkOrderLifecycle.PLANNED: 'mark_ready',
+            WorkOrderLifecycle.IN_PROGRESS: 'verify',
+        }.get(work_order.lifecycle_status)
+    to_status = next(
+        (
+            target
+            for target, (candidate, packet_states) in _PACKET_WORK_TRANSITIONS.items()
+            if candidate == action
+        ),
+        None,
+    )
+    _packet_work_transition_action(locked, to_status)
+    readiness = evaluate_work_order_readiness(
+        work_order,
+        action=action,
+        actor=actor,
+        expected_version=work_order.lifecycle_version,
+        packet_finalization=PacketFinalization(packet_id=locked.pk),
+    )
+    return {
+        **asdict(readiness),
+        'packet_id': locked.pk,
+        'packet_status': locked.status,
+        'work_order_id': work_order.pk,
+        'lifecycle_status': work_order.lifecycle_status,
+    }
+
+
+@transaction.atomic
+def transition_repair_packet_work(
+    packet,
+    *,
+    actor,
+    to_status: str,
+    expected_version: int,
+    idempotency_key: str,
+    reason: str = '',
+):
+    """Drive an intermediate Work transition through its locked owning packet."""
+    from tasks.permissions import require_permission, transition_permission
+    from tasks.services.finalization import PacketFinalization
+    from tasks.services.work_orders import transition_work_order
+
+    locked, work_order = _locked_repair_transition_work(packet, actor)
+    _packet_work_transition_action(locked, to_status)
+    require_permission(actor, transition_permission(to_status))
+    return transition_work_order(
+        work_order_id=work_order.pk,
+        to_status=to_status,
+        actor=actor,
+        expected_version=expected_version,
+        idempotency_key=idempotency_key,
+        reason=reason,
+        packet_finalization=PacketFinalization(packet_id=locked.pk),
+    )
 
 
 @transaction.atomic
@@ -2196,7 +2322,11 @@ def read_diagnostic_health_anomalies(
     for anomaly in anomalies:
         machine = anomaly.machine
         station = machine if machine.asset_type == 'pumphouse' else machine.parent
-        shift = display_shift(station, anomaly.source, now=now)
+        shift = (
+            timezone.timedelta(0)
+            if anomaly.detector == 'test_alarm_ui'
+            else display_shift(station, anomaly.source, now=now)
+        )
         observation_shift = (
             shift if recorded_telemetry_as_live() else timezone.timedelta(0)
         )
@@ -2250,16 +2380,61 @@ def read_diagnostic_approved_manuals(
     query: str,
     limit: int,
 ) -> dict[str, Any]:
-    """Abstain until the attachment domain has explicit manual approval state."""
-    del query, limit
+    """Read approved, exactly applicable local manuals for this machine."""
+    actor = diagnostic_rehydrate_actor(getattr(actor, 'pk', None))
     if (
-        authorization.entity_type != 'machine'
+        actor is None
+        or authorization.capability != 'diagnostics.manuals.read'
+        or authorization.entity_type != 'machine'
         or authorization.entity_id != machine_id
+        or authorization.current_revision != expected_revision
         or not _diagnostic_reauthorize(actor, authorization, expected_revision)
     ):
         return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+    from ai.core.config import get_settings
+    from ai.core.integrations.local_controlled_documents import (
+        local_retrieval_enabled,
+        search_local_manuals,
+    )
+
+    if not local_retrieval_enabled(get_settings()):
+        return _diagnostic_result(
+            reason='No explicitly approved manual source is configured for this machine.'
+        )
+
+    hits = search_local_manuals(
+        user=actor, machine_id=machine_id, query=query, limit=limit
+    )
+    actor = diagnostic_rehydrate_actor(actor.pk)
+    if actor is None or not _diagnostic_reauthorize(
+        actor, authorization, expected_revision
+    ):
+        return _diagnostic_result(reason=_DIAGNOSTIC_ABSTENTION)
+    evidence = [
+        _diagnostic_evidence(
+            source_type='controlled_document',
+            source_id=hit['document_id'],
+            revision=hit['revision'],
+            locator=f'controlled-document:{hit["selection_id"]}#page={hit["page"]}',
+            as_of=hit['as_of'],
+            claim=json.dumps(
+                {
+                    'title': hit['title'],
+                    'source_filename': hit['source_filename'],
+                    'source_sha256': hit['source_sha256'],
+                    'page': hit['page'],
+                    'excerpt': hit['excerpt'],
+                },
+                ensure_ascii=True,
+                sort_keys=True,
+            ),
+            untrusted=True,
+        )
+        for hit in hits
+    ]
     return _diagnostic_result(
-        reason='No explicitly approved manual source is configured for this machine.'
+        *evidence,
+        reason='No approved, applicable local manual passage was available for this machine.',
     )
 
 

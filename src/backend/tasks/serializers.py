@@ -5,6 +5,8 @@ from django.conf import settings
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from InvenTree.serializers import InvenTreeIsoDateTimeModelSerializerMixin
+
 from .models import (
     KanbanCard,
     KanbanColumn,
@@ -128,7 +130,9 @@ class WorkOrderPartSerializer(serializers.ModelSerializer):
         return None
 
 
-class WorkOrderBoardSerializer(serializers.ModelSerializer):
+class WorkOrderBoardSerializer(
+    InvenTreeIsoDateTimeModelSerializerMixin, serializers.ModelSerializer
+):
     """Serializer for WorkOrder instances."""
 
     tags = serializers.ListField(

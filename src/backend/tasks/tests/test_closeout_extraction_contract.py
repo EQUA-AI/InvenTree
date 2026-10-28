@@ -32,6 +32,47 @@ NARRATIVE = 'Replaced the clogged filter; flow restored to twenty GPM.'
 class ExtractionContractTest(TestCase):
     """Pure validation of the schema-v1 contract."""
 
+    def test_prompt_document_and_candidate_shapes_pass_authoritative_validator(self):
+        """Published model shapes must remain valid without loosening validation."""
+        from ai.core.capabilities.closeout_extraction import build_extraction_messages
+
+        narrative = 'Used 2 filters. Pressure measured 20 psi.'
+        prompt = build_extraction_messages(narrative, {})[0]['content']
+        document, _ = json.JSONDecoder().raw_decode(
+            prompt.split('Empty/unknown document shape', 1)[1].split('\n', 1)[1]
+        )
+        empty = validate_extraction_output(document, narrative)
+        self.assertIsNone(empty['fields']['downtime_minutes']['value'])
+        self.assertEqual(empty['part_candidates'], [])
+        self.assertEqual(empty['reading_candidates'], [])
+
+        for label, collection, phrase, auxiliary in (
+            ('Part', 'part_candidates', '2 filters', {'quantity_text': '2'}),
+            (
+                'Reading',
+                'reading_candidates',
+                '20 psi',
+                {'value_text': '20', 'unit_text': 'psi'},
+            ),
+        ):
+            candidate, _ = json.JSONDecoder().raw_decode(
+                prompt.split(f'{label} candidate: ', 1)[1]
+            )
+            start = narrative.index(phrase)
+            candidate.update(text=phrase, spans=[[start, start + len(phrase)]])
+            candidate.update(auxiliary)
+            document[collection] = [candidate]
+
+        validated = validate_extraction_output(document, narrative)
+        self.assertEqual(validated['part_candidates'][0]['quantity_text'], '2')
+        self.assertEqual(validated['reading_candidates'][0]['value_text'], '20')
+        self.assertEqual(validated['reading_candidates'][0]['unit_text'], 'psi')
+        document['part_candidates'] = ['none']
+        with self.assertRaisesMessage(
+            ExtractionInvalidOutput, 'part_candidates[0] must be an object'
+        ):
+            validate_extraction_output(document, narrative)
+
     def test_valid_document_normalizes(self):
         document = validate_extraction_output(extractor_ok(NARRATIVE, {}), NARRATIVE)
         self.assertEqual(document['schema_version'], 1)

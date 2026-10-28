@@ -70,6 +70,7 @@ export interface VoiceFinalTranscript {
   revision?: number;
   /** A9: item id of the held transcript this one replaced. */
   supersedes?: string;
+  reviewIssue?: 'multiple_segments';
 }
 
 /** A9: the server-spoken review prompt for a held transcript. */

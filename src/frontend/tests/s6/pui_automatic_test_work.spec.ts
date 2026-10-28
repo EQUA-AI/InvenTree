@@ -20,6 +20,9 @@ async function openAutomaticWork(
     mismatchedReceipt?: boolean;
     previewFailure?: boolean;
     refuseFirst?: boolean;
+    eventEnabled?: boolean;
+    noDuplicates?: boolean;
+    duplicateAppears?: boolean;
   } = {}
 ) {
   const posts: Record<string, any>[] = [];
@@ -106,21 +109,26 @@ async function openAutomaticWork(
                 limitations:
                   'Prepared specification, not AI output or physical work. No parts or operating release.'
               },
-              duplicates: [
-                {
-                  work_order_id: 3826,
-                  work_order_reference: 'WO-003826',
-                  title: 'Bearing vibration investigation',
-                  status: 'in_progress',
-                  repair_packet_id: null,
-                  reason: 'OPEN_REPAIR_ON_MACHINE'
-                }
-              ]
+              duplicates:
+                options.noDuplicates ||
+                (options.duplicateAppears && planReads === 1)
+                  ? []
+                  : [
+                      {
+                        work_order_id: 3826,
+                        work_order_reference: 'WO-003826',
+                        title: 'Bearing vibration investigation',
+                        status: 'in_progress',
+                        repair_packet_id: null,
+                        reason: 'OPEN_REPAIR_ON_MACHINE'
+                      }
+                    ]
             }
           });
         }
         return route.fulfill({
           json: {
+            event_work_enabled: options.eventEnabled === true,
             results: [
               {
                 binding_id: 1494,
@@ -151,6 +159,14 @@ async function openAutomaticWork(
       }
       const body = request.postDataJSON();
       posts.push(body);
+      if (options.duplicateAppears && posts.length === 1)
+        return route.fulfill({
+          status: 409,
+          json: {
+            code: 'DUPLICATE_OPEN_REPAIR',
+            detail: 'This machine already has open repair work.'
+          }
+        });
       if (options.refuseFirst && posts.length === 1)
         return route.fulfill({
           status: 400,
@@ -186,7 +202,20 @@ async function openAutomaticWork(
             lifecycle_version: 2,
             warnings: [],
             replayed: posts.length > 1,
-            provenance: 'prepared_scenario_not_ai_output'
+            provenance: 'prepared_scenario_not_ai_output',
+            ...(body.event_owned_work
+              ? {
+                  assignment: {
+                    code: 'ASSIGNMENT_REQUIREMENTS_UNKNOWN',
+                    supervisor_escalation:
+                      'Supervisor review required: staffing evidence is incomplete.'
+                  },
+                  triage: {
+                    explanation:
+                      'Critical synthetic test event; not a physical diagnosis.'
+                  }
+                }
+              : {})
           }
         }
       });
@@ -260,6 +289,227 @@ async function reviewAutomaticWork(page: Page) {
   await expect(submit).toBeEnabled();
   return submit;
 }
+
+test('event-owned work shows its persisted staffing escalation when enabled', async ({
+  page
+}, info) => {
+  const fixture = await openAutomaticWork(page, 'light', {
+    eventEnabled: true
+  });
+  await expect(
+    fixture.dialog.getByRole('checkbox', {
+      name: 'Let the event prepare work and request automatic assignment'
+    })
+  ).toBeChecked();
+  await expect(
+    fixture.dialog.getByTestId('test-alarm-work-plan')
+  ).toBeVisible();
+  await expect(
+    fixture.dialog.getByRole('combobox', {
+      name: 'Assigned staff',
+      exact: true
+    })
+  ).toHaveCount(0);
+  await expect(
+    fixture.dialog.getByRole('link', { name: /WO-003826/ })
+  ).toBeVisible();
+  const submit = fixture.dialog.getByRole('button', {
+    name: 'Trigger and create work order',
+    exact: true
+  });
+  const review = fixture.dialog.getByRole('checkbox', {
+    name: 'I reviewed existing work and need a separate work order.',
+    exact: true
+  });
+  await review.check();
+  await fixture.dialog
+    .getByRole('checkbox', {
+      name: 'I confirm this is a synthetic test; notify authorized recipients.',
+      exact: true
+    })
+    .check();
+  await expect(submit).toBeDisabled();
+  await expect(
+    fixture.dialog.getByTestId('test-alarm-readiness')
+  ).toContainText('Explain why a separate work order is needed.');
+  await fixture.dialog
+    .getByRole('textbox', {
+      name: 'Reason for a separate work order',
+      exact: true
+    })
+    .fill(
+      'Separate winding exercise reviewed against the bearing investigation.'
+    );
+  await expect(review).not.toBeChecked();
+  await review.check();
+  await fixture.dialog
+    .getByRole('checkbox', {
+      name: 'I confirm this is a synthetic test; notify authorized recipients.',
+      exact: true
+    })
+    .check();
+  await expect(submit).toBeEnabled();
+  await expectNoPageOverflow(page);
+  await auditAccessibility(
+    page,
+    fixture.dialog,
+    info,
+    'event-duplicate-review'
+  );
+  await fixture.dialog.screenshot({
+    path: info.outputPath('event-work-reviewed.png'),
+    animations: 'disabled'
+  });
+  await submit.focus();
+  await page.keyboard.press('Enter');
+  await expect(fixture.dialog).toContainText('Supervisor review required');
+  await expect(fixture.dialog).toContainText('not a physical diagnosis');
+  expect(fixture.posts).toHaveLength(1);
+  expect(fixture.posts[0]).toMatchObject({
+    event_owned_work: true,
+    binding_id: 1494,
+    duplicate_override: true,
+    duplicate_override_reason:
+      'Separate winding exercise reviewed against the bearing investigation.'
+  });
+  expect(fixture.posts[0]).not.toHaveProperty('plan_token');
+  expect(fixture.posts[0]).not.toHaveProperty('assigned_to_id');
+  expect(fixture.posts[0]).not.toHaveProperty('create_work_order');
+  await fixture.dialog.screenshot({
+    path: info.outputPath('event-work-receipt.png'),
+    animations: 'disabled'
+  });
+});
+
+test('event-owned work without duplicates retries the exact retained command', async ({
+  page
+}) => {
+  const fixture = await openAutomaticWork(page, 'light', {
+    eventEnabled: true,
+    noDuplicates: true,
+    failFirst: true
+  });
+  await expect(
+    fixture.dialog.getByTestId('test-alarm-work-plan')
+  ).toBeVisible();
+  await expect(
+    fixture.dialog.getByText('Existing work needs review')
+  ).toHaveCount(0);
+  await fixture.dialog
+    .getByRole('checkbox', {
+      name: 'I confirm this is a synthetic test; notify authorized recipients.',
+      exact: true
+    })
+    .check();
+  await fixture.dialog
+    .getByRole('button', { name: 'Trigger and create work order' })
+    .click();
+  await expect(fixture.dialog).toContainText(
+    'Alarm and work-order outcome not confirmed'
+  );
+  await page.reload();
+  await page
+    .getByRole('button', { name: 'Trigger test alarm', exact: true })
+    .click();
+  await fixture.dialog
+    .getByRole('button', { name: 'Retry same test request' })
+    .click();
+  await expect(fixture.dialog).toContainText('Supervisor review required');
+  expect(fixture.posts).toHaveLength(2);
+  expect(fixture.posts[1]).toEqual(fixture.posts[0]);
+  expect(fixture.posts[0]).toMatchObject({
+    event_owned_work: true,
+    duplicate_override: false,
+    duplicate_override_reason: ''
+  });
+});
+
+test('event-owned work reloads review when a duplicate appears after preview', async ({
+  page
+}) => {
+  const fixture = await openAutomaticWork(page, 'light', {
+    eventEnabled: true,
+    duplicateAppears: true
+  });
+  await expect(
+    fixture.dialog.getByTestId('test-alarm-work-plan')
+  ).toBeVisible();
+  await fixture.dialog
+    .getByRole('checkbox', {
+      name: 'I confirm this is a synthetic test; notify authorized recipients.',
+      exact: true
+    })
+    .check();
+  await fixture.dialog
+    .getByRole('button', { name: 'Trigger and create work order' })
+    .click();
+  await expect(fixture.dialog).toContainText(
+    'Alarm and work-order request refused'
+  );
+  await expect(
+    fixture.dialog.getByRole('link', { name: /WO-003826/ })
+  ).toBeVisible();
+  await expect(
+    fixture.dialog.getByRole('button', {
+      name: 'Trigger and create work order'
+    })
+  ).toBeDisabled();
+  await fixture.dialog
+    .getByRole('textbox', {
+      name: 'Reason for a separate work order',
+      exact: true
+    })
+    .fill('Reviewed the newly visible bearing investigation.');
+  await fixture.dialog
+    .getByRole('checkbox', {
+      name: 'I reviewed existing work and need a separate work order.',
+      exact: true
+    })
+    .check();
+  await fixture.dialog
+    .getByRole('checkbox', {
+      name: 'I confirm this is a synthetic test; notify authorized recipients.',
+      exact: true
+    })
+    .check();
+  await fixture.dialog
+    .getByRole('button', { name: 'Trigger and create work order' })
+    .click();
+  await expect(fixture.dialog).toContainText('Supervisor review required');
+  expect(fixture.posts).toHaveLength(2);
+  expect(fixture.posts[0].duplicate_override).toBe(false);
+  expect(fixture.posts[1]).toMatchObject({
+    event_owned_work: true,
+    duplicate_override: true,
+    duplicate_override_reason:
+      'Reviewed the newly visible bearing investigation.'
+  });
+  expect(fixture.posts[1].idempotency_key).not.toBe(
+    fixture.posts[0].idempotency_key
+  );
+});
+
+test('event-owned work cannot bypass an unavailable duplicate preview', async ({
+  page
+}) => {
+  const fixture = await openAutomaticWork(page, 'light', {
+    eventEnabled: true,
+    previewFailure: true
+  });
+  await expect(fixture.dialog).toContainText('Work preview unavailable');
+  await fixture.dialog
+    .getByRole('checkbox', {
+      name: 'I confirm this is a synthetic test; notify authorized recipients.',
+      exact: true
+    })
+    .check();
+  await expect(
+    fixture.dialog.getByRole('button', {
+      name: 'Trigger and create work order'
+    })
+  ).toBeDisabled();
+  expect(fixture.posts).toHaveLength(0);
+});
 
 for (const scheme of ['light', 'dark'] as const) {
   test(`one reviewed trigger creates and opens the actual work order (${scheme})`, async ({

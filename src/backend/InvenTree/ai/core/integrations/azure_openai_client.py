@@ -1,4 +1,4 @@
-"""The ONE place an Azure OpenAI client is constructed (M1 PR A, plan §9.3).
+"""Central construction of the Azure and development-local chat clients.
 
 Every rail used to build its own ``AzureOpenAIChatClient`` from the same
 three settings. Centralising it gives the keyless seam (Q23: managed
@@ -89,11 +89,23 @@ def build_chat_client(
     waits, not the whole agent/tool loop; the root turn deadline still applies.
     """
     settings = get_settings()
-    client = AzureOpenAIChatClient(
-        deployment_name=deployment,
-        endpoint=settings.azure_openai_endpoint,
-        api_key=settings.azure_openai_api_key,
-    )
+    if getattr(settings, "ai_provider", "azure") == "local":
+        import httpx
+        from agent_framework.openai import OpenAIChatClient
+        from openai import AsyncOpenAI
+
+        async_client = AsyncOpenAI(
+            base_url=settings.local_openai_base_url,
+            api_key="local",
+            http_client=httpx.AsyncClient(trust_env=False, follow_redirects=False),
+        )
+        client = OpenAIChatClient(model_id=settings.local_openai_model, async_client=async_client)
+    else:
+        client = AzureOpenAIChatClient(
+            deployment_name=deployment,
+            endpoint=settings.azure_openai_endpoint,
+            api_key=settings.azure_openai_api_key,
+        )
     transport_options: dict[str, Any] = {}
     if request_timeout_s is not None:
         import httpx
@@ -109,6 +121,8 @@ def build_chat_client(
         # its underlying SDK transport; use the SDK's supported copy API.
         client.client = client.client.with_options(**transport_options)
     config = getattr(client, "function_invocation_config", None)
+    if config is None:
+        config = getattr(client, "function_invocation_configuration", None)
     if config is not None:
         if max_iterations is not None:
             config.max_iterations = max_iterations
@@ -118,12 +132,14 @@ def build_chat_client(
 
 
 def client_auth_mode(settings: Any | None = None, *, require_keyless: bool = False) -> str:
-    """``"keyless"`` when the raw client uses managed identity, else ``"key"``.
+    """Return ``"local"``, ``"keyless"`` or ``"key"`` for the raw client.
 
     Value-free by construction (an enum word, never the key) so probes and
     reports can print it.
     """
     settings = settings if settings is not None else get_settings()
+    if not require_keyless and getattr(settings, "ai_provider", "azure") == "local":
+        return "local"
     return (
         "keyless"
         if require_keyless or bool(getattr(settings, "aimms_openai_keyless", False))
@@ -132,7 +148,7 @@ def client_auth_mode(settings: Any | None = None, *, require_keyless: bool = Fal
 
 
 def build_openai_client(*, settings: Any | None = None, require_keyless: bool = False) -> Any:
-    """Return a raw ``openai.AzureOpenAI`` client for the configured endpoint.
+    """Return a raw client for the selected chat provider.
 
     Keyless mode (``AIMMS_OPENAI_KEYLESS=1``) passes the process-cached
     ``azure_ad_token_provider`` (one ``DefaultAzureCredential`` over
@@ -148,6 +164,15 @@ def build_openai_client(*, settings: Any | None = None, require_keyless: bool = 
     from openai import AzureOpenAI
 
     settings = settings if settings is not None else get_settings()
+    if not require_keyless and getattr(settings, "ai_provider", "azure") == "local":
+        import httpx
+        from openai import OpenAI
+
+        return OpenAI(
+            base_url=settings.local_openai_base_url,
+            api_key="local",
+            http_client=httpx.Client(trust_env=False, follow_redirects=False),
+        )
     kwargs: dict[str, Any] = {
         "azure_endpoint": settings.azure_openai_endpoint,
         "api_version": settings.azure_openai_api_version,
@@ -159,10 +184,22 @@ def build_openai_client(*, settings: Any | None = None, require_keyless: bool = 
     return AzureOpenAI(**kwargs)
 
 
+def chat_provider_configured(settings: Any | None = None) -> bool:
+    """Return whether the selected chat plane has its required configuration."""
+    settings = settings if settings is not None else get_settings()
+    if getattr(settings, "ai_provider", "azure") == "local":
+        return bool(settings.local_openai_base_url and settings.local_openai_model)
+    return bool(
+        settings.azure_openai_endpoint
+        and (settings.azure_openai_api_key or getattr(settings, "aimms_openai_keyless", False))
+    )
+
+
 __all__ = [
     "COGNITIVE_SERVICES_SCOPE",
     "build_chat_client",
     "build_openai_client",
+    "chat_provider_configured",
     "client_auth_mode",
     "cognitive_token_provider",
     "reset_token_provider_cache",

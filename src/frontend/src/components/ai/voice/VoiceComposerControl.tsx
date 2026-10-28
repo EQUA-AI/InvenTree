@@ -319,6 +319,7 @@ export function VoiceActiveStrip(props: Readonly<VoiceComposerControlProps>) {
             mih={44}
             color='orange'
             onClick={props.onConfirmTranscript}
+            disabled={!!split.pendingConfirm?.reviewIssue}
             data-testid='voice-confirm-transcript'
           >{t`Confirm transcript`}</Button>
           <Button

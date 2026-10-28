@@ -1,5 +1,5 @@
 import { writeFileSync } from 'node:fs';
-import { type Page, expect, test } from '@playwright/test';
+import { type Page, type Route, expect, test } from '@playwright/test';
 import { auditAccessibility, waitForRenderedScope } from '../s0/accessibility';
 import { assertReadableContrast } from '../s0/contrast';
 import { nativeBaseline } from '../s0/guards';
@@ -457,6 +457,7 @@ function exerciseState() {
       passed: false,
       recorded: false,
       value: null as string | boolean | null,
+      readings: null as { W5: string; W6: string; maximum: string } | null,
       step_key: `00000000-0000-4000-8000-00000000000${index + 1}`,
       version: 1,
       recorded_by: null as string | null,
@@ -528,22 +529,27 @@ async function openExercise(
   };
   await mockExecutionWork(page, overview);
   const posts: Record<string, any>[] = [];
-  await page.route(
-    '**/api/tasks/work-orders/73/exercise-verification/',
-    (route) => route.fulfill({ json: state })
-  );
-  await page.route('**/api/tasks/work-orders/73/steps/*/complete/', (route) => {
+  const record = (route: Route, numeric: boolean) => {
     const body = route.request().postDataJSON();
     posts.push(body);
     const check = state.checks.find((row) =>
-      route.request().url().includes(row.step_key)
+      numeric
+        ? body.step_key === row.step_key
+        : route.request().url().includes(row.step_key)
     )!;
     expect(body.expected_version).toBe(check.version);
     check.version += 1;
-    check.value = body.value.number ?? body.value.boolean;
+    if (numeric) {
+      const maximum = String(
+        Math.max(Number(body.winding_5), Number(body.winding_6))
+      );
+      check.readings = { W5: body.winding_5, W6: body.winding_6, maximum };
+      check.value = maximum;
+    } else check.value = body.value.boolean;
     check.recorded = true;
-    check.passed =
-      check.sequence === 2 ? Number(check.value) === 96 : check.value === true;
+    check.passed = numeric
+      ? Number(check.readings?.W5) === 94 && Number(check.readings?.W6) === 96
+      : check.value === true;
     const nativePassed =
       check.sequence === 2
         ? Number(check.value) <= 124.9
@@ -562,6 +568,7 @@ async function openExercise(
     if (options.advanceAfterStep === check.sequence && completedVersion === 2) {
       check.version += 1;
       check.value = '100';
+      if (numeric) check.readings = { W5: '94', W6: '100', maximum: '100' };
       check.passed = false;
       check.reasons = ['value_does_not_match_prepared_evidence'];
       check.recorded_by = 'Another recorder';
@@ -572,12 +579,30 @@ async function openExercise(
     return route.fulfill({
       json: {
         step_key: check.step_key,
-        application: 42,
         version: completedVersion,
-        value: body.value
+        ...(numeric
+          ? {
+              application_id: 42,
+              work_order_id: 73,
+              idempotency_key: body.idempotency_key,
+              maximum: String(
+                Math.max(Number(body.winding_5), Number(body.winding_6))
+              )
+            }
+          : { application: 42, value: body.value })
       }
     });
-  });
+  };
+  await page.route(
+    '**/api/tasks/work-orders/73/exercise-verification/',
+    (route) =>
+      route.request().method() === 'POST'
+        ? record(route, true)
+        : route.fulfill({ json: state })
+  );
+  await page.route('**/api/tasks/work-orders/73/steps/*/complete/', (route) =>
+    record(route, false)
+  );
   await openExecutionPanel(page, 'verify', scheme, false, 'supervisor');
   await expect(page.getByTestId('exercise-verification-panel')).toBeVisible();
   return { state, posts };
@@ -596,11 +621,14 @@ async function fillCheck(
       exact: true
     })
     .click();
-  if (sequence === 2)
+  if (sequence === 2) {
     await row
-      .getByLabel('Maximum winding temperature (°C)', { exact: true })
+      .getByLabel('Prepared Winding 5 reading (°C)', { exact: true })
+      .fill('94');
+    await row
+      .getByLabel('Prepared Winding 6 reading (°C)', { exact: true })
       .fill(value);
-  else {
+  } else {
     await row.getByRole('combobox').first().click();
     await page
       .getByRole('option', {
@@ -627,7 +655,7 @@ test('a writer advancing beyond our receipt can be loaded and retested without a
     .getByRole('button', { name: 'Load current recorded result', exact: true })
     .click();
   await expect(
-    row.getByLabel('Maximum winding temperature (°C)', { exact: true })
+    row.getByLabel('Prepared Winding 6 reading (°C)', { exact: true })
   ).toHaveValue('100');
   await expect(
     row.getByRole('button', { name: 'Record exercise retest', exact: true })
@@ -744,6 +772,14 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(panel).toContainText('RETURN VERIFICATION PASSED');
     await expect(panel).toContainText('Avery Patel');
     expect(fixture.posts).toHaveLength(4);
+    expect(fixture.posts[1]).toMatchObject({
+      winding_5: '94',
+      winding_6: '129'
+    });
+    expect(fixture.posts[3]).toMatchObject({
+      winding_5: '94',
+      winding_6: '96'
+    });
     await expectNoPageOverflow(page);
   });
 }

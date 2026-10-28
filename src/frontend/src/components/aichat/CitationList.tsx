@@ -12,8 +12,13 @@
 
 import type { EvidenceClassification } from '@lib/types/AimmsWire.generated';
 import { t } from '@lingui/core/macro';
-import { Badge, Group, Stack, Text } from '@mantine/core';
+import { Badge, Button, Group, Stack, Text } from '@mantine/core';
 import { IconLink, IconLock } from '@tabler/icons-react';
+import { useEvidenceViewerState } from '../../states/EvidenceViewerState';
+import {
+  localManualCitation,
+  nativeDocumentCitation
+} from './documentCitation';
 
 /** One displayable citation row (v1-adapted or v2 manifest-derived). */
 export interface CitationDisplayEntry {
@@ -77,13 +82,21 @@ export function CitationRow({
       </Group>
     );
   }
-  const primary =
-    entry.sourceTitle || entry.sourceId || entry.sourceType || t`source`;
+  const manual = localManualCitation(entry);
+  const title =
+    manual && entry.sourceTitle?.startsWith('/media/')
+      ? t`Related manual`
+      : entry.sourceTitle;
+  const primary = title || entry.sourceId || entry.sourceType || t`source`;
   const label =
-    entry.sourceTitle && entry.sourceId && entry.sourceTitle !== entry.sourceId
-      ? `${entry.sourceTitle} · ${entry.sourceId}`
+    title && entry.sourceId && title !== entry.sourceId
+      ? `${title} · ${entry.sourceId}`
       : primary;
-  const locator = formatLocator(entry.locator);
+  const locator = formatLocator(
+    manual
+      ? { ...entry.locator, field: null, page: manual.pageIndex + 1 }
+      : entry.locator
+  );
   return (
     <Group
       key={entry.ordinal}
@@ -93,7 +106,11 @@ export function CitationRow({
       data-testid={`citation-row-${entry.ordinal}`}
     >
       <IconLink size={12} aria-hidden />
-      <Text size='xs' c='dimmed' style={{ minWidth: 0 }}>
+      <Text
+        size='xs'
+        c='dimmed'
+        style={{ minWidth: 0, overflowWrap: 'anywhere' }}
+      >
         [{entry.ordinal}] {label}
         {entry.sourceRevision ? ` · rev ${entry.sourceRevision}` : ''}
         {locator ? ` · ${locator}` : ''}
@@ -122,6 +139,7 @@ export function CitationList({
   citations,
   anchorPrefix
 }: Readonly<{ citations: CitationDisplayEntry[]; anchorPrefix?: string }>) {
+  const openEvidence = useEvidenceViewerState((state) => state.open);
   if (citations.length === 0) {
     return null;
   }
@@ -130,13 +148,38 @@ export function CitationList({
       <Text size='xs' fw={600} c='dimmed'>
         {t`Sources`}
       </Text>
-      {citations.map((entry) => (
-        <CitationRow
-          key={entry.ordinal}
-          entry={entry}
-          anchorPrefix={anchorPrefix}
-        />
-      ))}
+      {citations.map((entry) => {
+        const document = nativeDocumentCitation(entry);
+        return (
+          <Stack key={entry.ordinal} gap={2}>
+            <CitationRow entry={entry} anchorPrefix={anchorPrefix} />
+            {document && (
+              <Button
+                size='compact-xs'
+                variant='light'
+                w='fit-content'
+                aria-label={t`Open related manual ${document.attachmentId}, page ${document.pageIndex + 1}`}
+                onClick={(event) =>
+                  openEvidence(
+                    {
+                      attachment_id: document.attachmentId,
+                      model_type: document.modelType,
+                      model_id: document.modelId,
+                      source_revision: document.revision,
+                      page_index: document.pageIndex,
+                      media_type: 'document',
+                      label: t`Related manual ${document.attachmentId} · p. ${document.pageIndex + 1}`
+                    },
+                    event.currentTarget
+                  )
+                }
+              >
+                {t`Open cited PDF · p. ${document.pageIndex + 1}`}
+              </Button>
+            )}
+          </Stack>
+        );
+      })}
     </Stack>
   );
 }

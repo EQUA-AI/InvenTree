@@ -1,0 +1,282 @@
+{
+  "fixture_kind": "Actual prepared local native canonical responses; T03 fallback is engineering candidate only, not actual spoken proof",
+  "sourcePath": "/Users/Aniketkumar/IdeaProjects/InvenTree/data/devscratch/combined-demo-20261028/part2-audit/actual-native-voice-canonical-t01-t03-20261028.json",
+  "sourceSha256": "9f0b4db82dd449e55748d33a056b1b2158dc308bae12ef12493f66b97129dcec",
+  "cases": {
+    "T01": {
+      "turn_id": "turn_5391076714554c419c1a943146337913",
+      "canonical_response": {
+        "kind": "diagnostic_response",
+        "speak": true,
+        "evidence": [
+          {
+            "as_of": "2026-10-27T21:56:33.553724Z",
+            "claim": "The open Motor Winding Temperature 6 alarm is identified as a synthetic exercise and not a measurement or confirmed plant condition.",
+            "locator": {
+              "page": null,
+              "chunk": null,
+              "field": "/machines/102/health/anomalies/17"
+            },
+            "source_id": "17",
+            "source_type": "machine_anomaly",
+            "source_revision": "2026-10-27T21:56:33.642489+00:00",
+            "authorization_class": "maintenance_scope"
+          },
+          {
+            "as_of": "2026-10-27T18:30:52.144944Z",
+            "claim": "The maintenance record states that the readings and cleaning review were a software exercise, with no physical root cause or field inspection asserted.",
+            "locator": {
+              "page": null,
+              "chunk": null,
+              "field": "/machines/102/maintenance/2886"
+            },
+            "source_id": "2886",
+            "source_type": "asset_maintenance_record",
+            "source_revision": "2026-10-27T18:30:52.144944+00:00",
+            "authorization_class": "maintenance_scope"
+          },
+          {
+            "as_of": "2026-10-27T21:56:33.617419Z",
+            "claim": "The repair packet requires review of winding peers, motor load, cooling conditions, and sensor validity, and warns not to infer a verified physical fault from the alarm or exercise readings.",
+            "locator": {
+              "page": null,
+              "chunk": null,
+              "field": "/repair/packets/35"
+            },
+            "source_id": "35",
+            "source_type": "repair_packet_redacted",
+            "source_revision": "2026-10-27T21:56:33.617419+00:00",
+            "authorization_class": "maintenance_scope"
+          },
+          {
+            "as_of": "2026-10-28T02:01:49.238289Z",
+            "claim": "The available Active Power observation is marked state unknown.",
+            "locator": {
+              "page": null,
+              "chunk": null,
+              "field": "/machines/102/health/signals/2694"
+            },
+            "source_id": "2694",
+            "source_type": "machine_signal_state",
+            "source_revision": "2026-10-28T02:01:49.238289+00:00",
+            "authorization_class": "maintenance_scope"
+          },
+          {
+            "as_of": "2026-10-28T02:01:55.575103Z",
+            "claim": "The related WEG passage describes field-current recording as useful for identifying overloads; its fitted-motor applicability is unverified.",
+            "locator": {
+              "page": null,
+              "chunk": null,
+              "field": "/media/attachments/assetmachine/102/S_Line_horizontal_brushless_synchronous_motor_IOM__c67a39375424.pdf#page=36"
+            },
+            "source_id": "68",
+            "source_type": "related_attached_manual",
+            "source_revision": "c67a39375424ab0135e5f95e504f8e0de6d8d78e8929c2ba6cd809023ac59df7",
+            "authorization_class": "maintenance_scope"
+          },
+          {
+            "as_of": "2026-10-28T02:01:49.238289Z",
+            "claim": "A current Cooling Water Inlet Temperature 1 observation is available with good quality and no stale flag.",
+            "locator": {
+              "page": null,
+              "chunk": null,
+              "field": "/machines/102/health/signals/2359"
+            },
+            "source_id": "2359",
+            "source_type": "machine_signal_state",
+            "source_revision": "2026-10-28T02:01:49.238289+00:00",
+            "authorization_class": "maintenance_scope"
+          },
+          {
+            "as_of": "2026-10-28T02:01:49.238289Z",
+            "claim": "A current Cooling Water Inlet Temperature 2 observation is available with good quality and no stale flag.",
+            "locator": {
+              "page": null,
+              "chunk": null,
+              "field": "/machines/102/health/signals/2358"
+            },
+            "source_id": "2358",
+            "source_type": "machine_signal_state",
+            "source_revision": "2026-10-28T02:01:49.238289+00:00",
+            "authorization_class": "maintenance_scope"
+          },
+          {
+            "as_of": "2026-10-28T02:01:49.238289Z",
+            "claim": "A current Cooling Water Inlet Temperature 3 observation is available with good quality and no stale flag.",
+            "locator": {
+              "page": null,
+              "chunk": null,
+              "field": "/machines/102/health/signals/2380"
+            },
+            "source_id": "2380",
+            "source_type": "machine_signal_state",
+            "source_revision": "2026-10-28T02:01:49.238289+00:00",
+            "authorization_class": "maintenance_scope"
+          },
+          {
+            "as_of": "2026-10-28T02:01:49.238289Z",
+            "claim": "A current Cooling Water Inlet Temperature 4 observation is available with good quality and no stale flag.",
+            "locator": {
+              "page": null,
+              "chunk": null,
+              "field": "/machines/102/health/signals/2379"
+            },
+            "source_id": "2379",
+            "source_type": "machine_signal_state",
+            "source_revision": "2026-10-28T02:01:49.238289+00:00",
+            "authorization_class": "maintenance_scope"
+          },
+          {
+            "as_of": "2026-10-28T02:01:55.575103Z",
+            "claim": "The related WEG passage states that temperature sensors connect to an external monitoring and protection system; the source is an unverified related reference, not an approved fitted-motor manual.",
+            "locator": {
+              "page": null,
+              "chunk": null,
+              "field": "/media/attachments/assetmachine/102/S_Line_horizontal_brushless_synchronous_motor_IOM__c67a39375424.pdf#page=23"
+            },
+            "source_id": "68",
+            "source_type": "related_attached_manual",
+            "source_revision": "c67a39375424ab0135e5f95e504f8e0de6d8d78e8929c2ba6cd809023ac59df7",
+            "authorization_class": "maintenance_scope"
+          }
+        ],
+        "confidence": "low",
+        "next_questions": [
+          "What are the contemporaneous Winding 5 and peer-channel observations at the alarm time, including their quality and state?",
+          "What are the contemporaneous motor current, active power, and running/load-state observations?",
+          "What are the contemporaneous cooling-water flow or pressure and cooler outlet-temperature observations?"
+        ],
+        "response_state": "complete",
+        "spoken_summary": "The alarm is a synthetic exercise event, not a confirmed plant condition; no diagnosis is established, and the WEG document is an unverified related reference. Compare Winding 6 with Winding 5 and peers: divergence supports a sensor or localized issue. Compare temperature with load: tracking supports excess load. Compare cooling flow and inlet/outlet temperatures: degraded cooling supports restriction. These are read-only comparisons, not physical work instructions or permission, and they do not establish that Pump 08 is safe, isolated, approved, cleared, or restored.",
+        "safety_boundary": "These are read-only comparisons, not physical work instructions or permission, and they do not establish that Pump 08 is safe, isolated, approved, cleared, or restored.",
+        "response_version": 1,
+        "detailed_response": "The alarm is a synthetic exercise event, not a confirmed plant condition; no diagnosis is established, and the WEG document is an unverified related reference. Compare Winding 6 with Winding 5 and peers: divergence supports a sensor or localized issue. Compare temperature with load: tracking supports excess load. Compare cooling flow and inlet/outlet temperatures: degraded cooling supports restriction. These are read-only comparisons, not physical work instructions or permission, and they do not establish that Pump 08 is safe, isolated, approved, cleared, or restored.\n\n1. Channel coherence: compare Winding 6 with Winding 5 and peer winding channels at the same timestamp and operating state. A Winding 6-only excursion supports a measurement-path or localized-winding hypothesis; similar movement across channels weakens a faulty-sensor explanation. The alarm record itself is synthetic, so it does not prove either condition [machine anomaly #17].\n\n2. Load correlation: compare winding temperature trends with motor current, active power, and running/load state. Temperature that follows load supports excess load; high temperature without corresponding load change weakens that hypothesis. The available active-power record is marked state unknown, so it is not diagnostic by itself [machine signal state #2694]. The WEG passage describes field-current recording as useful for identifying overloads, but applicability is unverified [related attached manual #68, page 36].\n\n3. Cooling comparison: compare cooling-water flow or pressure and cooler inlet/outlet temperatures during the same period. Reduced flow or an abnormal temperature rise supports restricted cooling; normal flow and normal temperature difference weaken it. Current cooling inlet observations exist, but they do not establish flow, outlet temperature, or a fault [machine signal state #2359][machine signal state #2358][machine signal state #2380][machine signal state #2379]. The repair packet specifically requires cooling-condition review and warns against inferring a physical fault from the alarm [repair packet redacted #35].\n\nThe maintenance history contains software-exercise readings only; it records no physical inspection or maintenance, so the outcome remains unknown [asset maintenance record #2886].",
+        "reasoning_summary": "No diagnosis is established because the alarm is synthetic, the maintenance records are software exercises rather than physical observations, the active-power state is unknown, and cooling flow and outlet temperature are unavailable. The three comparisons discriminate among sensor/localized, excess-load, and restricted-cooling hypotheses without authorizing physical work. [machine anomaly #17][asset maintenance record #2886][machine signal state #2694][machine signal state #2359][machine signal state #2358][machine signal state #2380][machine signal state #2379]",
+        "recommended_actions": [
+          {
+            "kind": "read_only",
+            "title": "Compare winding channels",
+            "detail": "Perform a read-only comparison of Winding 6, Winding 5, and peer channels at matched timestamps and operating state; do not treat the result as a physical diagnosis. [machine anomaly #17][repair packet redacted #35]",
+            "requires_approval": false
+          },
+          {
+            "kind": "read_only",
+            "title": "Compare temperature with load",
+            "detail": "Perform a read-only trend comparison of winding temperature against current, active power, and running/load state. [machine signal state #2694][related attached manual #68, page 36]",
+            "requires_approval": false
+          },
+          {
+            "kind": "read_only",
+            "title": "Compare cooling observations",
+            "detail": "Perform a read-only comparison of cooling flow or pressure and cooler inlet/outlet temperatures; the available inlet observations alone are insufficient. [machine signal state #2359][machine signal state #2358][machine signal state #2380][machine signal state #2379][repair packet redacted #35]",
+            "requires_approval": false
+          }
+        ]
+      }
+    },
+    "T03": {
+      "turn_id": "turn_4a22070e31c54ec4ab09903db5026683",
+      "canonical_response": {
+        "kind": "diagnostic_response",
+        "speak": false,
+        "evidence": [
+          {
+            "as_of": "2026-10-28T02:08:12.153633Z",
+            "claim": "The WEG passage states that fouling of cooling surfaces and tube walls reduces cooling capacity and that the heat exchanger should be cleaned at regular intervals determined from operating conditions.",
+            "locator": {
+              "page": null,
+              "chunk": null,
+              "field": "/media/attachments/assetmachine/102/S_Line_horizontal_brushless_synchronous_motor_IOM__c67a39375424.pdf#page=25"
+            },
+            "source_id": "68",
+            "source_type": "related_attached_manual",
+            "source_revision": "c67a39375424ab0135e5f95e504f8e0de6d8d78e8929c2ba6cd809023ac59df7",
+            "authorization_class": "maintenance_scope"
+          },
+          {
+            "as_of": "2026-10-28T02:08:12.153633Z",
+            "claim": "The passage recommends periodic radiator air and water inlet/outlet temperature records, comparison of cold-water and cold-air temperatures, and use of water-pressure differential as an indicator of radiator-cleaning need.",
+            "locator": {
+              "page": null,
+              "chunk": null,
+              "field": "/media/attachments/assetmachine/102/S_Line_horizontal_brushless_synchronous_motor_IOM__c67a39375424.pdf#page=39"
+            },
+            "source_id": "68",
+            "source_type": "related_attached_manual",
+            "source_revision": "c67a39375424ab0135e5f95e504f8e0de6d8d78e8929c2ba6cd809023ac59df7",
+            "authorization_class": "maintenance_scope"
+          },
+          {
+            "as_of": "2026-10-28T02:08:12.153633Z",
+            "claim": "The returned WEG document is marked as a related reference with unverified fitted-motor and cooler applicability.",
+            "locator": {
+              "page": null,
+              "chunk": null,
+              "field": "/media/attachments/assetmachine/102/S_Line_horizontal_brushless_synchronous_motor_IOM__c67a39375424.pdf#page=20"
+            },
+            "source_id": "68",
+            "source_type": "related_attached_manual",
+            "source_revision": "c67a39375424ab0135e5f95e504f8e0de6d8d78e8929c2ba6cd809023ac59df7",
+            "authorization_class": "maintenance_scope"
+          },
+          {
+            "as_of": "2026-10-11T16:47:36.644446Z",
+            "claim": "The machine record identifies Pump 08 as a Cedar Creek synchronous final-effluent train from multiple OEMs.",
+            "locator": {
+              "page": null,
+              "chunk": null,
+              "field": "/machines/102"
+            },
+            "source_id": "102",
+            "source_type": "asset_machine",
+            "source_revision": "2026-10-11T16:47:36.644446+00:00",
+            "authorization_class": "maintenance_scope"
+          }
+        ],
+        "confidence": "high",
+        "next_questions": [
+          "What fitted motor manufacturer, model, and cooler type are recorded for Pump 08?",
+          "Are radiator air and water inlet/outlet temperatures, water flow or pressure differential, and cold-water versus cold-air temperature difference available for comparison?",
+          "Is there an approved, fitted-model-specific procedure for inspecting or cleaning this cooler?"
+        ],
+        "response_state": "complete",
+        "spoken_summary": "",
+        "safety_boundary": "This related reference is not an approved or verified fitted-motor manual, so it cannot authorize physical work or confirm that this guidance applies to this motor.",
+        "response_version": 1,
+        "detailed_response": "The WEG passage says cooler fouling reduces cooling capacity and recommends regular cleaning intervals; it also points to radiator inlet and outlet temperatures, water flow or pressure differential, and the cold-water versus cold-air temperature difference as checks: worsening comparisons support cooling impairment, while unchanged comparisons weaken that hypothesis. The manual is related, not approved or verified for this fitted motor. This related reference is not an approved or verified fitted-motor manual, so it cannot authorize physical work or confirm that this guidance applies to this motor.\n\nOn page 25, the passage states that fouling of the cooling surface and tube wall reduces cooling capacity and that the heat exchanger should be cleaned at intervals determined from operating conditions. [related attached manual #68, page 25]\n\nOn page 39, it recommends periodically recording radiator air and water inlet/outlet temperatures, checking the cold-water versus cold-air temperature difference, and considering water-pressure differential an indicator of cleaning need. [related attached manual #68, page 39]\n\nThis guidance cannot be confirmed as applicable to Pump 08. The machine record identifies a Cedar Creek synchronous final-effluent train from multiple OEMs, while the returned WEG document is explicitly marked as a related reference with unverified fitted-motor and cooler applicability. [related attached manual #68, page 20] [asset machine #102]",
+        "reasoning_summary": "The document passage directly supports the described fouling effect and conditional cooling-performance checks. Applicability to this fitted motor remains not approved or verified because the machine record identifies a multiple-OEM Cedar Creek train and the returned WEG document is marked as a related reference with unverified fitted-motor and cooler applicability.",
+        "recommended_actions": []
+      }
+    }
+  },
+  "actualT01Pages": [
+    {
+      "id": "f117d3d9-dc2f-4b32-98c7-afc05f9a0dc9",
+      "turn_id": "turn_5391076714554c419c1a943146337913",
+      "type": "prompt",
+      "created_at": "2026-10-28 02:02:23.223024+00:00",
+      "response_id": "",
+      "actual_persisted_speech": "The alarm is a synthetic exercise event, not a confirmed plant condition; no diagnosis is established, and the WEG document is an unverified related reference. Compare Winding 6 with Winding 5 and peers: divergence supports a sensor or localized issue. Compare temperature with load: tracking supports excess load. These are read-only comparisons, not physical work instructions or permission, and they do not establish that Pump 08 is safe, isolated, approved, cleared, or restored. Say next three for more, or repeat.",
+      "persisted_sha256": "5d5ef36709f1fab0525815209090a30676203f858b0754b2dd3c058f9d89a983",
+      "hash_matches": true,
+      "playback_state": "requested",
+      "first_playback_at": null,
+      "timing_reported_at": null,
+      "timing_metrics": null
+    },
+    {
+      "id": "478d71b6-1674-4d99-8741-9ff624f58bed",
+      "turn_id": "turn_5391076714554c419c1a943146337913",
+      "type": "prompt",
+      "created_at": "2026-10-28 02:02:23.223776+00:00",
+      "response_id": "",
+      "actual_persisted_speech": "The alarm is a synthetic exercise event, not a confirmed plant condition; no diagnosis is established, and the WEG document is an unverified related reference. Compare Winding 6 with Winding 5 and peers: divergence supports a sensor or localized issue. Compare cooling flow and inlet/outlet temperatures: degraded cooling supports restriction. These are read-only comparisons, not physical work instructions or permission, and they do not establish that Pump 08 is safe, isolated, approved, cleared, or restored.",
+      "persisted_sha256": "79df88c561b75b0d7cae618c11e5a0ffc734c07e20abf0be1b594742cc09c220",
+      "hash_matches": true,
+      "playback_state": "pending",
+      "first_playback_at": null,
+      "timing_reported_at": null,
+      "timing_metrics": null
+    }
+  ]
+}

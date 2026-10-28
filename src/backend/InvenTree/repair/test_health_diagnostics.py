@@ -279,6 +279,60 @@ class HealthDiagnosticReadTest(TestCase):
         self.assertEqual(result['evidence'], ())
 
     @override_settings(USE_TZ=True)
+    def test_native_test_clock_is_not_shifted_with_archived_source(self):
+        """Synthetic server events retain their own time beside archived conditions."""
+        self.machine.refresh_from_db()
+        observed = timezone.now()
+        historical, _ = record_anomaly(
+            machine=self.machine,
+            source=self.source,
+            fingerprint=fingerprint_for('diag', 'historical-clock'),
+            title='Archived threshold',
+            severity=AnomalySeverity.WARNING,
+            detector='threshold',
+            observed_at=observed - timedelta(days=400),
+        )
+        native, _ = record_anomaly(
+            machine=self.machine,
+            source=self.source,
+            fingerprint=fingerprint_for('diag', 'native-clock'),
+            title='Native synthetic test',
+            severity=AnomalySeverity.CRITICAL,
+            detector='test_alarm_ui',
+            observed_at=observed,
+        )
+        with (
+            patch(
+                'machine_health.services.display_time.display_shift',
+                return_value=timedelta(days=400),
+            ) as shifted,
+            patch(
+                'machine_health.services.display_time.recorded_telemetry_as_live',
+                return_value=True,
+            ),
+        ):
+            result = services.read_diagnostic_health_anomalies(
+                actor=self.actor,
+                authorization=self._authorization(),
+                machine_id=self.machine.pk,
+                expected_revision=services._diagnostic_revision(self.machine),
+                limit=10,
+            )
+        by_id = {row['id']: row for row in result['evidence']}
+        synthetic = by_id[str(native.pk)]
+        self.assertEqual(synthetic['as_of'], observed)
+        self.assertEqual(
+            json.loads(synthetic['claim'])['last_observed_at'], observed.isoformat()
+        )
+        self.assertFalse(json.loads(synthetic['claim'])['display_shifted'])
+        self.assertEqual(by_id[str(historical.pk)]['as_of'], observed)
+        shifted.assert_called_once()
+        native.refresh_from_db()
+        historical.refresh_from_db()
+        self.assertEqual(native.last_observed_at, observed)
+        self.assertEqual(historical.last_observed_at, observed - timedelta(days=400))
+
+    @override_settings(USE_TZ=True)
     def test_recorded_health_uses_live_or_o23_presentation(self):
         """Both diagnostic readers share O27 policy with plant-clock storage."""
         end = timezone.datetime.fromisoformat('2025-08-01T00:00:00+00:00')

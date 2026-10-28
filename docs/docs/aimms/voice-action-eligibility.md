@@ -67,6 +67,7 @@ Every business write requires a read-back and an explicit spoken confirmation (o
 | tool | `receive_po_items` | irreversible | `confirm receive` | has been received | full | yes | no | that action has no voice receipt yet (C7) |
 | tool | `remove_stock` | irreversible | `confirm remove` | has had the stock removed | full | yes | no | that action has no voice receipt yet (E5) |
 | tool | `return_stock` | irreversible | `confirm return` | has been returned | full | yes | no | that stock action is not available by voice yet (E6) |
+| tool | `save_proposed_repair_scope_draft` | reversible | short assent | proposed scope saved; review and physical work pending | brief | yes | yes | — |
 | tool | `send_email` | external_effect | `confirm send` | email has been sent | full | yes | no | that action has no voice receipt yet (C7) |
 | tool | `serialize_stock` | irreversible | `confirm serialize` | has been serialized | full | yes | no | that stock action is not available by voice yet (E6) |
 | tool | `set_part_parameter` | reversible | short assent | now has the updated parameter | brief | yes | no | that change is not available by voice yet (F-OTHER) |

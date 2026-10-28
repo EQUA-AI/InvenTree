@@ -104,6 +104,7 @@ export function VoiceSessionControl(props: Readonly<VoiceSessionControlProps>) {
                 mih={44}
                 color='orange'
                 onClick={props.onConfirmTranscript}
+                disabled={!!split.pendingConfirm?.reviewIssue}
                 data-testid='voice-confirm-transcript'
               >{t`Confirm transcript`}</Button>
               <Button

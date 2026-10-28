@@ -227,6 +227,7 @@ async def build_canonical(service: NormalizedTurnService, run: TurnRun) -> dict[
             diagnostic_context=run.diagnostic_context,
             emitter=run.emitter,
             conversation=await _reasoning_conversation(service, run),
+            focus_snapshot=run.focus_snapshot,
         )
     if pinned_workflow is None and route_mode == "advisory_intent":
         canonical = None
@@ -876,4 +877,6 @@ async def _run_legacy_workflow(service: NormalizedTurnService, run: TurnRun) -> 
         canonical["grounding"] = grounding_meta
     if evidence_gate_blob is not None:
         canonical["evidence_gate"] = evidence_gate_blob
+    if capture_ledger.server_source_reads:
+        canonical["server_source_reads"] = capture_ledger.server_source_reads
     return canonical

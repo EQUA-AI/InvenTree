@@ -45,6 +45,7 @@ class WriteSeverity(StrEnum):
 #: normal surface (restore an archived card, adjust a quantity back, edit a
 #: field again). These keep the lenient bare-"yes" confirmation.
 _REVERSIBLE = frozenset({
+    "save_proposed_repair_scope_draft",
     "propose_memory_action",
     "add_bom_item",
     "add_po_line_item",
@@ -126,6 +127,7 @@ DEFAULT_CONFIRM_PHRASE = "confirm action"
 #: server-authored like the confirm phrases. Exhaustiveness over every
 #: classified tool is asserted by test_voice_action_severity.
 _CHANGE_LABELS: dict[str, str] = {
+    "save_proposed_repair_scope_draft": "proposed scope saved; review and physical work pending",
     "propose_memory_action": "proposal prepared; no memory change applied",
     "add_bom_item": "now has the new bill-of-materials line",
     "add_po_line_item": "now has the new order line",

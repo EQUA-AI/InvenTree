@@ -80,6 +80,66 @@ it('does not create a test trace in a historical window preceding the exercise',
   ).toEqual([{ t: 10, value: 40, test: null }]);
 });
 
+it('ends a resolved exercise at closeout without changing measured samples', () => {
+  const measured = [
+    { t: 0, motor: 40 },
+    { t: 10, motor: 41 },
+    { t: 20, motor: 42 },
+    { t: 30, motor: 43 }
+  ];
+  expect(
+    exerciseRows(
+      measured,
+      [{ key: 'test', value: 159.5, since: 5, until: 25 }],
+      0,
+      30
+    )
+  ).toEqual([
+    { t: 0, motor: 40, test: null },
+    { t: 5, motor: null, test: 159.5 },
+    { t: 10, motor: 41, test: 159.5 },
+    { t: 20, motor: 42, test: 159.5 },
+    { t: 25, motor: null, test: 159.5 },
+    { t: 30, motor: 43, test: null }
+  ]);
+  expect(measured).toEqual([
+    { t: 0, motor: 40 },
+    { t: 10, motor: 41 },
+    { t: 20, motor: 42 },
+    { t: 30, motor: 43 }
+  ]);
+});
+
+it('clips resolved exercises to the requested window and rejects invalid intervals', () => {
+  const measured = [
+    { t: 10, motor: 40 },
+    { t: 20, motor: 41 }
+  ];
+  expect(
+    exerciseRows(
+      measured,
+      [{ key: 'test', value: 5, since: 0, until: 15 }],
+      10,
+      20
+    )
+  ).toEqual([
+    { t: 10, motor: 40, test: 5 },
+    { t: 15, motor: null, test: 5 },
+    { t: 20, motor: 41, test: null }
+  ]);
+  for (const exercise of [
+    { key: 'test', value: 5, since: 0, until: 9 },
+    { key: 'test', value: 5, since: 21, until: 22 },
+    { key: 'test', value: 5, since: 15, until: 14 },
+    { key: 'test', value: 5, since: 15, until: Number.NaN }
+  ]) {
+    expect(exerciseRows(measured, [exercise], 10, 20)).toEqual([
+      { t: 10, motor: 40, test: null },
+      { t: 20, motor: 41, test: null }
+    ]);
+  }
+});
+
 it('withholds incompatible unit overlays without dropping the visible anomaly', () => {
   const mismatch = {
     test_value: 159.5,

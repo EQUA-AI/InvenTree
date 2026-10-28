@@ -8,7 +8,7 @@ from uuid import UUID
 from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 
 from tasks.scope import enforce_machine_scope
@@ -26,17 +26,27 @@ from machine_health.services.alarm_notifications import notify_alarm
 DETECTOR = 'test_alarm_ui'
 
 
-def signal_test_alarms(machine):
+def signal_test_alarms(machine, *, start=None, end=None):
     """Return bounded exercise annotations separately from measured signals."""
     result = {}
+    statuses = Q(status__in=[AnomalyStatus.OPEN, AnomalyStatus.ACKNOWLEDGED])
+    if start is not None and end is not None:
+        statuses |= Q(
+            Q(resolved_at__gte=F('first_observed_at')),
+            status=AnomalyStatus.RESOLVED,
+            first_observed_at__lte=end,
+            resolved_at__gte=start,
+        )
     alarms = MachineAnomaly.objects.filter(
+        statuses,
         machine=machine,
         detector=DETECTOR,
-        status__in=[AnomalyStatus.OPEN, AnomalyStatus.ACKNOWLEDGED],
         metrics__synthetic=True,
         bindings__machine=machine,
         bindings__active=True,
-    ).values('pk', 'bindings__pk', 'metrics', 'first_observed_at', 'status')
+    ).values(
+        'pk', 'bindings__pk', 'metrics', 'first_observed_at', 'resolved_at', 'status'
+    )
     for alarm in alarms:
         binding_id = alarm['bindings__pk']
         metrics = alarm['metrics']
@@ -48,6 +58,9 @@ def signal_test_alarms(machine):
             'test_value': metrics['test_value'],
             'unit': metrics['unit'],
             'triggered_at': alarm['first_observed_at'].isoformat(),
+            'resolved_at': alarm['resolved_at'].isoformat()
+            if alarm['resolved_at']
+            else None,
         })
     return result
 

@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   Group,
+  List,
   Stack,
   Text,
   TextInput
@@ -16,6 +17,51 @@ import { useVoiceDecisionState } from '../../states/VoiceDecisionState';
 import { ApprovalDecisionControls } from './ApprovalDecisionControls';
 import { matchesConfirmPhrase } from './confirmPhrase';
 import { decisionOutcome } from './decisionOutcome';
+import { decisionSectionPreview } from './decisionSectionPreview';
+
+function DecisionSectionText({ text }: { text: string }) {
+  const preview = decisionSectionPreview(text);
+  if (preview.kind === 'text')
+    return (
+      <Text
+        size='sm'
+        style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
+      >
+        {preview.text}
+      </Text>
+    );
+  return (
+    <Stack gap={4}>
+      {preview.kind === 'list' ? (
+        <List size='sm' spacing={4} withPadding>
+          {preview.items.map((item, index) => (
+            <List.Item key={index} style={{ overflowWrap: 'anywhere' }}>
+              {item}
+            </List.Item>
+          ))}
+        </List>
+      ) : (
+        <Stack gap={4}>
+          {preview.fields.map(([key, value]) => (
+            <Text key={key} size='sm' style={{ overflowWrap: 'anywhere' }}>
+              <strong>{key.replaceAll('_', ' ')}: </strong>
+              {value}
+            </Text>
+          ))}
+        </Stack>
+      )}
+      <details>
+        <summary>{t`Original preview text`}</summary>
+        <Text
+          size='xs'
+          style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
+        >
+          {text}
+        </Text>
+      </details>
+    </Stack>
+  );
+}
 
 /** The sole shared mount: no tab owns its own copy or confirmation authority. */
 export function VoiceDecisionCard() {
@@ -87,10 +133,12 @@ export function VoiceDecisionCard() {
           <Badge>{expired && pending ? t`Expired` : decision.state}</Badge>
         </Group>
         {decision.sections.map((section) => (
-          <Text key={section.id} size='sm'>
-            <strong>{section.label}: </strong>
-            {section.text}
-          </Text>
+          <Stack key={section.id} gap={4}>
+            <Text size='sm' fw={600}>
+              {section.label}
+            </Text>
+            <DecisionSectionText text={section.text} />
+          </Stack>
         ))}
         <Text size='sm' data-testid='voice-decision-spoken-summary'>
           {decision.spoken_summary}

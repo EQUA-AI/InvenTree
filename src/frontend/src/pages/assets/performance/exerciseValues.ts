@@ -50,7 +50,12 @@ export function effectiveTest(
 
 export function exerciseRows(
   rows: readonly ChartRow[],
-  exercises: readonly { key: string; value: number; since: number }[],
+  exercises: readonly {
+    key: string;
+    value: number;
+    since: number;
+    until?: number;
+  }[],
   start: number,
   end: number
 ): ChartRow[] {
@@ -62,10 +67,17 @@ export function exerciseRows(
     if (
       !Number.isFinite(exercise.since) ||
       exercise.since > end ||
+      (exercise.until !== undefined &&
+        (!Number.isFinite(exercise.until) ||
+          exercise.until < exercise.since ||
+          exercise.until < start)) ||
       !Number.isFinite(exercise.value)
     )
       continue;
-    for (const instant of [Math.max(start, exercise.since), end]) {
+    for (const instant of [
+      Math.max(start, exercise.since),
+      Math.min(end, exercise.until ?? end)
+    ]) {
       if (!result.some((row) => row.t === instant))
         result.push({
           ...Object.fromEntries([...keys].map((key) => [key, null])),
@@ -81,8 +93,12 @@ export function exerciseRows(
         exercises.map((exercise) => [
           exercise.key,
           Number.isFinite(exercise.since) &&
+          Number.isFinite(exercise.value) &&
+          (exercise.until === undefined ||
+            (Number.isFinite(exercise.until) &&
+              exercise.until >= exercise.since)) &&
           row.t >= Math.max(start, exercise.since) &&
-          row.t <= end
+          row.t <= Math.min(end, exercise.until ?? end)
             ? exercise.value
             : null
         ])

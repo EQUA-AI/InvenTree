@@ -136,6 +136,14 @@ class VoicePromptTests(SimpleTestCase):
             self.assertIn("concise component/required-quantity table", instructions)
             self.assertIn("do not drop a requested filter", instructions)
             self.assertIn("Do not\nname or quote unrelated results", instructions)
+            self.assertIn("get_work_order_closeout", instructions)
+            self.assertIn("not physical inspection", instructions)
+            self.assertIn("not\nproof they were performed", instructions)
+            if not options.get("clarify"):
+                self.assertIn(T1LookupWorkflow.STOCK_SOURCE_RULES, instructions)
+                self.assertIn(T1LookupWorkflow.OPERATING_STATUS_RULES, instructions)
+                self.assertIn("server-confirmed\nmachine focus", instructions)
+                self.assertIn("A search\npage is not the station population", instructions)
 
     async def test_lookup_preparation_bridges_orm_backed_selection_and_hints(self):
         """Cold lexicon reads must work under Django's async safety guard."""

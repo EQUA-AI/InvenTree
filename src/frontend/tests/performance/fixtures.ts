@@ -31,6 +31,7 @@ interface TestAlarmSpec {
   status: SignalTestAlarm['status'];
   unit?: string;
   triggeredAt?: string;
+  resolvedAt?: string;
 }
 
 export const SIGNALS: SignalSpec[] = [
@@ -275,6 +276,7 @@ export async function mount(
   page: Page,
   options: {
     fail?: boolean;
+    failTestHistory?: boolean;
     specs?: readonly SignalSpec[];
     signalOverrides?: Record<string, number>;
     historyLagMs?: number;
@@ -289,6 +291,12 @@ export async function mount(
   await page.route(
     `**/api/machine-health/machines/${MACHINE}/health/signals/**`,
     (route: Route) => {
+      if (
+        options.failTestHistory &&
+        new URL(route.request().url()).searchParams.has('from')
+      ) {
+        return route.fulfill({ status: 503, json: { detail: 'Unavailable' } });
+      }
       const rows = signalRows(options.specs ?? SIGNALS);
       // Let a test place a reading exactly on a limit, which is the one value
       // the server and the page have to agree about.
@@ -328,7 +336,9 @@ export async function mount(
                       test_value: 159.5,
                       unit: alarm.unit ?? row.unit,
                       triggered_at:
-                        alarm.triggeredAt ?? new Date(NOW - 60000).toISOString()
+                        alarm.triggeredAt ??
+                        new Date(NOW - 60000).toISOString(),
+                      resolved_at: alarm.resolvedAt ?? null
                     }
                   ]
                 : []

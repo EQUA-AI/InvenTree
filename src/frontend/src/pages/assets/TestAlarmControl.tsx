@@ -75,7 +75,10 @@ interface AlarmReceipt {
   unit: string;
   idempotency_key: string;
   binding_id: number;
-  work_order?: WorkPackageResult;
+  work_order?: WorkPackageResult & {
+    assignment?: { supervisor_escalation?: string; code: string };
+    triage?: { explanation: string };
+  };
 }
 
 interface WorkPlan {
@@ -137,6 +140,7 @@ export function TestAlarmControl({
   const [confirmed, setConfirmed] = useState(false);
   const [testValue, setTestValue] = useState<number | string>('');
   const [automaticWork, setAutomaticWork] = useState(true);
+  const [eventWork, setEventWork] = useState(true);
   const [assignedTo, setAssignedTo] = useState<string | null>(null);
   const [overrideReason, setOverrideReason] = useState('');
   const [overrideConfirmed, setOverrideConfirmed] = useState(false);
@@ -182,14 +186,14 @@ export function TestAlarmControl({
     retry: false,
     queryFn: async () =>
       (
-        await api.get<{ results: Target[] }>(
+        await api.get<{ results: Target[]; event_work_enabled?: boolean }>(
           `/api/machine-health/machines/${pump}/health/test-alarm/`
         )
-      ).data.results
+      ).data
   });
   const targets =
     !targetQuery.isError && !targetQuery.isFetching
-      ? (targetQuery.data ?? [])
+      ? (targetQuery.data?.results ?? [])
       : [];
   const components = [
     ...new Map(
@@ -209,6 +213,11 @@ export function TestAlarmControl({
       String(target.binding_id) === binding &&
       (!component || String(target.component_id ?? 'machine') === component)
   );
+  const eventOwned = intent
+    ? intent.body.event_owned_work === true
+    : automaticWork &&
+      eventWork &&
+      Boolean(targetQuery.data?.event_work_enabled);
   const plan = useQuery<WorkPlan>({
     queryKey: ['test-alarm-work-plan', ...identity, pump, binding],
     enabled: opened && automaticWork && !!selected && !intent && !receipt,
@@ -225,7 +234,8 @@ export function TestAlarmControl({
       ).data
   });
   const automatic = intent
-    ? intent.body.create_work_order === true
+    ? intent.body.create_work_order === true ||
+      intent.body.event_owned_work === true
     : automaticWork;
   const duplicates = plan.data?.duplicates ?? [];
   useEffect(() => {
@@ -244,7 +254,7 @@ export function TestAlarmControl({
     (plan.isSuccess &&
       !plan.isFetching &&
       !!plan.data.plan_token &&
-      !!assignedTo &&
+      (eventOwned || !!assignedTo) &&
       (!duplicates.length || (overrideConfirmed && !!overrideReason.trim())));
   const syntheticValue = intent ? Number(intent.body.test_value) : testValue;
   const floor = selected?.value_floor ?? selected?.critical_max;
@@ -285,7 +295,7 @@ export function TestAlarmControl({
     ...(automatic && selected && (!plan.isSuccess || plan.isFetching)
       ? [t`Wait for a valid work preview or reload it.`]
       : []),
-    ...(automatic && plan.isSuccess && !assignedTo
+    ...(automatic && !eventOwned && plan.isSuccess && !assignedTo
       ? [t`Select eligible assigned staff.`]
       : []),
     ...(automatic && duplicates.length && !overrideReason.trim()
@@ -317,17 +327,25 @@ export function TestAlarmControl({
       test_value: Number(syntheticValue),
       confirmed: true,
       idempotency_key: crypto.randomUUID(),
-      ...(automatic
+      ...(eventOwned
         ? {
-            create_work_order: true,
-            plan_token: plan.data!.plan_token,
-            assigned_to_id: Number(assignedTo),
+            event_owned_work: true,
             duplicate_override: duplicates.length > 0 && overrideConfirmed,
             duplicate_override_reason: duplicates.length
               ? overrideReason.trim()
               : ''
           }
-        : {})
+        : automatic
+          ? {
+              create_work_order: true,
+              plan_token: plan.data!.plan_token,
+              assigned_to_id: Number(assignedTo),
+              duplicate_override: duplicates.length > 0 && overrideConfirmed,
+              duplicate_override_reason: duplicates.length
+                ? overrideReason.trim()
+                : ''
+            }
+          : {})
     };
     const data = await retained.execute<AlarmReceipt>(
       {
@@ -346,7 +364,8 @@ export function TestAlarmControl({
         response.anomaly_id > 0 &&
         response.idempotency_key === request.body.idempotency_key &&
         response.binding_id === request.body.binding_id &&
-        (request.body.create_work_order !== true ||
+        ((request.body.create_work_order !== true &&
+          request.body.event_owned_work !== true) ||
           (Number.isSafeInteger(response.work_order?.work_order_id) &&
             Number(response.work_order?.work_order_id) > 0 &&
             Number.isSafeInteger(response.work_order?.repair_packet_id) &&
@@ -354,13 +373,16 @@ export function TestAlarmControl({
             response.work_order?.machine_id === response.machine_id &&
             response.work_order?.anomaly_id === response.anomaly_id &&
             response.test_value === request.body.test_value &&
-            response.work_order?.assigned_to_id ===
-              request.body.assigned_to_id &&
+            (request.body.event_owned_work === true ||
+              response.work_order?.assigned_to_id ===
+                request.body.assigned_to_id) &&
             response.work_order?.idempotency_key ===
               `test-alarm-work:${actor}:${request.body.idempotency_key}`))
     );
     if (data) {
-      setAutomaticWork(request.create_work_order === true);
+      setAutomaticWork(
+        request.create_work_order === true || request.event_owned_work === true
+      );
       setStation(station);
       setPump(String(data.machine_id));
       setComponent(String(request.component_id ?? 'machine'));
@@ -369,9 +391,13 @@ export function TestAlarmControl({
       await invalidateTestAlarmViews(queryClient);
       if (data.work_order) {
         showWorkPackageWarnings(data.work_order.warnings);
-        setOpened(false);
         await queryClient.invalidateQueries({ queryKey: ['work-orders'] });
-        navigate(`/maintenance/work-orders/${data.work_order.work_order_id}/`);
+        if (!eventOwned) {
+          setOpened(false);
+          navigate(
+            `/maintenance/work-orders/${data.work_order.work_order_id}/`
+          );
+        }
       }
     }
   };
@@ -625,7 +651,7 @@ export function TestAlarmControl({
                 role='switch'
                 aria-label={t`Create work order automatically`}
                 label={t`Create work order automatically`}
-                description={t`Review the prepared scope and owner below. One confirmed action creates the alarm, planned work order and draft repair packet together.`}
+                description={t`One confirmed action creates the alarm, planned work order and draft repair packet together.`}
                 styles={{ description: { color: 'var(--mantine-color-text)' } }}
                 checked={automatic}
                 disabled={locked}
@@ -634,6 +660,19 @@ export function TestAlarmControl({
                   setConfirmed(false);
                 }}
               />
+              {automatic && targetQuery.data?.event_work_enabled && !intent && (
+                <Checkbox
+                  label={t`Let the event prepare work and request automatic assignment`}
+                  description={t`If staffing evidence is incomplete, work remains unassigned for supervisor review. Existing open work requires review.`}
+                  checked={eventWork}
+                  disabled={locked}
+                  onChange={(event) => {
+                    setEventWork(event.currentTarget.checked);
+                    setOverrideConfirmed(false);
+                    setConfirmed(false);
+                  }}
+                />
+              )}
               {automatic && selected && !intent && (
                 <Stack gap='sm' data-testid='test-alarm-work-plan'>
                   {plan.isFetching ? (
@@ -709,19 +748,21 @@ export function TestAlarmControl({
                             <Text size='xs'>{t`Creation does not start, approve or close the work.`}</Text>
                           </Stack>
                         </Alert>
-                        <WorkOrderAssigneeSelect
-                          key={pump}
-                          machineId={Number(pump)}
-                          value={assignedTo}
-                          onChange={(value) => {
-                            setAssignedTo(value);
-                            setConfirmed(false);
-                          }}
-                          suggestedUsername={
-                            plan.data.scenario.suggested_owner_username
-                          }
-                          disabled={locked}
-                        />
+                        {!eventOwned && (
+                          <WorkOrderAssigneeSelect
+                            key={pump}
+                            machineId={Number(pump)}
+                            value={assignedTo}
+                            onChange={(value) => {
+                              setAssignedTo(value);
+                              setConfirmed(false);
+                            }}
+                            suggestedUsername={
+                              plan.data.scenario.suggested_owner_username
+                            }
+                            disabled={locked}
+                          />
+                        )}
                         {duplicates.length > 0 && (
                           <Alert
                             color='orange'
@@ -797,7 +838,9 @@ export function TestAlarmControl({
                 <Text size='sm'>
                   {t`Retained work-order request`}:{' '}
                   {intent.context?.workTitle ?? t`Prepared investigation`} ·{' '}
-                  {t`Assigned staff`} #{String(intent.body.assigned_to_id)}
+                  {eventOwned
+                    ? t`Event-owned planning and staffing review`
+                    : `${t`Assigned staff`} #${String(intent.body.assigned_to_id)}`}
                 </Text>
               )}
               {!receipt && (
@@ -860,11 +903,26 @@ export function TestAlarmControl({
                   to={`/machines/machine/${receipt.machine_id}/health?anomaly=${receipt.anomaly_id}`}
                 >{t`View test alarm`}</Anchor>
                 {receipt.work_order ? (
-                  <Button
-                    component={Link}
-                    to={`/maintenance/work-orders/${receipt.work_order.work_order_id}/`}
-                    onClick={() => setOpened(false)}
-                  >{t`Open owning work order`}</Button>
+                  <Stack gap='xs'>
+                    {receipt.work_order.triage?.explanation && (
+                      <Text size='sm'>
+                        {receipt.work_order.triage.explanation}
+                      </Text>
+                    )}
+                    {receipt.work_order.assignment?.supervisor_escalation && (
+                      <Alert
+                        color='orange'
+                        title={t`Supervisor review required`}
+                      >
+                        {receipt.work_order.assignment.supervisor_escalation}
+                      </Alert>
+                    )}
+                    <Button
+                      component={Link}
+                      to={`/maintenance/work-orders/${receipt.work_order.work_order_id}/`}
+                      onClick={() => setOpened(false)}
+                    >{t`Open owning work order`}</Button>
+                  </Stack>
                 ) : (
                   <Button
                     onClick={() => {

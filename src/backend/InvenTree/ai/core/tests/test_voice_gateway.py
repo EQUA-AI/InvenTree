@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import aiohttp
 import pytest
@@ -139,3 +139,39 @@ def test_registry_reuses_channels_and_close_is_idempotent():
     # Idempotent: closing an unknown/already-closed session is a no-op.
     asyncio.run(close_channel("reg-1"))
     assert "reg-1" not in gateway._channels
+
+
+@pytest.mark.parametrize("api_key", ["", "test-voice-key"])
+def test_connect_uses_server_owned_authentication_header(api_key):
+    settings = _settings().model_copy(
+        update={
+            "azure_voicelive_endpoint": "https://example.services.ai.azure.com/",
+            "azure_voicelive_api_key": api_key,
+        }
+    )
+    websocket = FakeWs([])
+    http = Mock(ws_connect=AsyncMock(return_value=websocket), close=AsyncMock())
+    bearer = AsyncMock(return_value="test-managed-identity-token")
+
+    async def run():
+        channel = VoiceLiveChannel("auth-test")
+        with (
+            patch("ai.core.config.get_settings", return_value=settings),
+            patch("aiohttp.ClientSession", return_value=http),
+            patch.object(gateway._token_cache, "bearer", bearer),
+        ):
+            assert await channel._connect() is websocket
+        await channel.close()
+
+    asyncio.run(run())
+    arguments = http.ws_connect.call_args
+    expected_headers = (
+        {"api-key": api_key} if api_key else {"Authorization": "Bearer test-managed-identity-token"}
+    )
+    assert arguments.kwargs["headers"] == expected_headers
+    assert "test-voice-key" not in arguments.args[0]
+    assert "test-managed-identity-token" not in arguments.args[0]
+    if api_key:
+        bearer.assert_not_awaited()
+    else:
+        bearer.assert_awaited_once()

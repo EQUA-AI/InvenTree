@@ -134,6 +134,18 @@ def _tool_policy(name: str) -> ActionPolicy:
     action_class = action_class_for_severity(severity)
     strict = action_class is WriteActionClass.IRREVERSIBLE
     review: Review = "full" if severity is not WriteSeverity.REVERSIBLE else "brief"
+    if name == "save_proposed_repair_scope_draft":
+        return ActionPolicy(
+            name=name,
+            rail="tool",
+            severity=severity,
+            action_class=action_class,
+            confirm_phrase="",
+            change_label=change_label_for_tool_name(name),
+            review="brief",
+            voice_review_allowed=True,
+            voice_execution_allowed=True,
+        )
     voice_review_allowed = name not in _TOOL_SCREEN_REQUIRED
     if name in _TOOL_SCREEN_REQUIRED:
         reason, follow_up = _TOOL_SCREEN_REQUIRED[name], "OD-15"

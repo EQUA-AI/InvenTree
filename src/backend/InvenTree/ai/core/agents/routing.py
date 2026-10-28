@@ -803,6 +803,31 @@ def is_explicit_media_lookup(message: str) -> bool:
     )
 
 
+def is_operating_status_lookup(message: str) -> bool:
+    """Distinguish observed equipment states from diagnosis and control actions."""
+    from ai.core.tools.capabilities import _write_intent
+
+    return bool(
+        re.search(r"\b(?:pumps?|machines?|equipment|assets?|stations?|pumphouse)\b", message, re.I)
+        and re.search(r"\b(?:which|how many|show|list|status|is|are)\b", message, re.I)
+        and re.search(
+            r"\b(?:running|idle|stopped|standby|faulted|stale)\b|\boperating\s+status\b",
+            message,
+            re.I,
+        )
+        and not re.search(
+            r"\b(?:why|caus\w*|diagnos\w*|troubleshoot\w*|repair\w*|fix\w*|hot|overheat\w*|"
+            r"start|stop|restart|reset|energize|enable|disable|bypass|stock|inventory|"
+            r"spares?|seals?|kits?|purchase|quotes?|histor[i]\w*|previous\w*|past|last|"
+            r"before|after|when|yesterday)\b|\bturn\s+(?:on|off)\b|"
+            r"\brunning\s+(?:total|balance|cost)s?\b",
+            message,
+            re.I,
+        )
+        and _write_intent(message) is None
+    )
+
+
 class UnifiedRouter:
     """
     Unified router that combines FastPath, Semantic, and LLM routing.
@@ -832,6 +857,13 @@ class UnifiedRouter:
         # as its complexity route. Broader manual/record requests still need
         # the legacy complexity router; a read-only task can require research.
         trusted = context or {}
+        if is_operating_status_lookup(message):
+            return RoutingDecision(
+                workflow_type=WorkflowType.T1_LOOKUP,
+                confidence=1.0,
+                reasoning="Read-only equipment operating-state lookup",
+                use_fast_path=False,
+            )
         if (
             trusted.get("modality") != "voice"
             and trusted.get("effect_intent") == "read_only"

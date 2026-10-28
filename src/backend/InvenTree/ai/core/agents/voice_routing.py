@@ -65,6 +65,7 @@ class RouteReason(StrEnum):
     SIMPLE_LOOKUP = "simple_lookup"
     SIMPLE_FACT = "simple_fact"
     GENERAL_REQUEST = "general_request"
+    REFERENCE_SOURCE_READ = "reference_source_read"
     # S3: a typed analysis task intent overrode the legacy route.
     ANALYSIS_INTENT = "analysis_intent"
 
@@ -166,6 +167,7 @@ class VoiceRoutingContext:
     policy: VoiceRoutingPolicy = field(default_factory=VoiceRoutingPolicy)
     allowed_tools: tuple[str, ...] = ()
     allowed_capabilities: tuple[str, ...] = ()
+    confirmed_work_focus: bool = False
 
     def __post_init__(self) -> None:
         """Normalize trusted scalar and tuple values."""
@@ -174,6 +176,8 @@ class VoiceRoutingContext:
             raise ValueError("transcription_confidence must be between 0 and 1")
         if not isinstance(self.policy, VoiceRoutingPolicy):
             raise TypeError("policy must be a VoiceRoutingPolicy")
+        if type(self.confirmed_work_focus) is not bool:
+            raise TypeError("confirmed_work_focus must be a server boolean")
 
         object.__setattr__(self, "actor_role", str(self.actor_role).strip().lower())
         object.__setattr__(self, "actor_scope", str(self.actor_scope).strip().lower())
@@ -287,6 +291,7 @@ class VoiceComplexityRouter:
             rf"\bhelp\s+me\s+(?:to\s+)?{_EFFECT_VERB}\b",
             rf"\bi\s+{_EFFECT_VERB}\b",
             r"(?:^|[.!?])\s*(?:(?:please|kindly)\s+)?propose\s+memory\s+action\b",
+            r"(?:^|[.!?])\s*(?:(?:please|kindly)\s+)?save\s+(?:a\s+|the\s+)?proposed\s+repair\s+scope\b",
         )
     )
     _START_GUIDANCE_QUESTION = re.compile(
@@ -300,6 +305,19 @@ class VoiceComplexityRouter:
             r"^\s*(?:(?:please|kindly)\s+)?complete\s+(?:repair\s+)?(?:list|history|records?|details|information|overview)\b",
             r"^\s*(?:(?:please|kindly)\s+)?start\s+(?:date|time|of)\b",
         )
+    )
+    _SOURCE_REFERENCE_OPEN = re.compile(
+        r"^\s*(?:please\s+)?(?P<verb>open)\s+(?:(?:the|that|this)\s+)?"
+        r"(?:(?:(?:weg|motor|manufacturer|attached|related)\s+){0,2}manual\s+passage\b"
+        r"|inspection\s+(?:record|finding)\s+(?:p08[- ]temp[- ])?e[- ]?(?:zero|0)[- ]?(?:three|3)\b)",
+        re.IGNORECASE,
+    )
+    _WORK_MANUAL_REFERENCE_OPEN = re.compile(
+        r"^\s*(?:please\s+)?(?P<verb>open)\s+(?:(?:the|that|this)\s+)?"
+        r"(?:(?:weg|motor|manufacturer|attached|related)\s+){1,2}manual\b"
+        r"(?!\s+(?:work[ -]?orders?|jobs?|cases?|requests?|drafts?|valves?|"
+        r"controls?|switch(?:es)?|panels?|overrides?|cabinets?|gates?|modes?)\b)",
+        re.IGNORECASE,
     )
     _REPAIR_EFFECT_PATTERNS: ClassVar[tuple[re.Pattern[str], ...]] = tuple(
         re.compile(pattern, re.IGNORECASE)
@@ -396,7 +414,7 @@ class VoiceComplexityRouter:
 
         # Effect-shaped wording has first precedence.  Even trusted write-like
         # capabilities do not turn this advisory classification into authority.
-        if self._is_effect_intent(content):
+        if self._is_effect_intent(content, confirmed_work_focus=context.confirmed_work_focus):
             reasons = [RouteReason.EFFECT_INTENT]
             self._append_context_reasons(
                 reasons,
@@ -410,6 +428,21 @@ class VoiceComplexityRouter:
                 self._cautious_effort(context, reasons),
                 reasons,
                 target_workflow_id=None,
+            )
+        if self._read_source_navigation(content, confirmed_work_focus=context.confirmed_work_focus):
+            reasons = [RouteReason.REFERENCE_SOURCE_READ]
+            self._append_context_reasons(
+                reasons,
+                low_confidence=low_confidence,
+                elevated_risk=elevated_risk,
+                diagnostic_evidence=diagnostic_evidence,
+                limited_actor=limited_actor,
+            )
+            return self._decision(
+                RouteMode.REASONING,
+                self._cautious_effort(context, reasons),
+                reasons,
+                target_workflow_id=self.REASONING_WORKFLOW_ID,
             )
 
         from ai.core.agents.routing import (
@@ -533,7 +566,38 @@ class VoiceComplexityRouter:
         return reasons
 
     @classmethod
-    def _is_effect_intent(cls, content: str) -> bool:
+    def _read_source_navigation(cls, content: str, *, confirmed_work_focus: bool = False) -> bool:
+        """Treat only existing source passages as reads; retain every combined effect."""
+        match = cls._SOURCE_REFERENCE_OPEN.match(content)
+        if match is None and confirmed_work_focus:
+            match = cls._WORK_MANUAL_REFERENCE_OPEN.match(content)
+        if match is None:
+            return False
+        from ai.core.tools.capabilities import _write_intent
+
+        text = content[: match.start("verb")] + "read" + content[match.end("verb") :]
+        if _write_intent(text.casefold()) is not None:
+            return False
+        if re.search(
+            r"(?:\band\b|\bthen\b|\balso\b|[;.!?])\s*(?:please\s+)?" + cls._EFFECT_VERB + r"\b",
+            text,
+            re.I,
+        ):
+            return False
+        if re.search(
+            r"(?:\band\b|\bthen\b|\balso\b|[;.!?])\s*(?:please\s+)?"
+            r"(?:confirm|verify|declare|certify)\b[^.!?]{0,60}"
+            r"\b(?:isolation|isolated|loto|lockout|safety|safe|clearance|restored)\b",
+            text,
+            re.I,
+        ):
+            return False
+        return not cls._matches_any(text, cls._EFFECT_PATTERNS) and not cls._matches_any(
+            text, cls._REPAIR_EFFECT_PATTERNS
+        )
+
+    @classmethod
+    def _is_effect_intent(cls, content: str, *, confirmed_work_focus: bool = False) -> bool:
         """Match effect syntax while excluding common informational phrases."""
         from ai.core.presentation.requests import chart_requested, effect_text
 
@@ -543,6 +607,8 @@ class VoiceComplexityRouter:
             return _write_intent(content.casefold()) is not None
 
         content = effect_text(content)
+        if cls._read_source_navigation(content, confirmed_work_focus=confirmed_work_focus):
+            return False
         # A bare request for a starting point is not a command to start an
         # asset or job. Remove only that clause, so another explicit action
         # in the same turn still takes the governed path.

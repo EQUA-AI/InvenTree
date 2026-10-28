@@ -10,7 +10,9 @@ functions; tests can inject an in-memory reader without loading Django models.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -21,6 +23,8 @@ from typing import Annotated, Any, Literal, Protocol
 from ai.core.auth import AIPrincipal
 from ai.core.tools.provider_schema import strict_provider_schema
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+logger = logging.getLogger(__name__)
 
 MACHINE_READ_CAPABILITY = "diagnostics.machine.read"
 PACKET_READ_CAPABILITY = "diagnostics.packet.read"
@@ -41,6 +45,8 @@ BASE_DIAGNOSTIC_TOOL_NAMES = (
     "search_approved_manuals",
     "find_published_repair_playbooks",
     "get_parts_availability",
+    "search_related_work_manuals",
+    "get_requested_prepared_inspection",
 )
 LIVE_SAFETY_TOOL_NAME = "get_live_safety_status"
 
@@ -85,6 +91,14 @@ class DiagnosticReaderError(DiagnosticToolError):
     """Raised when a reader violates the bounded read contract."""
 
 
+class DiagnosticReadResult(dict):
+    """Bounded model data with a separate, server-owned native-read receipt."""
+
+    def __init__(self, payload, receipt):
+        super().__init__(payload)
+        self.read_receipt = receipt
+
+
 class _StrictArguments(BaseModel):
     """Common fail-closed argument policy for every diagnostic tool."""
 
@@ -103,6 +117,14 @@ class GetRepairPacketArguments(_StrictArguments):
 
     repair_packet_id: StrictPositiveInt
     expected_revision: StrictRevision
+
+
+class SearchRelatedWorkManualsArguments(GetRepairPacketArguments):
+    """Search actual packet-owned related PDF sources without claiming approval."""
+
+    query: StrictQuery
+    attachment_id: StrictPositiveInt | None = None
+    limit: Annotated[int, Field(default=3, strict=True, ge=1, le=5)] = 3
 
 
 class GetRecentMaintenanceHistoryArguments(_StrictArguments):
@@ -217,6 +239,9 @@ class DiagnosticContext:
     issued_at: datetime
     max_age_seconds: int
     context_id: str
+    focused_repair_packet_id: int | None = None
+    prepared_inspection_requested: bool = False
+    original_manual_passage_request: str = ""
 
     def root_for(self, entity_type: str, entity_id: int) -> DiagnosticRecordRoot | None:
         """Return an exact trusted root without accepting browser relationships."""
@@ -228,6 +253,18 @@ class DiagnosticContext:
             ),
             None,
         )
+
+
+def diagnostic_source_tool_allowed(name, context, root_id=None):
+    """Narrow new source readers to confirmed Work and explicit current E03 intent."""
+    if name not in {"search_related_work_manuals", "get_requested_prepared_inspection"}:
+        return True
+    focused = getattr(context, "focused_repair_packet_id", None)
+    if type(focused) is not int or focused < 1 or (root_id is not None and root_id != focused):
+        return False
+    if name == "get_requested_prepared_inspection":
+        return getattr(context, "prepared_inspection_requested", False) is True
+    return True
 
 
 def build_diagnostic_context(
@@ -435,6 +472,20 @@ _BASE_DEFINITIONS = (
         "machine",
         "machine_id",
     ),
+    DiagnosticToolDefinition(
+        "search_related_work_manuals",
+        SearchRelatedWorkManualsArguments,
+        MANUAL_READ_CAPABILITY,
+        "repair_packet",
+        "repair_packet_id",
+    ),
+    DiagnosticToolDefinition(
+        "get_requested_prepared_inspection",
+        GetRepairPacketArguments,
+        PACKET_READ_CAPABILITY,
+        "repair_packet",
+        "repair_packet_id",
+    ),
 )
 
 _SAFETY_DEFINITION = DiagnosticToolDefinition(
@@ -446,6 +497,8 @@ _SAFETY_DEFINITION = DiagnosticToolDefinition(
 )
 
 _TOOL_DESCRIPTIONS = {
+    "search_related_work_manuals": "Search literal PDF passages attached to the focused Work/equipment. These are related references with unverified fitted-model/cooler applicability, never approved manuals. Cite actual page/hash/source URL and preserve that caveat.",
+    "get_requested_prepared_inspection": "Retrieve ONLY the explicitly requested prepared E03 inspection record for focused Work. It is prepared exercise evidence, not an actual inspection, physical repair or current live measurement. No E05/E06 or post-repair values are available.",
     "get_machine_context": "Read current authorized machine context.",
     "get_repair_packet": "Read a current authorized and safety-redacted repair packet.",
     "get_recent_maintenance_history": "Read recent authorized maintenance history.",
@@ -538,6 +591,15 @@ class ProductionDiagnosticReader:
         authorization: ReadAuthorization,
     ) -> ReaderResult | dict[str, Any]:
         """Dispatch only exact registry names to corresponding domain readers."""
+        if tool_name in {"search_related_work_manuals", "get_requested_prepared_inspection"}:
+            from repair.diagnostic_sources import read_source
+
+            return read_source(
+                actor=actor,
+                authorization=authorization,
+                tool_name=tool_name,
+                **arguments.model_dump(),
+            )
         service_name = {
             "get_machine_context": "read_diagnostic_machine_context",
             "get_repair_packet": "read_diagnostic_repair_packet",
@@ -626,6 +688,7 @@ class DiagnosticToolRegistry:
             if (
                 definition.capability not in context.capabilities
                 or definition.root_type not in root_types
+                or not diagnostic_source_tool_allowed(definition.name, context)
             ):
                 continue
             parameters = strict_provider_schema(definition.arguments_model)
@@ -678,6 +741,8 @@ class DiagnosticToolRegistry:
             raise DiagnosticAuthorizationError(NON_ENUMERATING_DENIAL)
 
         root_id = getattr(parsed, definition.root_argument)
+        if not diagnostic_source_tool_allowed(name, context, root_id):
+            raise DiagnosticAuthorizationError(NON_ENUMERATING_DENIAL)
         root = context.root_for(definition.root_type, root_id)
         if root is None or parsed.expected_revision != root.expected_revision:
             raise DiagnosticAuthorizationError(NON_ENUMERATING_DENIAL)
@@ -706,6 +771,12 @@ class DiagnosticToolRegistry:
         ):
             raise DiagnosticAuthorizationError(NON_ENUMERATING_DENIAL)
 
+        if name == "search_related_work_manuals" and context.original_manual_passage_request:
+            from ai.core.reasoning.repair_source_context import manual_passage_query
+
+            query = manual_passage_query(context.original_manual_passage_request)
+            if query:
+                parsed = parsed.model_copy(update={"query": query})
         raw_result = self._reader.read(
             actor=actor,
             tool_name=name,
@@ -713,7 +784,30 @@ class DiagnosticToolRegistry:
             authorization=authorization,
         )
         result = self._coerce_result(raw_result)
-        return self._bounded_result(name, result, authorization, now)
+        payload = self._bounded_result(name, result, authorization, now)
+        # These coordinates describe the read that just completed, never an
+        # inferred/model-declared retrieval. Keep them outside the dict sent
+        # to the provider so audit metadata cannot become source content.
+        receipt = {
+            "kind": "native_diagnostic_read",
+            "reader": name,
+            "context_id": context.context_id,
+            "authorization_check_id": authorization.check_id,
+            "entity_type": authorization.entity_type,
+            "entity_id": authorization.entity_id,
+            "entity_revision": authorization.current_revision,
+            "read_at": now.isoformat(),
+            "status": payload["status"],
+            "sources": [
+                {key: row[key] for key in ("source_type", "id", "revision")}
+                for row in payload["evidence"]
+            ],
+            "result_sha256": hashlib.sha256(
+                json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+        }
+        logger.info("diagnostics.read receipt=%s", json.dumps(receipt, sort_keys=True))
+        return DiagnosticReadResult(payload, receipt)
 
     async def aexecute(
         self,

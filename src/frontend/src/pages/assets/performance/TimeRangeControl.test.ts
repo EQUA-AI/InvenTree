@@ -81,3 +81,15 @@ it('does not revive a resolved older error when the source explicitly reports a 
   expect(markup).toContain('>Live · 2 stale</button>');
   expect(markup).not.toContain('>Read failed</button>');
 });
+it('never presents an actual recorded source window as Live', () => {
+  const markup = render({
+    ...response,
+    recorded_telemetry_as_live: false,
+    telemetry_presentation: 'recorded_history',
+    display_shifted: false,
+    display_shift_seconds: 0
+  });
+  expect(markup).toContain('>Recorded history</button>');
+  expect(markup).not.toContain('>Live');
+  expect(markup).not.toContain('presented on the live clock');
+});

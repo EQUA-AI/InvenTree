@@ -265,6 +265,25 @@ class StartRepairApiTest(InvenTreeAPITestCase):
         self.assertEqual(
             response.data['lifecycle_status'], WorkOrderLifecycle.IN_PROGRESS
         )
+        result = response.data['result']
+        self.assertEqual(result['work_order_id'], self.work_order.pk)
+        self.assertEqual(result['lifecycle_status'], WorkOrderLifecycle.IN_PROGRESS)
+        self.assertEqual(
+            result['lifecycle_version'], self.work_order.lifecycle_version + 1
+        )
+        self.assertTrue(result['event_id'])
+        self.assertTrue(result['idempotency_key'])
+
+    def test_start_replay_returns_the_same_native_receipt(self):
+        """A retry retains the exact command receipt without another transition."""
+        command = {
+            'expected_version': self.work_order.lifecycle_version,
+            'idempotency_key': 'start-receipt',
+        }
+        first = self.post(self.url, command, expected_code=200)
+        replay = self.post(self.url, command, expected_code=200)
+        self.assertEqual(first.data['result'], replay.data['result'])
+        self.assertEqual(self.packet.events.filter(event_type='advanced').count(), 1)
 
     def test_open_repairs_lists_candidates_with_readiness(self):
         """The chooser gets everything it needs to avoid guessing."""

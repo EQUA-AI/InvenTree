@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
@@ -96,6 +97,11 @@ def _expected_identity(deployment: str) -> str:
         from ai.core.config import get_settings
 
         settings = get_settings()
+        if (
+            getattr(settings, "ai_provider", "azure") == "local"
+            and deployment == settings.local_openai_model
+        ):
+            return settings.local_openai_model
         by_deployment = {
             settings.azure_openai_deployment: settings.azure_openai_expected_model,
             settings.azure_openai_fast_deployment: settings.azure_openai_expected_fast_model,
@@ -155,19 +161,50 @@ def _probe_chat_deployment(settings: Settings, deployment: str, expected: str) -
     from ai.core.integrations.boot_budget import openai_probe_options
     from openai import AzureOpenAI
 
-    client = AzureOpenAI(
-        azure_endpoint=settings.azure_openai_endpoint,
-        api_key=settings.azure_openai_api_key,
-        api_version=settings.azure_openai_api_version,
-        **openai_probe_options(),
-    )
-    with _probe_client(lambda: client):
+    local = getattr(settings, "ai_provider", "azure") == "local"
+    if local:
+        from ai.core.integrations.azure_openai_client import build_openai_client
+        from ai.core.integrations.boot_budget import _deadline
+
+        def make_client():
+            deadline = _deadline.get()
+            timeout = min(30.0, max(0.001, deadline - time.monotonic())) if deadline else 30.0
+            return build_openai_client(settings=settings).with_options(
+                timeout=timeout, max_retries=0
+            )
+
+    else:
+
+        def make_client():
+            return AzureOpenAI(
+                azure_endpoint=settings.azure_openai_endpoint,
+                api_key=settings.azure_openai_api_key,
+                api_version=settings.azure_openai_api_version,
+                **openai_probe_options(),
+            )
+
+    with _probe_client(make_client) as client:
         response = client.chat.completions.create(
             model=deployment,
             messages=[{"role": "user", "content": "ping"}],
             max_completion_tokens=CHAT_PROBE_MAX_COMPLETION_TOKENS,
         )
     resolved = str(getattr(response, "model", "") or "")
+    if local and not resolved:
+        raise ModelPinError(
+            "Local chat probe omitted model identity", code="CHAT_MODEL_PIN_MISMATCH"
+        )
+    if local:
+        choices = getattr(response, "choices", None) or []
+        message = getattr(choices[0], "message", None) if choices else None
+        if (
+            not message
+            or not getattr(message, "content", None)
+            or getattr(message, "refusal", None)
+        ):
+            raise ModelPinError(
+                "Local chat probe returned no answer", code="CHAT_PROBE_UNREACHABLE"
+            )
     record_resolved_model(deployment, resolved)
     if expected and resolved and resolved != expected:
         raise ModelPinError(
@@ -274,16 +311,22 @@ def run_boot_probes(
         else:
             report["index"] = "verified"
 
-    if not settings.model_version_boot_probe_enabled:
+    local = getattr(settings, "ai_provider", "azure") == "local"
+    if not local and not settings.model_version_boot_probe_enabled:
         report["chat"] = "disabled"
-    elif not settings.azure_openai_endpoint:
+    elif not local and not settings.azure_openai_endpoint:
         logger.warning("chat model-pin probe skipped: Azure OpenAI plane unconfigured")
     else:
         prober = chat_prober or _probe_chat_deployment
-        for deployment, expected in (
-            (settings.azure_openai_deployment, settings.azure_openai_expected_model),
-            (settings.azure_openai_fast_deployment, settings.azure_openai_expected_fast_model),
-        ):
+        deployments = (
+            ((settings.local_openai_model, settings.local_openai_model),)
+            if local
+            else (
+                (settings.azure_openai_deployment, settings.azure_openai_expected_model),
+                (settings.azure_openai_fast_deployment, settings.azure_openai_expected_fast_model),
+            )
+        )
+        for deployment, expected in deployments:
             if not deployment:
                 continue
             try:
@@ -299,6 +342,8 @@ def run_boot_probes(
                     code="CHAT_PROBE_UNREACHABLE",
                 ) from exc
         report["chat"] = "verified"
+        if local:
+            report["chat_provider"] = "local"
 
     logger.info(
         "model-pin boot probe embedding=%s index=%s chat=%s attachment=%s media=%s",

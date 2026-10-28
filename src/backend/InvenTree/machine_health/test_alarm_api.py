@@ -26,6 +26,7 @@ class TestAlarmSerializer(serializers.Serializer):
     confirmed = serializers.BooleanField()
     test_value = serializers.FloatField(required=False)
     create_work_order = serializers.BooleanField(default=False)
+    event_owned_work = serializers.BooleanField(default=False)
     plan_token = serializers.CharField(max_length=24000, required=False)
     assigned_to_id = serializers.IntegerField(min_value=1, required=False)
     duplicate_override = serializers.BooleanField(default=False)
@@ -34,8 +35,25 @@ class TestAlarmSerializer(serializers.Serializer):
     )
 
     def validate(self, data):
-        """Automatic creation requires a preview and real typed owner."""
-        if data['create_work_order']:
+        """Validate the distinct event-owned and explicit-preview paths."""
+        if data['event_owned_work']:
+            if (
+                data['create_work_order']
+                or data.get('plan_token')
+                or data.get('assigned_to_id')
+            ):
+                raise serializers.ValidationError(
+                    'Event-owned work does not accept manual planning fields.'
+                )
+            if data['duplicate_override'] and not data['duplicate_override_reason']:
+                raise serializers.ValidationError(
+                    'Explain why a separate work order is needed.'
+                )
+            if not data['duplicate_override'] and data['duplicate_override_reason']:
+                raise serializers.ValidationError(
+                    'A separate work order reason requires duplicate review.'
+                )
+        elif data['create_work_order']:
             if not data.get('plan_token') or not data.get('assigned_to_id'):
                 raise serializers.ValidationError(
                     'Review the work preview and select assigned staff.'
@@ -101,7 +119,13 @@ class MachineTestAlarm(APIView):
                 return Response({'code': exc.code, 'detail': str(exc)}, status=400)
             response['Cache-Control'] = 'no-store'
             return response
-        return Response({'results': targets(machine)})
+        return Response({
+            'results': targets(machine),
+            'event_work_enabled': bool(
+                getattr(settings, 'AIMMS_TEST_ALARM_EVENT_WORK_ENABLED', False)
+                and getattr(settings, 'AIMMS_WORK_ORDERS_ENABLED', False)
+            ),
+        })
 
     def post(self, request, pk):
         """Raise the selected synthetic condition once per request key."""
@@ -111,6 +135,7 @@ class MachineTestAlarm(APIView):
         data = dict(serializer.validated_data)
         data.pop('confirmed')
         automatic = data.pop('create_work_order')
+        event_owned = data.pop('event_owned_work')
         planning = {
             key: data.pop(key, None)
             for key in (
@@ -122,7 +147,16 @@ class MachineTestAlarm(APIView):
         }
         work_order = None
         try:
-            if automatic:
+            if event_owned:
+                anomaly, work_order = trigger_with_work(
+                    machine=machine,
+                    actor=request.user,
+                    event_owned=True,
+                    duplicate_override=planning['duplicate_override'],
+                    duplicate_override_reason=planning['duplicate_override_reason'],
+                    **data,
+                )
+            elif automatic:
                 anomaly, work_order = trigger_with_work(
                     machine=machine, actor=request.user, **planning, **data
                 )
@@ -154,6 +188,6 @@ class MachineTestAlarm(APIView):
             'unit': anomaly.metrics['unit'],
             'notification': 'Queued through configured notification channels',
         }
-        if automatic:
+        if automatic or event_owned:
             receipt['work_order'] = work_order
         return Response(receipt)

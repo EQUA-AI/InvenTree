@@ -40,7 +40,8 @@ export function monitorMicrophone(
   floor: number,
   windowMs: number,
   active: () => boolean,
-  warn: () => void
+  warn: () => void,
+  recovered?: () => void
 ) {
   if (typeof AudioContext === 'undefined') return () => {};
   const context = new AudioContext();
@@ -56,7 +57,16 @@ export function monitorMicrophone(
     const rms = Math.sqrt(
       samples.reduce((sum, v) => sum + v * v, 0) / samples.length
     );
-    if (!warned && check.sample(rms, active(), Date.now())) {
+    const listening = active();
+    const silent = check.sample(rms, listening, Date.now());
+    if (!listening || rms >= floor) {
+      if (warned) {
+        warned = false;
+        recovered?.();
+      }
+      return;
+    }
+    if (!warned && silent) {
       warned = true;
       warn();
     }

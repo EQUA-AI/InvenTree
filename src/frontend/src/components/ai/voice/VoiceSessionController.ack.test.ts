@@ -178,6 +178,7 @@ beforeEach(() => {
     voiceListeningMode: 'continuous',
     voiceEarcons: true,
     voiceSrAnnounceTranscripts: false,
+    voiceReviewEveryRequest: false,
     voiceConsentVersion: 'consent-v3-memory',
     voiceLocale: 'en-US',
     voiceOutputVoice: 'en-US-AvaNeural',

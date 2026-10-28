@@ -60,6 +60,10 @@ tool and briefly identify what is missing."""
 _SENSITIVE_ARGUMENTS = frozenset({"attachments", "body", "document_data"})
 
 _ACTION_DOMAINS: tuple[tuple[re.Pattern[str], frozenset[str]], ...] = (
+    (
+        re.compile(r"\b(?:repair scope|proposed scope|scope draft)\b", re.I),
+        frozenset({"work_order"}),
+    ),
     (re.compile(r"\b(?:memory|memories|remember|forget)\b", re.I), frozenset({"ai_memory"})),
     (
         re.compile(r"\b(?:email|mail|rfq|request for quote|pdf|document)\b", re.I),
@@ -110,6 +114,7 @@ def text_chat_tools() -> tuple[Any, ...]:
     from ai.core.tools.inventree.write.purchase_orders import (
         PURCHASE_ORDER_WRITE_TOOLS,
     )
+    from ai.core.tools.repair_scope_draft import REPAIR_SCOPE_DRAFT_TOOLS
 
     ordered = (
         get_last_action_status,
@@ -123,6 +128,7 @@ def text_chat_tools() -> tuple[Any, ...]:
         *EVIDENCE_MEDIA_TOOLS,
         *SOURCE_INVENTORY_TOOLS,
         *MEMORY_ACTION_TOOLS,
+        *REPAIR_SCOPE_DRAFT_TOOLS,
     )
     unique: dict[str, Any] = {}
     for tool in ordered:
@@ -212,7 +218,7 @@ def _capture_proxy(tool: Any, captured: list[_CapturedAction]) -> Callable[..., 
     signature = inspect.signature(tool)
 
     @functools.wraps(tool)
-    async def capture(*args: Any, **kwargs: Any) -> dict[str, bool]:  # noqa: RUF029 -- tool framework requires a coroutine
+    async def capture(*args: Any, **kwargs: Any) -> dict[str, bool]:  # noqa: RUF029 - Preserve the awaited tool callback protocol.
         bound = signature.bind(*args, **kwargs)
         arguments = dict(bound.arguments)
         json.dumps(arguments)
@@ -251,6 +257,7 @@ def _display_value(key: str, value: Any) -> str | None:
 #: tell a correct resolution from a wrong one, which is the whole point of
 #: reading it back.
 _RECORD_LABELERS: dict[str, tuple[str, str]] = {
+    "work_order_id": ("ai.core.tools.inventree.read.maintenance", "get_work_order_overview"),
     "card_id": ("ai.core.integrations.kanban_tools", "get_kanban_card"),
     "part_id": ("ai.core.tools.inventree.read.parts", "get_part"),
     "order_id": ("ai.core.tools.inventree.read.purchasing", "get_purchase_order"),
@@ -305,6 +312,14 @@ async def _action_summary_async(tool: Any, arguments: dict[str, Any]) -> str:
 
 
 def _action_summary(tool: Any, arguments: dict[str, Any]) -> str:
+    if tool_name(tool) == "save_proposed_repair_scope_draft":
+        cause = " ".join(str(arguments.get("scope", {}).get("suspected_cause", "")).split())[:160]
+        return (
+            f"Save proposed repair scope for work order {arguments.get('work_order_id')} "
+            f"at version {arguments.get('expected_version')}: {cause} "
+            "Zero parts; fitted-cooler applicability remains unverified. "
+            "Supervisor and site-safety reviews stay pending; physical work has not started"
+        )
     label = tool_name(tool).replace("_", " ")
     details: list[str] = []
     display_fields = getattr(tool, "_confirmation_display_fields", None)
@@ -464,7 +479,35 @@ class VoiceToolActionResolver:
 
         try:
             action_proxies = [_capture_proxy(tool, captured) for tool in authorized_actions]
-            response = await agent.run(content, tools=action_proxies)
+            first_tools = action_proxies
+            if (
+                len(authorized_actions) == 1
+                and tool_name(authorized_actions[0]) == "save_proposed_repair_scope_draft"
+            ):
+                first_tools = [
+                    *[
+                        tool
+                        for tool in authorized
+                        if tool_name(tool)
+                        in {
+                            "get_focused_repair_scope_context",
+                            "get_focused_repair_scope_draft",
+                            "search_focused_work_manual",
+                        }
+                    ],
+                    *action_proxies,
+                ]
+                content = (
+                    content + "\nRead get_focused_repair_scope_context first. Use its real "
+                    "Work/source/E03/manual IDs and version, and the actual prepared evidence "
+                    "to generate the proposed scope. Read the relevant actual manual passage "
+                    "with search_focused_work_manual before capturing the proposal. "
+                    "Prior proposals are reconciliation records, not approved source evidence. "
+                    "Generate a fresh complete scope from current sources and planning requirements. "
+                    "Read get_focused_repair_scope_draft only for an explicit saved-draft review request. "
+                    "Do not guess IDs or claim completion."
+                )
+            response = await agent.run(content, tools=first_tools)
             record_usage("voice_tool_actions", maf_response_usage_metrics(response))
             if not captured:
                 authorized_reads = _related_reads(

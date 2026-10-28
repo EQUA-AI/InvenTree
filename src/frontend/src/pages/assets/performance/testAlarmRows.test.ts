@@ -45,6 +45,39 @@ it('does not present invalid, mismatched or ended tests as active', () => {
   }
 });
 
+it('includes only properly bounded resolved exercises in history', () => {
+  const resolved = {
+    ...signal,
+    test_alarms: [
+      {
+        ...signal.test_alarms![0],
+        status: 'resolved',
+        resolved_at: '2026-10-24T16:30:00Z'
+      }
+    ]
+  } as MachineSignal;
+  expect(testAlarmRows([resolved])).toEqual([]);
+  expect(testAlarmRows([resolved], undefined, true)).toMatchObject([
+    { status: 'resolved', resolved_at: '2026-10-24T16:30:00Z' }
+  ]);
+  for (const resolvedAt of [null, 'invalid', '2026-10-24T15:30:00Z']) {
+    expect(
+      testAlarmRows(
+        [
+          {
+            ...resolved,
+            test_alarms: [
+              { ...resolved.test_alarms![0], resolved_at: resolvedAt }
+            ]
+          }
+        ],
+        undefined,
+        true
+      )
+    ).toEqual([]);
+  }
+});
+
 it('connects the chart label to the source channel name', () => {
   expect(
     testAlarmRows(

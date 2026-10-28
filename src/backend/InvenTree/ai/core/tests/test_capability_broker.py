@@ -32,6 +32,7 @@ from ai.core.tools.capabilities import (
     tool_name,
 )
 from ai.core.tools.inventree.read.action_status import get_last_action_status
+from ai.core.tools.repair_scope_draft import REPAIR_SCOPE_DRAFT_TOOLS
 
 ALL_VIEW_PROFILE = frozenset({
     ("build", "view"),
@@ -74,6 +75,7 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
         *SOURCE_INVENTORY_TOOLS,
         *MEMORY_ACTION_TOOLS,
         *INVESTIGATION_PROPOSAL_TOOLS,
+        *REPAIR_SCOPE_DRAFT_TOOLS,
     )
     catalog = capability_catalog()
 
@@ -83,9 +85,9 @@ def test_catalog_covers_every_workflow_toolset_once_in_canonical_order():
     # search_evidence_media; S8a added list_document_sources; R5 retired
     # search_part_documents (59 -> 58, catalog 95 -> 94).
     # Preserve investigation tools and add the permissioned staff read.
-    assert len(wf8_tools) == 66
-    assert len(catalog) == 102
-    assert tuple(entry.tool for entry in catalog[:66]) == wf8_tools
+    assert len(wf8_tools) == 70
+    assert len(catalog) == 106
+    assert tuple(entry.tool for entry in catalog[:70]) == wf8_tools
     assert len({entry.tool_id for entry in catalog}) == len(catalog)
 
 
@@ -109,6 +111,8 @@ def test_catalog_has_expected_stable_pack_shapes():
     counts = Counter(entry.pack_id for entry in capability_catalog())
 
     assert counts == {
+        "repair_scope.read": 3,
+        "repair_scope.draft": 1,
         "memory.proposals": 1,
         "investigation.proposals": 1,
         "parts.read": 5,
@@ -330,7 +334,7 @@ def test_contract_manifest_is_stable_and_complete():
     assert first == second
     assert manifest_json() == manifest_json()
     # Combined catalog includes investigation and personnel tools.
-    assert len(first) == 102
+    assert len(first) == 106
     assert all(record["module"] for record in first)
     assert all(record["qualname"] for record in first)
     assert all(len(record["contract_digest"]) == 64 for record in first)

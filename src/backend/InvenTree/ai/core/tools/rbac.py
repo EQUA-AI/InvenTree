@@ -48,8 +48,18 @@ def _tool_permission_map() -> dict[Any, tuple[str, str]]:
     from ai.core.tools.inventree.read import maintenance as wt
     from ai.core.tools.inventree.read.action_status import get_last_action_status
     from ai.core.tools.inventree.write import purchase_orders as po
+    from ai.core.tools.repair_scope_draft import (
+        get_focused_repair_scope_context,
+        get_focused_repair_scope_draft,
+        save_proposed_repair_scope_draft,
+        search_focused_work_manual,
+    )
 
     mapping: dict[Any, tuple[str, str]] = {
+        get_focused_repair_scope_context: ("work_order", "view"),
+        get_focused_repair_scope_draft: ("work_order", "view"),
+        save_proposed_repair_scope_draft: ("work_order", "change"),
+        search_focused_work_manual: ("work_order", "view"),
         propose_memory_action: ("ai_memory", "write"),
         propose_investigation_artifact: ("work_order", "change"),
         get_last_action_status: ("work_order", "view"),

@@ -8,32 +8,48 @@ import { resolveSignal } from './resolve';
 import { type PerformanceTestAlarm, testAlarmRows } from './testAlarmRows';
 
 const TestAlarmContext = createContext<PerformanceTestAlarm[]>([]);
+const TestHistoryContext = createContext<PerformanceTestAlarm[]>([]);
 
 export function PerformanceTestAlarmProvider({
   signals,
+  historySignals,
   children
 }: Readonly<{
   signals: MachineSignal[];
+  historySignals: MachineSignal[];
   children: ReactNode;
 }>) {
-  const alarms = useMemo(
-    () =>
-      testAlarmRows(
-        signals,
-        new Map(
-          signals.map((signal) => [
-            signal.binding_id,
-            resolveSignal(signal).label
-          ])
+  const { alarms, history } = useMemo(() => {
+    const labels = new Map(
+      signals.map((signal) => [signal.binding_id, resolveSignal(signal).label])
+    );
+    const alarms = testAlarmRows(signals, labels);
+    return {
+      alarms,
+      history: [
+        ...alarms,
+        ...testAlarmRows(historySignals, labels, true).filter(
+          (alarm) => alarm.status === 'resolved'
         )
-      ),
-    [signals]
-  );
+      ]
+    };
+  }, [signals, historySignals]);
   return (
     <TestAlarmContext.Provider value={alarms}>
-      {children}
+      <TestHistoryContext.Provider value={history}>
+        {children}
+      </TestHistoryContext.Provider>
     </TestAlarmContext.Provider>
   );
+}
+
+export function usePerformanceTestHistory(bindingIds: readonly number[]) {
+  const history = useContext(TestHistoryContext);
+  const key = bindingIds.join(',');
+  return useMemo(() => {
+    const ids = new Set(key.split(',').map(Number));
+    return history.filter((alarm) => ids.has(alarm.binding_id));
+  }, [history, key]);
 }
 
 export function usePerformanceTestAlarms(bindingIds?: readonly number[]) {

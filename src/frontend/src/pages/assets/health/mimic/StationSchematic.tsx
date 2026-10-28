@@ -16,6 +16,7 @@ import {
 import { unitLabel } from '../../performance/format';
 import { recordedTelemetryAsLive } from '../../telemetryPresentation';
 import { Timestamp } from '../Timestamp';
+import { freshnessText } from './FreshnessLabel';
 import { MimicLiveBadge } from './MimicLiveBadge';
 import { AlarmAttentionRings, MimicMotionControl } from './MimicMotion';
 import { alarmColor, alarmLabel, stateStyle } from './MimicSchematic';
@@ -70,6 +71,38 @@ export function StationSchematic({
   );
   const bays = [...data.bays].sort(byBayNumber);
   const pumpCount = stationRunningSummary(data);
+  const forebayElement = data.layout.elements.find(
+    (element) => element.view === 'station' && element.id === 'forebay'
+  );
+  const forebayPoint = forebayElement
+    ? data.station_points[forebayElement.pointer]
+    : undefined;
+  const forebayRecorded = data.polling_enabled === false;
+  const forebayAvailable =
+    data.enabled &&
+    !data.read_failed &&
+    (forebayPoint?.reason == null ||
+      (forebayRecorded && forebayPoint.reason === 'stale')) &&
+    !failedReading(forebayPoint) &&
+    typeof forebayPoint?.value === 'number' &&
+    Number.isFinite(forebayPoint.value);
+  const forebayValue = forebayAvailable
+    ? valueText({ ...forebayPoint, reason: null })
+    : t`Unavailable`;
+  const forebayRecordDetail = [
+    t`Last recorded · polling off`,
+    data.source?.name ?? t`Source unavailable`,
+    freshnessText(forebayPoint, clock),
+    clock.label
+  ].join(' · ');
+  const forebayLabel = forebayAvailable
+    ? `${t`Forebay level`}: ${forebayValue}. ${forebayRecorded ? `${forebayRecordDetail}. ` : ''}${t`Not to scale`}`
+    : `${t`Forebay level`}: ${t`Unavailable`}`;
+  const forebayUnavailableReason = !data.enabled
+    ? t`Polling disabled`
+    : data.read_failed || failedReading(forebayPoint)
+      ? t`Read failed`
+      : reasonLabel(forebayPoint?.reason ?? null) || t`Unavailable`;
   const power = data.layout.elements.find(
     (element) => element.view === 'unit' && element.id === 'pump-power'
   );
@@ -105,9 +138,9 @@ export function StationSchematic({
       setAvailable(entry.contentRect.width)
     );
     resize.observe(node);
-    node.scrollLeft = desktop ? 0 : 24;
+    node.scrollLeft = desktop || forebayRecorded ? 0 : 24;
     return () => resize.disconnect();
-  }, [desktop, bays.length > 0]);
+  }, [desktop, bays.length > 0, forebayRecorded]);
   const perRow =
     desktop && available > 0 && available < 1100
       ? Math.ceil(bays.length / 2)
@@ -142,11 +175,14 @@ export function StationSchematic({
           </ValueTooltip>
         </Group>
         <Group gap='xs' wrap='nowrap'>
-          <MimicLiveBadge data={data} />
+          {data.polling_enabled !== false && <MimicLiveBadge data={data} />}
           <MimicMotionControl />
           {actions}
         </Group>
         <Group gap='md' className={classes.observed}>
+          {forebayRecorded && (
+            <Text size='xs'>{t`Last recorded state · polling off`}</Text>
+          )}
           <Timestamp
             value={currentSource ? data.last_observed_at : data.last_poll_at}
             clock={clock}
@@ -203,7 +239,9 @@ export function StationSchematic({
                   fw={650}
                   className={`${classes.reading} ${visual.value}`}
                   data-severity={
-                    element.id === 'pumps-running'
+                    element.id === 'pumps-running' ||
+                    (element.id === 'forebay' &&
+                      (!forebayAvailable || forebayRecorded))
                       ? null
                       : readingSeverity(point)
                   }
@@ -212,7 +250,11 @@ export function StationSchematic({
                   {element.id === 'pumps-running' ? (
                     pumpCount.known > 0 ? (
                       <ValueTooltip
-                        label={t`Calculated from the same current bay statuses shown in the schematic; the separate station counter is retained in station readings.`}
+                        label={
+                          forebayRecorded
+                            ? t`Calculated from the last recorded bay statuses shown in the schematic; the separate station counter is retained in station readings.`
+                            : t`Calculated from the same current bay statuses shown in the schematic; the separate station counter is retained in station readings.`
+                        }
                       >
                         {pumpCount.unknown > 0
                           ? t`${pumpCount.running} confirmed of ${pumpCount.total}`
@@ -224,6 +266,15 @@ export function StationSchematic({
                         reason={t`No current pump status is available; the station counter does not identify a running pump.`}
                       />
                     )
+                  ) : element.id === 'forebay' && !forebayAvailable ? (
+                    <MissingValue
+                      label={label}
+                      reason={forebayUnavailableReason}
+                    />
+                  ) : element.id === 'forebay' && forebayRecorded ? (
+                    <ValueTooltip label={forebayRecordDetail}>
+                      {forebayValue}
+                    </ValueTooltip>
                   ) : reading ? (
                     <ValueTooltip label={detail}>{reading}</ValueTooltip>
                   ) : (
@@ -231,8 +282,17 @@ export function StationSchematic({
                   )}
                 </Text>
                 {element.id === 'pumps-running' && (
-                  <Text size='xs'>{t`Calculated total`}</Text>
+                  <Text size='xs'>
+                    {forebayRecorded
+                      ? t`Last recorded total`
+                      : t`Calculated total`}
+                  </Text>
                 )}
+                {element.id === 'forebay' &&
+                  forebayAvailable &&
+                  forebayRecorded && (
+                    <Text size='xs'>{forebayRecordDetail}</Text>
+                  )}
               </Paper>
             );
           })}
@@ -356,11 +416,47 @@ export function StationSchematic({
                   data-station-row
                   transform={`translate(0 ${row * 320})`}
                 >
-                  <path
-                    d='M18 60H24V222H120V60H126V228H18Z'
-                    className={classes.manifold}
-                    data-forebay-tank
-                  />
+                  {/* biome-ignore lint/a11y/noInteractiveElementToNoninteractiveRole: SVG group is an unfocusable, atomic forebay illustration. */}
+                  <g
+                    role='img'
+                    aria-label={forebayLabel}
+                    focusable='false'
+                    data-forebay
+                  >
+                    <title>{forebayLabel}</title>
+                    {forebayAvailable && (
+                      <path
+                        d='M24 122q8-5 16 0t16 0t16 0t16 0t16 0t16 0V222H24Z'
+                        className={classes.forebayWater}
+                        data-forebay-water
+                      />
+                    )}
+                    <path
+                      d='M18 60H24V222H120V60H126V228H18Z'
+                      className={classes.manifold}
+                      data-forebay-tank
+                    />
+                    <text
+                      x={72}
+                      y={174}
+                      textAnchor='middle'
+                      className={classes.forebayValue}
+                    >
+                      {forebayAvailable ? forebayValue : '—'}
+                    </text>
+                    <text
+                      x={72}
+                      y={246}
+                      textAnchor='middle'
+                      className={classes.forebayCaption}
+                    >
+                      {forebayAvailable
+                        ? forebayRecorded
+                          ? t`Recorded · unscaled`
+                          : t`Not to scale`
+                        : t`Unavailable`}
+                    </text>
+                  </g>
                   <path
                     d={`M126 ${bottom}H${width - 18}v12H126`}
                     className={classes.manifold}
@@ -454,7 +550,7 @@ export function StationSchematic({
                             d={`M${x} 196V${bottom}M${x + 20} 176h6V22`}
                             className={classes.pipeCore}
                           />
-                          {hasDischargeFlow(data, bay) && (
+                          {!forebayRecorded && hasDischargeFlow(data, bay) && (
                             <path
                               d={`M${x + 20} 176h6V22`}
                               className={visual.flow}

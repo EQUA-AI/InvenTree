@@ -170,6 +170,9 @@ async def _build_route_inner(service: NormalizedTurnService, run: TurnRun) -> No
             modality=run.modality,
             modality_metadata=run.metadata,
             diagnostic_context=run.diagnostic_context,
+            focus_snapshot=(
+                None if getattr(run, "focus_unavailable", False) else run.focus_snapshot
+            ),
         )
         if run.task_intent is not None:
             legacy_mode = getattr(getattr(run.route, "mode", None), "value", None)

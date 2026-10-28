@@ -97,6 +97,29 @@ class CapabilitySelection:
 
 
 _PACK_SPECS: dict[str, tuple[ToolEffect, tuple[str, ...], tuple[str, ...]]] = {
+    "repair_scope.read": (
+        ToolEffect.READ,
+        (
+            "get_focused_repair_scope_context",
+            "get_focused_repair_scope_draft",
+            "search_focused_work_manual",
+        ),
+        (
+            "proposed scope",
+            "repair scope draft",
+            "saved draft",
+            "saved scope",
+            "what you saved",
+            "motor manual",
+            "attached manual",
+            "manual passage",
+        ),
+    ),
+    "repair_scope.draft": (
+        ToolEffect.WRITE,
+        ("save_proposed_repair_scope_draft",),
+        (),
+    ),
     "investigation.proposals": (ToolEffect.WRITE, ("propose_investigation_artifact",), ()),
     "memory.proposals": (ToolEffect.WRITE, ("propose_memory_action",), ()),
     "parts.read": (
@@ -468,6 +491,7 @@ _DEFAULT_PACK_WORKFLOWS = frozenset({"wf8", "general"})
 _SPECIALIST_WORKFLOWS = frozenset({"wf2", "wf3", "wf4", "wf6"})
 _ALL_PACK_WORKFLOWS = _DEFAULT_PACK_WORKFLOWS | _SPECIALIST_WORKFLOWS
 _PACK_WORKFLOWS: dict[str, frozenset[str]] = {
+    "repair_scope.draft": _DEFAULT_PACK_WORKFLOWS,
     "investigation.proposals": frozenset({"wf8"}),
     "memory.proposals": _DEFAULT_PACK_WORKFLOWS,
     "documents.read": _ALL_PACK_WORKFLOWS | frozenset({"wf9"}),
@@ -585,7 +609,8 @@ _WRITE_PATTERN = re.compile(
     r"generating|installing|issuing|marking|merging|moving|ordering|purchasing|"
     r"receiving|removing|restoring|returning|sending|serializing|setting|splitting|"
     r"transferring|uninstalling|updating"
-    r"|propose(?=\s+memory\s+action\b))\b",
+    r"|propose(?=\s+memory\s+action\b)"
+    r"|save(?=\s+(?:a\s+|the\s+)?proposed\s+repair\s+scope\b))\b",
     re.IGNORECASE,
 )
 
@@ -1386,6 +1411,7 @@ def _catalog_tools() -> tuple[Any, ...]:
     from ai.core.integrations.source_inventory_tools import SOURCE_INVENTORY_TOOLS
     from ai.core.tools.inventree.read.action_status import get_last_action_status
     from ai.core.tools.inventree.write.purchase_orders import PURCHASE_ORDER_WRITE_TOOLS
+    from ai.core.tools.repair_scope_draft import REPAIR_SCOPE_DRAFT_TOOLS
 
     ordered: list[Any] = []
     seen: set[str] = set()
@@ -1401,6 +1427,7 @@ def _catalog_tools() -> tuple[Any, ...]:
         *SOURCE_INVENTORY_TOOLS,
         *MEMORY_ACTION_TOOLS,
         *INVESTIGATION_PROPOSAL_TOOLS,
+        *REPAIR_SCOPE_DRAFT_TOOLS,
         # Specialist rails (wf2/wf3/wf4/wf6) below; the wf8 prefix above keeps
         # the existing catalog order stable for the manifest.
         *INVENTORY_TOOLS,
@@ -2204,6 +2231,12 @@ def select_capabilities(
     lexicon = category_lexicon() if widened and category_lexicon_enabled() else frozenset()
     signals: list[str] = []
     scores = _pack_scores(normalized)
+    from ai.core.agents.routing import is_operating_status_lookup
+
+    operating_lookup = is_operating_status_lookup(normalized)
+    if operating_lookup:
+        scores["machines.read"] = scores.get("machines.read", 0) + _SHAPE_SCORE
+        signals.append("operating_state_lookup")
     if _matches_lexicon(normalized, lexicon):
         scores["parts.read"] = scores.get("parts.read", 0) + 1
         signals.append("lexicon")
@@ -2224,7 +2257,7 @@ def select_capabilities(
         scores["analytics.read"] = scores.get("analytics.read", 0) + _SHAPE_SCORE
         signals.append("shape")
 
-    intent_packs = _INTENT_PACKS.get(task_intent or "")
+    intent_packs = ("machines.read",) if operating_lookup else _INTENT_PACKS.get(task_intent or "")
     if intent_packs:
         # S3: typed-intent selection. Seeds the scores so the trim loop can
         # still rank, but the pack tuple itself is direct — no lexical

@@ -147,3 +147,43 @@ class AnomalyDisplayTimeTest(TestCase):
         self.assertEqual(
             timezone.datetime.fromisoformat(data['first_observed_at']), observed
         )
+
+    def test_native_test_event_keeps_server_time_beside_recorded_source_anomaly(self):
+        """A shared source offset must never move a newly triggered TEST event."""
+        recorded_time = self.recorded_end - timedelta(minutes=5)
+        recorded = self.anomaly(observed_at=recorded_time)
+        triggered = self.now - timedelta(minutes=2)
+        exercise = self.anomaly(observed_at=triggered)
+        exercise.detector = 'test_alarm_ui'
+        exercise.metrics = {'synthetic': True, 'test_value': 159.5}
+        exercise.save(update_fields=['detector', 'metrics'])
+
+        for ordered in ([recorded, exercise], [exercise, recorded]):
+            with self.subTest(order=[anomaly.detector for anomaly in ordered]):
+                serialized = MachineAnomalySerializer(ordered, many=True).data
+                by_id = {row['pk']: row for row in serialized}
+                test_row = by_id[exercise.pk]
+                self.assertFalse(test_row['display_shifted'])
+                self.assertEqual(test_row['display_shift_seconds'], 0)
+                self.assertEqual(
+                    timezone.datetime.fromisoformat(test_row['first_observed_at']),
+                    triggered,
+                )
+                self.assertEqual(
+                    timezone.datetime.fromisoformat(test_row['last_observed_at']),
+                    triggered,
+                )
+                recorded_row = by_id[recorded.pk]
+                self.assertTrue(recorded_row['display_shifted'])
+                self.assertGreater(recorded_row['display_shift_seconds'], 399 * 86400)
+                self.assertGreater(
+                    timezone.datetime.fromisoformat(recorded_row['first_observed_at']),
+                    self.now - timedelta(minutes=10),
+                )
+
+        exercise.refresh_from_db()
+        recorded.refresh_from_db()
+        self.assertEqual(exercise.first_observed_at, triggered)
+        self.assertEqual(exercise.last_observed_at, triggered)
+        self.assertEqual(recorded.first_observed_at, recorded_time)
+        self.assertEqual(recorded.last_observed_at, recorded_time)

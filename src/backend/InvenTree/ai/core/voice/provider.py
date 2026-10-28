@@ -77,6 +77,15 @@ class SessionPolicy:
     #: native semantic VAD instead of azure_semantic_vad. Governance is identical
     #: either way -- see ``_turn_detection``.
     native_sts: bool = False
+    vad_silence_duration_ms: int = 550
+
+    def __post_init__(self) -> None:
+        """Reject unbounded Azure turn windows before a provider session is opened."""
+        if (
+            type(self.vad_silence_duration_ms) is not int
+            or not 200 <= self.vad_silence_duration_ms <= 2000
+        ):
+            raise ValueError("Azure semantic VAD silence must be an integer from 200 to 2000 ms")
 
     def _turn_detection(self) -> dict[str, Any]:
         """The VAD/turn-taking block. Governance holds in BOTH transports:
@@ -98,7 +107,7 @@ class SessionPolicy:
             "type": "azure_semantic_vad",
             "prefix_padding_ms": 420,
             "speech_duration_ms": 80,
-            "silence_duration_ms": 550,
+            "silence_duration_ms": self.vad_silence_duration_ms,
             "remove_filler_words": False,
             "languages": [self.language],
             "create_response": False,

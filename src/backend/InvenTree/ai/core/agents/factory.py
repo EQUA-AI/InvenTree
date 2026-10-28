@@ -58,11 +58,16 @@ def build_agent(spec: AgentSpec) -> ChatAgent:
             f"{spec.workflow or 'unnamed rail'}: a constructor toolset bypasses "
             "run_with_rbac; only wf1's legacy agents may carry one"
         )
+    request_timeout_s = spec.request_timeout_s
+    if spec.workflow == "wf8" and request_timeout_s is not None:
+        settings = get_settings()
+        if getattr(settings, "ai_provider", "azure") == "local":
+            request_timeout_s = settings.local_openai_timeout_s
     client = build_chat_client(
         spec.deployment,
         max_iterations=spec.max_tool_iterations,
         include_detailed_errors=spec.include_detailed_errors,
-        request_timeout_s=spec.request_timeout_s,
+        request_timeout_s=request_timeout_s,
         request_max_retries=spec.request_max_retries,
     )
     return ChatAgent(

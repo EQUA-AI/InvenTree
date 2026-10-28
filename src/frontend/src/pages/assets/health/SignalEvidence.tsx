@@ -454,7 +454,7 @@ export function SignalEvidence({
                   {t`Retained snapshot`}
                 </Badge>
                 <Text size='sm'>
-                  {t`Captured ${fullInstant(snapshot.captured_at) ?? '—'} for ${snapshotReason(snapshot.reason)}`}
+                  {t`Captured ${fullInstant(snapshot.captured_at) ?? '—'} for ${snapshotReason(snapshot.reason)}`}{' '}
                   <MonitoringLink
                     component={Link}
                     to={`/machines/machine/${machineId}/health/?snapshot=${snapshot.id}`}

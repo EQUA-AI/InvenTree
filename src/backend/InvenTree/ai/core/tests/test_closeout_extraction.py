@@ -38,6 +38,53 @@ class TestPromptConstruction:
         assert "Qualified, negated, ranged, approximate, or compound" in prompt
         assert "downtime_minutes" in prompt and "null" in prompt
 
+    def test_prompt_provides_complete_unknown_document_and_no_candidate_rule(self):
+        prompt = build_extraction_messages(NARRATIVE, SHAPE)[0]["content"]
+        template, _ = json.JSONDecoder().raw_decode(
+            prompt.split("Empty/unknown document shape", 1)[1].split("\n", 1)[1]
+        )
+        assert set(template) == {
+            "schema_version",
+            "fields",
+            "part_candidates",
+            "reading_candidates",
+            "warnings",
+        }
+        assert set(template["fields"]) == {
+            "cause",
+            "action",
+            "result",
+            "verification_summary",
+            "downtime_minutes",
+            "follow_up",
+        }
+        for name, field in template["fields"].items():
+            assert set(field) == {"value", "spans", "confidence", "warnings"}
+            assert field["value"] == (None if name == "downtime_minutes" else "")
+            assert field["spans"] == []
+            assert field["confidence"] == 0
+            assert field["warnings"] == ["not_stated"]
+        assert template["part_candidates"] == template["reading_candidates"] == []
+        assert "including an explicit statement of no parts, use []" in prompt
+        assert "OBJECTS, never strings" in prompt
+
+    @pytest.mark.parametrize(
+        ("label", "keys"),
+        [
+            ("Part", {"text", "spans", "quantity_text", "warnings"}),
+            ("Reading", {"text", "spans", "value_text", "unit_text", "warnings"}),
+        ],
+    )
+    def test_prompt_defines_each_nested_candidate_shape(self, label, keys):
+        prompt = build_extraction_messages(NARRATIVE, SHAPE)[0]["content"]
+        candidate, _ = json.JSONDecoder().raw_decode(prompt.split(f"{label} candidate: ", 1)[1])
+        assert set(candidate) == keys
+        assert isinstance(candidate["text"], str)
+        assert all(type(edge) is int for span in candidate["spans"] for edge in span)
+        assert candidate["warnings"] == []
+        for key in keys - {"text", "spans", "warnings"}:
+            assert candidate[key] == ""
+
     def test_narrative_is_fenced_as_data(self):
         messages = build_extraction_messages(NARRATIVE, SHAPE)
         user = messages[1]["content"]

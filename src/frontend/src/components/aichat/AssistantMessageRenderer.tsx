@@ -356,7 +356,8 @@ export function AssistantMessageRenderer({
                   asOf: entry.as_of,
                   sourceTitle: entry.locator?.field ?? entry.source_type,
                   sourceId: entry.source_id,
-                  sourceRevision: entry.source_revision
+                  sourceRevision: entry.source_revision,
+                  locator: entry.locator
                 }))}
               />
             ) : (

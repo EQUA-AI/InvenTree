@@ -65,6 +65,7 @@ interface ExerciseCheck {
   passed: boolean;
   recorded: boolean;
   value: boolean | number | string | null;
+  readings?: { W5: string; W6: string; maximum: string } | null;
   step_key: string;
   version: number;
   recorded_by: string | null;
@@ -105,6 +106,12 @@ function ExerciseStep({
   const [value, setValue] = useState<string | number>(
     check.value === null ? '' : String(check.value)
   );
+  const [winding5, setWinding5] = useState<string | number>(
+    check.readings?.W5 ?? ''
+  );
+  const [winding6, setWinding6] = useState<string | number>(
+    check.readings?.W6 ?? ''
+  );
   const [note, setNote] = useState(check.note);
   const [evidence, setEvidence] = useState(check.evidence_ids.map(String));
   const [baselineVersion, setBaselineVersion] = useState(check.version);
@@ -116,24 +123,32 @@ function ExerciseStep({
     }
   }, [check.version, pendingVersion]);
   const [reviewedSource, setReviewedSource] = useState(false);
-  const url = `/api/tasks/work-orders/${result.work_order_id}/steps/${check.step_key}/complete/`;
+  const numeric = check.value_type === 'number';
+  const url = numeric
+    ? `/api/tasks/work-orders/${result.work_order_id}/exercise-verification/`
+    : `/api/tasks/work-orders/${result.work_order_id}/steps/${check.step_key}/complete/`;
+  const legacyUrl = `/api/tasks/work-orders/${result.work_order_id}/steps/${check.step_key}/complete/`;
   const command = useRetainedCommand(
     `exercise-step:${result.work_order_id}:${check.step_key}`,
-    new RegExp(`^${url}$`)
+    new RegExp(numeric ? `^(${url}|${legacyUrl})$` : `^${url}$`)
   );
   const changedElsewhere =
     baselineVersion !== check.version && check.version !== pendingVersion;
-  const numeric = check.value_type === 'number';
   const record = async () => {
-    const recordedValue = numeric
-      ? { number: String(value) }
-      : { boolean: value === 'true' };
+    const recordedValue = { boolean: value === 'true' };
     const request = command.intent ?? {
       url,
       body: {
         expected_version: baselineVersion,
         idempotency_key: crypto.randomUUID(),
-        value: recordedValue,
+        ...(numeric
+          ? {
+              application_id: result.application_id,
+              step_key: check.step_key,
+              winding_5: String(winding5),
+              winding_6: String(winding6)
+            }
+          : { value: recordedValue }),
         evidence_ids: evidence.map(Number),
         note:
           check.sequence === 3
@@ -144,15 +159,25 @@ function ExerciseStep({
     const response = await command.execute<{
       step_key: string;
       application: number;
+      application_id?: number;
+      work_order_id?: number;
+      idempotency_key?: string;
+      maximum?: string;
       version: number;
       value: unknown;
     }>(
       request,
       (receipt, retained) =>
         receipt.step_key === check.step_key &&
-        receipt.application === result.application_id &&
         receipt.version === Number(retained.body.expected_version) + 1 &&
-        JSON.stringify(receipt.value) === JSON.stringify(retained.body.value)
+        (numeric && retained.url === url
+          ? receipt.application_id === result.application_id &&
+            receipt.work_order_id === result.work_order_id &&
+            receipt.idempotency_key === retained.body.idempotency_key &&
+            typeof receipt.maximum === 'string'
+          : receipt.application === result.application_id &&
+            JSON.stringify(receipt.value) ===
+              JSON.stringify(retained.body.value))
     );
     if (response) {
       setPendingVersion(response.version);
@@ -209,14 +234,29 @@ function ExerciseStep({
           </Alert>
         )}
         {numeric ? (
-          <NumberInput
-            label={t`Maximum winding temperature (°C)`}
-            value={value}
-            onChange={setValue}
-            decimalScale={1}
-            step={0.1}
-            disabled={disabled}
-          />
+          <Stack gap='xs'>
+            <NumberInput
+              label={t`Prepared Winding 5 reading (°C)`}
+              value={winding5}
+              onChange={setWinding5}
+              decimalScale={1}
+              step={0.1}
+              disabled={disabled}
+            />
+            <NumberInput
+              label={t`Prepared Winding 6 reading (°C)`}
+              value={winding6}
+              onChange={setWinding6}
+              decimalScale={1}
+              step={0.1}
+              disabled={disabled}
+            />
+            {check.readings && (
+              <Text size='sm'>
+                {t`Server-derived maximum`}: {check.readings.maximum} °C
+              </Text>
+            )}
+          </Stack>
         ) : (
           <Select
             label={t`${check.title} — prepared result`}
@@ -277,6 +317,8 @@ function ExerciseStep({
                   setPendingVersion(null);
                   setBaselineVersion(check.version);
                   setValue(check.value === null ? '' : String(check.value));
+                  setWinding5(check.readings?.W5 ?? '');
+                  setWinding6(check.readings?.W6 ?? '');
                   setNote(check.note);
                   setEvidence(check.evidence_ids.map(String));
                 }}
@@ -305,7 +347,9 @@ function ExerciseStep({
               command.storageFailed ||
               (!command.intent &&
                 (changedElsewhere ||
-                  value === '' ||
+                  (numeric
+                    ? winding5 === '' || winding6 === ''
+                    : value === '') ||
                   evidence.length === 0 ||
                   !note.trim() ||
                   (check.sequence === 3 && !reviewedSource)))

@@ -20,6 +20,8 @@ surface and is wrapped in the shared fence markers.
 
 from __future__ import annotations
 
+import math
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from django.conf import settings
@@ -39,6 +41,9 @@ MAX_SCOPE_LINES = 25
 MAX_PARTS = 50
 MAX_OPEN_REPAIRS = 10
 MAX_TEXT_CHARS = 2000
+MAX_REPORT_TEXT_CHARS = 1000
+MAX_REPORT_PARTS = 10
+MAX_EXERCISE_CHECKS = 10
 
 #: Work-order timestamps a date window may mean (S7, §7.3). An allow-list so
 #: the kwarg can never smuggle an ORM path; ``ai_analytics`` shares it.
@@ -61,10 +66,8 @@ EXCLUDED_FIELDS = {
     'Approval.*': 'approvals payload travels its own governed rail',
     'Attachment.attachment': 'file body / storage path',
     'AssetMaintenanceRecord.performed_by': 'free-text identity; role labels only',
-    # S9: procedure-execution projections — evidence of WHAT was recorded,
-    # never who, and never raw operator readings.
     'WorkOrderStepExecution.completed_by': 'identity; presence boolean only',
-    'WorkOrderStepExecution.value': 'operator-captured readings; closeout rail owns them',
+    'WorkOrderStepExecution.value': 'raw values withheld; validated exercise projection only',
     'WorkOrderDeviation.actor': 'identity; deviations answer what, not who',
     'WorkOrderDeviation.approval': 'approvals payload travels its own governed rail',
 }
@@ -480,8 +483,162 @@ def work_order_readiness(user, work_order, *, action: str = 'start') -> dict[str
     return envelope
 
 
+def _finite_decimal_string(value) -> str | None:
+    """Return a bounded finite decimal from a retained structured value."""
+    if isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal)):
+        return None
+    text = str(value)
+    if len(text) > 64:
+        return None
+    try:
+        number = Decimal(text)
+    except (InvalidOperation, ValueError):
+        return None
+    return text if number.is_finite() else None
+
+
+def _service_report(work_order) -> dict[str, Any] | None:
+    """Project only the current approved report's retained account and usage."""
+    from tasks.closeout_models import CloseoutPartUsageState, PartUsageDisposition
+    from tasks.services.service_reports import report_state
+    from tasks.work_execution.common import closeout_wizard_enabled
+
+    if not closeout_wizard_enabled():
+        return None
+    state = report_state(work_order)
+    result = {
+        'status': state['status'],
+        'report_id': state['report_id'],
+        'account': None,
+        'parts_usage': None,
+        'parts_usage_truncated': False,
+    }
+    document = state.get('report')
+    if (
+        state['status'] != 'approved'
+        or not isinstance(document, dict)
+        or document.get('schema') != 'service_report.v1'
+        or document.get('work_order_id') != work_order.pk
+        or document.get('machine_id') != work_order.machine_id
+    ):
+        return result
+
+    account = document.get('account')
+    if isinstance(account, dict):
+        result['account'] = {
+            field: fence(account.get(field), limit=MAX_REPORT_TEXT_CHARS) or None
+            if isinstance(account.get(field), str)
+            else None
+            for field in (
+                'cause',
+                'action',
+                'result',
+                'verification_summary',
+                'follow_up',
+            )
+        }
+        downtime = account.get('downtime_minutes')
+        follow_up = account.get('follow_up_required')
+        result['account']['downtime_minutes'] = (
+            downtime if type(downtime) is int and downtime >= 0 else None
+        )
+        result['account']['follow_up_required'] = (
+            follow_up if type(follow_up) is bool else None
+        )
+
+    evidence = document.get('evidence')
+    parts = evidence.get('parts') if isinstance(evidence, dict) else None
+    if isinstance(parts, list) and all(
+        isinstance(part, dict) and part.get('work_order_id') == work_order.pk
+        for part in parts
+    ):
+        result['parts_usage'] = [
+            {
+                'state': part.get('state')
+                if part.get('state') in CloseoutPartUsageState.values
+                else None,
+                'disposition': part.get('disposition')
+                if part.get('disposition') in PartUsageDisposition.values
+                else None,
+                'used_quantity': _finite_decimal_string(part.get('used_quantity')),
+            }
+            for part in parts[:MAX_REPORT_PARTS]
+        ]
+        result['parts_usage_truncated'] = len(parts) > MAX_REPORT_PARTS
+    return result
+
+
+def _exercise_verification(work_order, packet) -> dict[str, Any] | None:
+    """Reduce the native exercise projection without exposing evidence or actors."""
+    from tasks.work_execution.common import packet_of, procedures_enabled
+    from tasks.work_execution.exercise_verification import project
+
+    if not procedures_enabled():
+        return None
+    native_packet = packet_of(work_order)
+    if native_packet is None or native_packet.pk != packet.pk:
+        return None
+    state = project(work_order, None)
+    if not state.get('applicable'):
+        return None
+    checks = state.get('checks')
+    rows = []
+    if isinstance(checks, list):
+        for check in checks[:MAX_EXERCISE_CHECKS]:
+            if not isinstance(check, dict):
+                continue
+            recorded = check.get('recorded') is True
+            value = check.get('value') if recorded else None
+            if isinstance(value, str):
+                value = _finite_decimal_string(value)
+            elif type(value) not in (bool, int, float) or (
+                isinstance(value, float) and not math.isfinite(value)
+            ):
+                value = None
+            readings = check.get('readings') if recorded else None
+            if isinstance(readings, dict):
+                readings = {
+                    key: _finite_decimal_string(readings.get(key))
+                    for key in ('W5', 'W6', 'maximum')
+                }
+            else:
+                readings = None
+            title = check.get('title')
+            unit = check.get('unit')
+            rows.append({
+                'sequence': check.get('sequence')
+                if type(check.get('sequence')) is int
+                else None,
+                'title': fence(title, limit=255) if isinstance(title, str) else None,
+                'unit': fence(unit, limit=16) if isinstance(unit, str) else None,
+                'recorded': recorded,
+                'passed': check.get('passed')
+                if recorded and type(check.get('passed')) is bool
+                else None,
+                'value': value,
+                'readings': readings,
+            })
+    operating = state.get('grants_operating_permission')
+    technical = state.get('grants_technical_acceptance')
+    return {
+        'provenance': state.get('provenance'),
+        'software_exercise_only': True,
+        'physical_authority': False
+        if operating is False and technical is False
+        else None,
+        'grants_operating_permission': operating if type(operating) is bool else None,
+        'grants_technical_acceptance': technical if type(technical) is bool else None,
+        'approved': state.get('approved') if rows else None,
+        'passed_count': state.get('passed_count') if rows else None,
+        'required_count': state.get('required_count'),
+        'checks': rows if rows else None,
+        'checks_truncated': isinstance(checks, list)
+        and len(checks) > MAX_EXERCISE_CHECKS,
+    }
+
+
 def work_order_repair_state(work_order, *, machine_authorized: bool) -> dict[str, Any]:
-    """The linked repair packet: identity, findings, approved scope, gates.
+    """The linked repair packet and its scoped, bounded closeout evidence.
 
     ``repair`` is imported at call time: it already imports ``tasks``, and a
     module-level import here would be circular.
@@ -576,6 +733,12 @@ def work_order_repair_state(work_order, *, machine_authorized: bool) -> dict[str
         'findings': findings,
         'findings_truncated': packet.findings.count() > MAX_FINDINGS,
         'approved_scope': scope_row,
+        'service_report': _service_report(work_order),
+        'closeout': work_order_closeout(work_order)
+        if getattr(settings, 'AIMMS_WORK_ORDERS_ENABLED', False)
+        and getattr(settings, 'AIMMS_CLOSEOUT_WIZARD_ENABLED', False)
+        else None,
+        'exercise_verification': _exercise_verification(work_order, packet),
         'gates': {
             'total': gates.count(),
             'unsatisfied_blocking': unsatisfied,

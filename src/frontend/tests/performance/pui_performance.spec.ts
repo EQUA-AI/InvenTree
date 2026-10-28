@@ -4,6 +4,106 @@ import { MACHINE, NOW, SIGNALS, mount } from './fixtures';
 
 void MACHINE;
 
+test('resolved TEST history stops at closeout while the current KPI returns to measured', async ({
+  page
+}) => {
+  const signalRequests: URL[] = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.endsWith('/health/signals/')) signalRequests.push(url);
+  });
+  const options: Parameters<typeof mount>[1] = {
+    testAlarm: {
+      key: '/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED5',
+      status: 'open',
+      triggeredAt: new Date(NOW - 20 * 60000).toISOString()
+    }
+  };
+  const seriesRequests = await mount(page, options);
+  await expect(page.locator('[data-kpi="winding"]')).toContainText(
+    'TEST alarm — Critical'
+  );
+  options.testAlarm!.status = 'resolved';
+  options.testAlarm!.resolvedAt = new Date(NOW - 10 * 60000).toISOString();
+  await page.reload();
+  const winding = page.locator('[data-section="Motor winding temperature"]');
+  await winding.scrollIntoViewIfNeeded();
+  await expect(winding).toContainText(
+    'Resolved TEST trace is a synthetic exercise'
+  );
+  await expect(winding).toContainText('TEST Winding 5: 159.5 °C (resolved)');
+  await expect(page.getByTestId('performance-test-alarm')).toHaveCount(0);
+  await expect(page.locator('[data-kpi="winding"]')).not.toContainText(
+    'TEST alarm'
+  );
+  await expect(
+    page.locator('[data-kpi="winding"] [data-kpi-value]')
+  ).toHaveText('82');
+  const testCurve = winding.locator(
+    'path.recharts-line-curve[stroke-dasharray="6 4"]'
+  );
+  const measuredCurve = winding.locator(
+    'path.recharts-line-curve:not([stroke-dasharray="6 4"])'
+  );
+  await expect(testCurve).toHaveCount(1);
+  await expect.poll(() => seriesRequests.length).toBeGreaterThan(0);
+  await expect
+    .poll(() =>
+      signalRequests.some(
+        (request) =>
+          request.searchParams.get('from') ===
+            seriesRequests[0].searchParams.get('from') &&
+          request.searchParams.get('to') ===
+            seriesRequests[0].searchParams.get('to')
+      )
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      measuredCurve.evaluateAll((paths) =>
+        Math.max(
+          0,
+          ...paths.map((path) => {
+            const box = (path as SVGGraphicsElement).getBBox();
+            return box.x + box.width;
+          })
+        )
+      )
+    )
+    .toBeGreaterThan(0);
+  const testEnd = await testCurve.evaluate((path) => {
+    const box = (path as SVGGraphicsElement).getBBox();
+    return box.x + box.width;
+  });
+  const measuredEnd = await measuredCurve.evaluateAll((paths) =>
+    Math.max(
+      ...paths.map((path) => {
+        const box = (path as SVGGraphicsElement).getBBox();
+        return box.x + box.width;
+      })
+    )
+  );
+  expect(testEnd).toBeLessThan(measuredEnd - 5);
+  await winding.screenshot({
+    path: test.info().outputPath('resolved-test-history.png')
+  });
+});
+
+test('a failed TEST history read remains visible as unavailable', async ({
+  page
+}) => {
+  await mount(page, { failTestHistory: true });
+  await expect(page.getByText('TEST history unavailable')).toBeVisible();
+  await expect(
+    page.getByText(
+      'Resolved TEST annotations could not be read for this window.'
+    )
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-kpi="winding"] [data-kpi-value]')
+  ).toHaveText('82');
+});
+
 for (const status of ['open', 'acknowledged'] as const) {
   test(`a ${status} test is red on its chart without altering measured history`, async ({
     page
@@ -170,7 +270,8 @@ test('coincident test traces share one label and retain both channel notices', a
       { key: '/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED1', status: 'open' },
       {
         key: '/dex/PUMP1_PUMP_MOTOR_WINDING_TEMPERATURED5',
-        status: 'acknowledged'
+        status: 'acknowledged',
+        triggeredAt: new Date(NOW - 90000).toISOString()
       }
     ]
   });

@@ -30,12 +30,11 @@ class IntakeTimeoutError(IntakeUnavailableError):
 def provider_status():
     """Inspect availability without a request, credential disclosure or fallback."""
     from ai.core.config import get_settings
+    from ai.core.integrations.azure_openai_client import chat_provider_configured
     from ai.core.model_policy import ModelPurpose, select_deployment
 
     config = get_settings()
-    if not config.azure_openai_endpoint or not (
-        config.azure_openai_api_key or config.aimms_openai_keyless
-    ):
+    if not chat_provider_configured(config):
         return {'available': False, 'reason': 'provider_not_configured'}
     if not getattr(django_settings, 'AIMMS_WORK_INTAKE_AI_ENABLED', False):
         return {'available': False, 'reason': 'drafting_disabled'}
@@ -46,12 +45,15 @@ def provider_status():
 
 def draft_fields(context, *, actor_id):
     """Return validated text and actual provider provenance, or fail closed."""
+    from ai.core.config import get_settings
     from ai.core.integrations.azure_openai_client import build_openai_client
     from ai.core.model_policy import ModelPurpose, select_deployment
 
     if not provider_status()['available']:
         raise IntakeUnavailableError('AI drafting is unavailable in this environment.')
     deployment = select_deployment(ModelPurpose.WORK_INTAKE)
+    config = get_settings()
+    timeout = config.local_openai_timeout_s if config.ai_provider == 'local' else 20.0
     messages = [
         {
             'role': 'system',
@@ -73,7 +75,9 @@ def draft_fields(context, *, actor_id):
             'role': 'user',
             'content': json.dumps(context, allow_nan=False, cls=DjangoJSONEncoder),
         })
-        with build_openai_client().with_options(timeout=20.0, max_retries=0) as client:
+        with build_openai_client().with_options(
+            timeout=timeout, max_retries=0
+        ) as client:
             response = client.chat.completions.create(
                 model=deployment,
                 messages=messages,
@@ -97,6 +101,11 @@ def draft_fields(context, *, actor_id):
             for value in (response.model, response.id)
         ):
             raise ValueError('Missing inference provenance')
+        if (
+            config.ai_provider == 'local'
+            and response.model != config.local_openai_model
+        ):
+            raise ValueError('Inference model does not match the local pin')
     except Exception as exc:
         from openai import APITimeoutError
 

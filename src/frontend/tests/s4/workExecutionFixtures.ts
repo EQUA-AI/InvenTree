@@ -35,6 +35,17 @@ export async function mockExecutionWork(
   await page.route('**/api/kanban/work-orders/73/overview/', (route) =>
     route.fulfill({ json: overview })
   );
+  await page.route('**/api/tasks/work-orders/73/repair-scope-draft/', (route) =>
+    route.fulfill({
+      json: {
+        work_order_id: overview.id,
+        machine_id: overview.machine,
+        repair_packet_id: overview.repair_packet?.id ?? null,
+        lifecycle_version: overview.lifecycle_version,
+        draft: null
+      }
+    })
+  );
   return requests;
 }
 

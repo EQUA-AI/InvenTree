@@ -70,6 +70,7 @@ class ToolCaptureLedger:
     #: from here (A15).
     retrieval_meta: list[dict[str, Any]] = field(default_factory=list)
     selected_packs: tuple[str, ...] = ()
+    server_source_reads: list[dict[str, Any]] = field(default_factory=list)
 
     def record(self, tool_id: str, result: Any) -> None:
         """Record one tool result; oversized or excess results are dropped."""
@@ -348,6 +349,19 @@ def current_tool_captures() -> ToolCaptureLedger | None:
         return None
 
 
+def record_server_source_read(source: dict[str, Any]) -> dict[str, Any] | None:
+    """Keep bounded native server reads distinct from model-invoked tool calls."""
+    ledger = current_tool_captures()
+    if ledger is None or len(ledger.server_source_reads) >= 4:
+        return None
+    serialized = json.dumps(source, default=str)
+    if len(serialized.encode()) > 16 * 1024:
+        return None
+    recorded = json.loads(serialized)
+    ledger.server_source_reads.append(recorded)
+    return recorded
+
+
 __all__ = [
     "MAX_CAPTURES",
     "MAX_TOTAL_BYTES",
@@ -355,6 +369,7 @@ __all__ = [
     "bind_tool_captures",
     "current_tool_captures",
     "record_retrieval_meta",
+    "record_server_source_read",
     "record_tool_result",
     "tool_capture_ledger",
 ]

@@ -13,13 +13,21 @@ export interface PerformanceTestAlarm extends SignalTestAlarm {
 
 export function testAlarmRows(
   signals: readonly MachineSignal[],
-  labels?: ReadonlyMap<number, string>
+  labels?: ReadonlyMap<number, string>,
+  includeResolved = false
 ): PerformanceTestAlarm[] {
   return signals.flatMap((signal) =>
     (signal.test_alarms ?? [])
       .filter(
         (alarm) =>
-          ['open', 'acknowledged'].includes(alarm.status) &&
+          (['open', 'acknowledged'].includes(alarm.status) ||
+            (includeResolved &&
+              alarm.status === 'resolved' &&
+              Number.isFinite(Date.parse(alarm.triggered_at)) &&
+              !!alarm.resolved_at &&
+              Number.isFinite(Date.parse(alarm.resolved_at)) &&
+              Date.parse(alarm.resolved_at) >=
+                Date.parse(alarm.triggered_at))) &&
           Number.isFinite(alarm.test_value)
       )
       .map((alarm) => ({

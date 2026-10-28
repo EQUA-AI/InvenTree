@@ -4,8 +4,8 @@ Owns the backend-side Voice Live connection for each active realtime
 session. This is the production implementation of the provider-channel
 hook exposed by ``ai.core.voice.routes.set_provider_channel_factory``:
 
-- Entra tokens come from ``DefaultAzureCredential`` (managed identity in
-  the container, developer login locally) against ``endpoints.TOKEN_SCOPE``.
+- Authentication uses an explicitly configured server-side API key or Entra
+  tokens from ``DefaultAzureCredential`` against ``endpoints.TOKEN_SCOPE``.
   No credential, token, or provider URL ever reaches the browser.
 - One WebSocket per session to the public-preview
   ``/voice-live/realtime/calls`` endpoint carries SDP signaling and the
@@ -137,12 +137,16 @@ class VoiceLiveChannel:
             settings.azure_voicelive_model,
             api_version=settings.azure_voicelive_webrtc_api_version,
         )
-        bearer = await _token_cache.bearer()
+        if settings.azure_voicelive_api_key:
+            headers = {"api-key": settings.azure_voicelive_api_key}
+        else:
+            bearer = await _token_cache.bearer()
+            headers = {"Authorization": f"Bearer {bearer}"}
         self._http = aiohttp.ClientSession()
         try:
             self._ws = await self._http.ws_connect(
                 url,
-                headers={"Authorization": f"Bearer {bearer}"},
+                headers=headers,
                 heartbeat=30.0,
                 max_msg_size=4 * 1024 * 1024,
             )
@@ -189,6 +193,9 @@ class VoiceLiveChannel:
             transcription_model=settings.azure_voicelive_transcription_model,
             phrase_hints=merged,
             native_sts=settings.feature_voice_native_sts,
+            vad_silence_duration_ms=getattr(
+                settings, "azure_voicelive_vad_silence_duration_ms", 550
+            ),
         )
         return policy.session_update_payload()["session"]
 

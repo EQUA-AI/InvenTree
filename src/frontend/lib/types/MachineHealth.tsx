@@ -76,6 +76,8 @@ export interface MachineSignalLimits {
 }
 
 export interface MachineSignal {
+  /** Actual source snapshot used by an explicit recorded-history read. */
+  snapshot_at?: string;
   test_alarms?: SignalTestAlarm[];
   recorded_telemetry_as_live?: boolean;
   active?: boolean;
@@ -103,10 +105,11 @@ export interface MachineSignal {
 
 export interface SignalTestAlarm {
   anomaly_id: number;
-  status: 'open' | 'acknowledged';
+  status: 'open' | 'acknowledged' | 'resolved';
   test_value: number;
   unit: string;
   triggered_at: string;
+  resolved_at?: string | null;
 }
 
 export interface AnomalySignalRef {
@@ -340,6 +343,12 @@ export interface SeriesLive {
  * them across the window. Nothing in either is averaged or interpolated.
  */
 export interface SeriesResponse {
+  history_source?: number;
+  source_id?: number;
+  source_name?: string;
+  source_from?: string;
+  source_to?: string;
+  telemetry_presentation?: 'recorded_history';
   recorded_telemetry_as_live?: boolean;
   /** Frontend aggregation metadata; not asserted by the historian API. */
   read_batches?: {

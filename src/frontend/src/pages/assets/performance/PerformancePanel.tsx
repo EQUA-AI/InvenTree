@@ -55,6 +55,10 @@ import {
 import { evaluatePerformance } from './evaluation';
 import { buildKpiTiles } from './kpis';
 import { categoryLabel } from './parameters';
+import {
+  recordedHistorySource,
+  recordedHistoryWindow
+} from './recordedHistory';
 import { inCategory, resolveParameters } from './resolve';
 import { ElectricalSection } from './sections/ElectricalSection';
 import { OperationSection } from './sections/OperationSection';
@@ -68,12 +72,14 @@ import {
 import { indexSeries, newestInstant } from './series';
 import {
   PRESET_SECONDS,
+  PerformanceHistorySourceContext,
   type RangePreset,
   type WindowSpec,
   resolveWindow,
   useDataRange,
   useMachineSeries,
   useMachineSignals,
+  usePerformanceHistorySource,
   windowSeconds
 } from './usePerformanceData';
 
@@ -102,6 +108,34 @@ export function PerformancePanel({
   const host = useLocalState((state) => state.hostKey);
   const actor = useUserState((state) => state.user?.pk);
   const generation = useUserState((state) => state.authGeneration);
+  const [params, setParams] = useSearchParams();
+  const historySource = recordedHistorySource(params.get('history_source'));
+  if (params.has('history_source') && historySource === undefined) {
+    return (
+      <Alert color='yellow' title={t`Invalid history source`}>
+        {t`The recorded source ID must be a positive whole number. No performance data was requested.`}
+        <Group mt='xs'>
+          <Button
+            size='xs'
+            variant='subtle'
+            onClick={() =>
+              setParams(
+                (previous) => {
+                  const next = new URLSearchParams(previous);
+                  next.delete('history_source');
+                  next.delete('history_from');
+                  next.delete('history_to');
+                  next.delete('history_clock');
+                  return next;
+                },
+                { replace: true }
+              )
+            }
+          >{t`Back to current monitoring`}</Button>
+        </Group>
+      </Alert>
+    );
+  }
   if (machine.asset_type === 'pumphouse') {
     return (
       <StationPerformance
@@ -111,16 +145,25 @@ export function PerformancePanel({
     );
   }
   return (
-    <PumpPerformance
-      key={JSON.stringify([host, actor, generation, machine.pk])}
-      machine={machine}
-    />
+    <PerformanceHistorySourceContext.Provider value={historySource}>
+      <PumpPerformance
+        key={JSON.stringify([
+          host,
+          actor,
+          generation,
+          machine.pk,
+          historySource
+        ])}
+        machine={machine}
+      />
+    </PerformanceHistorySourceContext.Provider>
   );
 }
 
 /** Window selection shared by the pump and station views. */
 export function useWindowState(
-  initial?: Extract<WindowSpec, { kind: 'absolute' }>
+  initial?: Extract<WindowSpec, { kind: 'absolute' }>,
+  recordedHistory = false
 ) {
   const [, setParams] = useSearchParams();
   const clearLinked = useCallback(
@@ -139,10 +182,12 @@ export function useWindowState(
       ),
     [setParams]
   );
-  const [preset, setPreset] = useState<RangePreset>('1h');
+  const [preset, setPreset] = useState<RangePreset>(
+    recordedHistory ? '6h' : '1h'
+  );
   const [custom, setCustom] = useState<WindowSpec | null>(initial ?? null);
   const [zoom, setZoom] = useState<WindowSpec | null>(null);
-  const [live, setLive] = useState(!initial);
+  const [live, setLive] = useState(!initial && !recordedHistory);
   const initialFrom = initial?.from;
   const initialTo = initial?.to;
   useEffect(() => {
@@ -165,9 +210,9 @@ export function useWindowState(
       setPreset(next);
       setCustom(null);
       setZoom(null);
-      setLive(true);
+      setLive(!recordedHistory);
     },
-    [clearLinked]
+    [clearLinked, recordedHistory]
   );
   const onCustom = useCallback(
     (from: number, to: number) => {
@@ -189,8 +234,8 @@ export function useWindowState(
   );
   const onClearZoom = useCallback(() => {
     setZoom(null);
-    setLive((current) => current || !custom);
-  }, [custom]);
+    setLive((current) => !recordedHistory && (current || !custom));
+  }, [custom, recordedHistory]);
   const onLive = useCallback(
     (next: boolean) => {
       if (next) {
@@ -198,9 +243,9 @@ export function useWindowState(
         setZoom(null);
         setCustom(null);
       }
-      setLive(next);
+      setLive(next && !recordedHistory);
     },
-    [clearLinked]
+    [clearLinked, recordedHistory]
   );
 
   return {
@@ -250,12 +295,17 @@ export function windowInfoFrom(
 function PumpPerformance({
   machine
 }: Readonly<{ machine: PerformanceMachine }>) {
-  const now = useClock();
+  const browserNow = useClock();
+  const historySource = usePerformanceHistorySource();
+  const recordedHistory = historySource !== undefined;
   const [params, setParams] = useSearchParams();
   const dataRange = useDataRange(
     machine.pk,
     params.get('history_clock') === 'recorded'
   );
+  const recordedTo = Date.parse(dataRange.data?.source_to ?? '');
+  const now =
+    recordedHistory && Number.isFinite(recordedTo) ? recordedTo : browserNow;
   const linked = displayLinkedWindow(
     params,
     dataRange.isFetching || dataRange.isError
@@ -267,8 +317,12 @@ function PumpPerformance({
   );
   const invalidLink = linked.present && !linked.window;
   const range = useWindowState(
-    linked.window ? { kind: 'absolute', ...linked.window } : undefined
+    linked.window ? { kind: 'absolute', ...linked.window } : undefined,
+    recordedHistory
   );
+  const selectedWindow = recordedHistory
+    ? recordedHistoryWindow(range.window, dataRange.data?.source_to)
+    : range.window;
   const signalsQuery = useMachineSignals(machine.pk, range.live);
   const asLive = recordedTelemetryAsLive(
     dataRange.data ?? signalsQuery.data?.[0]
@@ -287,8 +341,8 @@ function PumpPerformance({
   const [windingFocus, setWindingFocus] = useState(0);
 
   const parameters = useMemo(
-    () => resolveParameters(signalsQuery.data ?? []),
-    [signalsQuery.data]
+    () => resolveParameters(signalsQuery.data ?? [], recordedHistory),
+    [signalsQuery.data, recordedHistory]
   );
   const bindings = useMemo(
     () => parameters.map((p) => p.signal.binding_id),
@@ -298,20 +352,36 @@ function PumpPerformance({
   // station context on its own and then be repeated with the bindings.
   const targets = useMemo(
     () =>
-      bindings.length > 0 && !invalidLink
+      bindings.length > 0 && !invalidLink && selectedWindow
         ? { bindings, keys: STATION_CONTEXT_KEYS }
         : {},
-    [bindings, invalidLink]
+    [bindings, invalidLink, selectedWindow]
   );
 
   const seriesQuery = useMachineSeries(
     machine.pk,
     targets,
-    range.window,
+    selectedWindow ?? range.window,
     range.live
   );
   const response =
     seriesQuery.isError || invalidLink ? undefined : seriesQuery.data;
+  const historyStart = response
+    ? Date.parse(response.window_start)
+    : Number.NaN;
+  const historyEnd = response ? Date.parse(response.window_end) : Number.NaN;
+  const historyWindow: WindowSpec | undefined =
+    Number.isFinite(historyStart) &&
+    Number.isFinite(historyEnd) &&
+    historyEnd > historyStart
+      ? { kind: 'absolute', from: historyStart, to: historyEnd }
+      : undefined;
+  const testHistoryQuery = useMachineSignals(
+    machine.pk,
+    range.live,
+    historyWindow,
+    !!historyWindow
+  );
 
   // Station context arrives as series entries for bindings the pump's own
   // signal list does not carry; they are resolved into parameters here so the
@@ -323,14 +393,17 @@ function PumpPerformance({
       .filter((entry) => !known.has(entry.binding_id))
       .map((entry) => contextSignal(entry));
     return extra.length > 0
-      ? resolveParameters([...parameters.map((p) => p.signal), ...extra])
+      ? resolveParameters(
+          [...parameters.map((p) => p.signal), ...extra],
+          recordedHistory
+        )
       : parameters;
-  }, [parameters, response]);
+  }, [parameters, response, recordedHistory]);
 
   const series = useMemo(() => indexSeries(response), [response]);
   const window = useMemo(
-    () => windowInfoFrom(response, range.window, now),
-    [response, range.window, now]
+    () => windowInfoFrom(response, selectedWindow ?? range.window, now),
+    [response, selectedWindow, range.window, now]
   );
   const tiles = useMemo(
     () => buildKpiTiles(allParameters, series),
@@ -428,7 +501,10 @@ function PumpPerformance({
     unavailable.length + failedCount === coveredCount + failedCount;
 
   return (
-    <PerformanceTestAlarmProvider signals={signalsQuery.data ?? []}>
+    <PerformanceTestAlarmProvider
+      signals={signalsQuery.data ?? []}
+      historySignals={testHistoryQuery.data ?? []}
+    >
       <HistoryReadStack
         response={response}
         gap='xs'
@@ -436,6 +512,53 @@ function PumpPerformance({
         data-testid='pump-performance'
         aria-label={t`Performance`}
       >
+        {recordedHistory && (
+          <Alert
+            color='blue'
+            variant='light'
+            icon={<IconInfoCircle size={16} />}
+            title={t`Recorded Cosmos history`}
+            data-testid='recorded-cosmos-history'
+          >
+            <Group justify='space-between' gap='xs'>
+              <Text size='xs' style={{ overflowWrap: 'anywhere' }}>
+                {dataRange.data?.available
+                  ? t`${dataRange.data.source_name ?? signalsQuery.data?.[0]?.source_name ?? ''} · Source ${historySource ?? ''} · ${dataRange.data.source_from ?? t`Time unavailable`} – ${dataRange.data.source_to ?? t`Time unavailable`} · Snapshot ${signalsQuery.data?.[0]?.snapshot_at ?? t`unavailable`}`
+                  : dataRange.isError
+                    ? t`The recorded source extent could not be read.`
+                    : dataRange.isFetching
+                      ? t`Reading the recorded source extent…`
+                      : t`No recorded history is available for this source.`}
+              </Text>
+              <Button
+                variant='subtle'
+                size='compact-xs'
+                onClick={() =>
+                  setParams(
+                    (previous) => {
+                      const next = new URLSearchParams(previous);
+                      next.delete('history_source');
+                      next.delete('history_from');
+                      next.delete('history_to');
+                      next.delete('history_clock');
+                      return next;
+                    },
+                    { replace: true }
+                  )
+                }
+              >{t`Back to current monitoring`}</Button>
+              {dataRange.isError && (
+                <Button
+                  variant='subtle'
+                  size='compact-xs'
+                  onClick={() => dataRange.refetch()}
+                >
+                  {t`Retry source extent`}
+                </Button>
+              )}
+            </Group>
+          </Alert>
+        )}
         <Group justify='space-between' align='flex-start' wrap='wrap' gap='md'>
           <Stack gap={4} miw={{ base: '100%', sm: 0 }} style={{ flex: 1 }}>
             <TimeRangeControl
@@ -448,10 +571,12 @@ function PumpPerformance({
               onLive={range.onLive}
               onRefresh={() => {
                 signalsQuery.refetch();
-                if (!invalidLink) seriesQuery.refetch();
+                if (historyWindow) testHistoryQuery.refetch();
+                if (!invalidLink && selectedWindow) seriesQuery.refetch();
               }}
               refreshing={seriesQuery.isFetching}
               dataRange={dataRange.data}
+              recordedHistory={recordedHistory}
               status={(controls) => (
                 <LiveIndicator
                   controls={controls}
@@ -464,6 +589,7 @@ function PumpPerformance({
                   response={response}
                   freshnessSeconds={freshness}
                   now={now}
+                  recordedHistory={recordedHistory}
                 />
               )}
             />
@@ -482,6 +608,12 @@ function PumpPerformance({
             onClick={() => setInvestigationOpen((value) => !value)}
           >{t`Investigate this period`}</Button>
         </Group>
+
+        {historyWindow && testHistoryQuery.isError && (
+          <Alert color='yellow' title={t`TEST history unavailable`}>
+            {t`Resolved TEST annotations could not be read for this window.`}
+          </Alert>
+        )}
 
         {invalidLink && (
           <Alert
@@ -611,13 +743,13 @@ function PumpPerformance({
           <Accordion.Item value='comparison'>
             <Accordion.Control>{t`Comparisons and saved views`}</Accordion.Control>
             <Accordion.Panel>
-              {comparisonMounted && (
+              {comparisonMounted && selectedWindow && (
                 <ComparisonWorkbench
                   machineId={machine.pk}
                   assetType={machine.asset_type}
                   parameters={parameters}
                   response={seriesQuery.isError ? undefined : response}
-                  window={range.window}
+                  window={selectedWindow ?? range.window}
                   search={search}
                   section={section}
                   onView={(view) => {
@@ -811,7 +943,7 @@ function PumpPerformance({
 
         {investigationOpen && (
           <InvestigationSlices
-            initial={resolveWindow(range.window, now)}
+            initial={resolveWindow(selectedWindow ?? range.window, now)}
             onRead={(span) => {
               range.onCustom(span.from, span.to);
             }}

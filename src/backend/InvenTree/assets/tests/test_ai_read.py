@@ -677,6 +677,21 @@ class ProjectionTests(MachineAiReadTestCase):
 
         self.assertNotIn('J. Smith', _json.dumps(records))
 
+    def test_maintenance_history_links_an_authorized_native_work_identity(self):
+        """A confirmed link can drive a scoped follow-up read without guessing."""
+        work = WorkOrder.objects.create(title='Recorded job', machine=self.machine)
+        record = AssetMaintenanceRecord.objects.create(
+            machine=self.machine,
+            date=timezone.now().date(),
+            summary='Recorded linked job',
+            work_order=work,
+        )
+        self.addCleanup(record.delete)
+        rows = ai_read.machine_maintenance_history(self.actor, self.machine)['records']
+        linked = [row for row in rows if row['work_order_id'] == work.pk]
+        self.assertEqual(len(linked), 1)
+        self.assertIn('Recorded job', linked[0]['work_order_title'])
+
     def test_maintenance_hides_a_work_order_outside_the_actor_scope(self):
         """The linked work order is re-authorized per row, flag or no flag.
 
@@ -700,6 +715,7 @@ class ProjectionTests(MachineAiReadTestCase):
             row for row in records['records'] if 'foreign job' in row['summary'].lower()
         ]
         self.assertEqual(linked[0]['work_order_reference'], None)
+        self.assertIsNone(linked[0]['work_order_id'])
         self.assertIsNone(linked[0]['work_order_title'])
 
     def test_withheld_fields_never_appear_in_any_projection(self):
@@ -752,6 +768,7 @@ class ProjectionTests(MachineAiReadTestCase):
                 'identity',
                 'profile',
                 'health',
+                'operating',
                 'signals',
                 'anomalies',
                 'installed_parts',
@@ -759,6 +776,10 @@ class ProjectionTests(MachineAiReadTestCase):
                 'fault_history',
                 'attachments',
             },
+        )
+        self.assertEqual(
+            overview['operating'],
+            {'available': False, 'reason': 'station_unavailable'},
         )
 
 

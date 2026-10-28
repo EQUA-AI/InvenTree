@@ -248,7 +248,7 @@ async def get_work_order_readiness(work_order_id: int, action: str = "start") ->
 @ai_function
 async def get_work_order_repair_state(work_order_id: int) -> dict[str, Any]:
     """
-    Get the repair investigation attached to a work order: findings, approved repair plan and safety gates.
+    Get the repair investigation and recorded closeout evidence for a work order.
 
     Answers "what are the findings", "what is the verified cause", "what's the
     approved repair scope" and "which safety gates are outstanding".
@@ -259,8 +259,11 @@ async def get_work_order_repair_state(work_order_id: int) -> dict[str, Any]:
     Returns:
       Dictionary with the repair packet (status, criticality, fault summary),
       findings (observations with values and verification state), the current
-      approved_scope (verified cause, scope lines, failure codes) and gate
-      status, or packet: null when no repair is attached.
+      approved_scope (verified cause, scope lines, failure codes), gate status,
+      approved service report snapshot, effective closeout and exercise checks,
+      or packet: null when no authorized repair is attached. An exercise is
+      software-only and grants no physical or operating authority. Report
+      approval and closeout verification are separate; missing data is unknown.
     """
 
     @sync_to_async

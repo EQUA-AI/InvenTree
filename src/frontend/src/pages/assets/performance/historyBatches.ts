@@ -24,6 +24,9 @@ export function mergeHistoryBatches(
     if (result.status !== 'fulfilled') return undefined;
     const item = result.value;
     return item.machine === first.machine &&
+      item.history_source === first.history_source &&
+      item.source_id === first.source_id &&
+      item.telemetry_presentation === first.telemetry_presentation &&
       item.window_start === first.window_start &&
       item.window_end === first.window_end &&
       item.mode === first.mode &&

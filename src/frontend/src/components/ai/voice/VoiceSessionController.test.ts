@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { type StoreApi, createStore } from 'zustand/vanilla';
+import type { VoicePendingDecision } from '../../../../lib/types/Voice';
 import type { VoiceDecisionStore } from '../../../states/VoiceDecisionState';
 import { emptyDecisionState } from '../../../states/decisionReducer';
 import type { ContextPreflight } from '../../aichat/contextPreflight';
@@ -198,6 +199,7 @@ beforeEach(() => {
     voiceListeningMode: 'continuous',
     voiceEarcons: true,
     voiceSrAnnounceTranscripts: false,
+    voiceReviewEveryRequest: false,
     voiceConsentVersion: 'consent-v3-memory',
     voiceLocale: 'en-US',
     voiceOutputVoice: 'en-US-AvaNeural',
@@ -227,6 +229,222 @@ afterEach(async () => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
+
+it.each([
+  ['Could winding six be wrong?', null],
+  ['Open the WEG manual passage on cooler fouling.', null],
+  ['What needs attention today?', null],
+  ['What needs attention today?', 1]
+])(
+  'reviews every new request before spoken confirmation: %s (%s)',
+  async (text, confidence) => {
+    prefs.voiceReviewEveryRequest = true;
+    await controller.start();
+    controller.handleEvent(
+      JSON.stringify({
+        type: 'conversation.item.input_audio_transcription.completed',
+        transcript: text,
+        item_id: 'review-all-request',
+        confidence
+      })
+    );
+    await flush();
+    expect(state.getState().pendingConfirm?.text).toBe(text);
+    expect(turnRequests()).toHaveLength(0);
+    expect(
+      requests.find((r) => r.path.endsWith('/prompts'))?.body?.transcript
+    ).toBe(text);
+    emitFinal('spoken-confirm', 'Confirm');
+    await flush();
+    expect(state.getState().pendingConfirm).toBeNull();
+    expect(turnRequests()).toHaveLength(1);
+    expect(turnRequests()[0].body?.transcript).toBe(text);
+    expect(turnRequests()[0].body?.item_id).toBe('review-all-request');
+    expect(decisions.getState().decide).not.toHaveBeenCalled();
+    emitFinal('review-all-request', String(text));
+    await flush();
+    expect(state.getState().pendingConfirm).toBeNull();
+    expect(turnRequests()).toHaveLength(1);
+  }
+);
+
+it('keeps selective admission as the default and does not release an existing hold when review is disabled', async () => {
+  await controller.start();
+  emitFinal('default-request', 'What needs attention today?');
+  await flush();
+  expect(state.getState().pendingConfirm).toBeNull();
+  expect(turnRequests()).toHaveLength(1);
+  prefs.voiceReviewEveryRequest = true;
+  emitFinal('new-reviewed-request', 'Which document should I read?');
+  await flush();
+  expect(state.getState().pendingConfirm?.itemId).toBe('new-reviewed-request');
+  prefs.voiceReviewEveryRequest = false;
+  await flush();
+  expect(turnRequests()).toHaveLength(1);
+  expect(state.getState().pendingConfirm?.itemId).toBe('new-reviewed-request');
+  emitFinal('discard-review', 'Discard');
+  await flush();
+  expect(state.getState().pendingConfirm).toBeNull();
+  expect(turnRequests()).toHaveLength(1);
+});
+
+it.each(['Yes', 'No', 'Cancel', 'Confirm', 'No, I meant work order 3812.'])(
+  'keeps an active decision reply on its guarded server path with review enabled: %s',
+  async (text) => {
+    prefs.voiceReviewEveryRequest = true;
+    await controller.start();
+    const decision = {
+      decision_id: 'decision-1',
+      sequence: 7,
+      revision: 2,
+      preview_hash: 'preview-hash',
+      state: 'presented'
+    } as VoicePendingDecision;
+    decisions.setState({ decision });
+    emitFinal('guarded-reply', text);
+    await flush();
+    expect(state.getState().pendingConfirm).toBeNull();
+    expect(turnRequests()).toHaveLength(1);
+    expect(turnRequests()[0].body?.transcript).toBe(text);
+    expect(turnRequests()[0].body?.decision_context).toEqual({
+      decision_id: decision.decision_id,
+      sequence: decision.sequence,
+      revision: decision.revision,
+      preview_hash: decision.preview_hash
+    });
+    expect(decisions.getState().decide).not.toHaveBeenCalled();
+  }
+);
+
+it.each(['Cancel', 'Discard', 'No'])(
+  'discards an ordinary reviewed request without dispatch on spoken %s',
+  async (text) => {
+    prefs.voiceReviewEveryRequest = true;
+    await controller.start();
+    emitFinal('request-to-discard', 'Which document should I read?');
+    await flush();
+    emitFinal('spoken-discard', text);
+    await flush();
+    expect(state.getState().pendingConfirm).toBeNull();
+    expect(turnRequests()).toHaveLength(0);
+  }
+);
+
+it('preserves received correction text and does not approve an incomplete split request', async () => {
+  prefs.voiceReviewEveryRequest = true;
+  await controller.start();
+  emitFinal('plain-first-fragment', 'Which document');
+  await flush();
+  emitFinal('plain-second-fragment', 'should I read?');
+  await flush();
+  expect(state.getState().pendingConfirm?.text).toBe('Which document');
+  expect(state.getState().pendingConfirm?.reviewIssue).toBe(
+    'multiple_segments'
+  );
+  emitFinal('cannot-confirm-split', 'Confirm');
+  await flush();
+  expect(turnRequests()).toHaveLength(0);
+  emitFinal('discard-split', 'Discard');
+  await flush();
+  emitFinal('complete-request', 'Which document should I read?');
+  await flush();
+  const corrected =
+    'Correction: Open the WEG manual passage on cooler fouling.';
+  emitFinal('complete-correction', corrected);
+  await flush();
+  expect(state.getState().pendingConfirm?.text).toBe(corrected);
+  expect(state.getState().pendingConfirm?.revision).toBe(2);
+  expect(state.getState().pendingConfirm?.supersedes).toBe('complete-request');
+  emitFinal('confirm-correction', 'Confirm');
+  await flush();
+  expect(turnRequests()).toHaveLength(1);
+  expect(turnRequests()[0].body?.transcript).toBe(corrected);
+});
+
+it('keeps Stop responsive and retains explicit action/safety review with review-all enabled', async () => {
+  prefs.voiceReviewEveryRequest = true;
+  await controller.start();
+  emitFinal('safety-request', 'Prepare isolation checks for the motor.');
+  await flush();
+  emitFinal('stop-output', 'Stop speaking');
+  await flush();
+  expect(state.getState().pendingConfirm?.itemId).toBe('safety-request');
+  expect(requests.some((r) => r.path.endsWith('/cancel'))).toBe(true);
+  expect(turnRequests()).toHaveLength(0);
+  expect(decisions.getState().decide).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['next three', 'next'],
+  ['repeat', 'repeat'],
+  ['slower', 'slower'],
+  ['short version', 'short']
+])(
+  'keeps existing presentation command %s outside new-request review',
+  async (text, action) => {
+    prefs.voiceReviewEveryRequest = true;
+    await controller.start();
+    const presentation = { id: 'p1', source_hash: 'h', index: 0, total: 2 };
+    state.setState({ presentation });
+    const respond = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation(async (url: string, options: RequestInit) => {
+      const result = await respond(url, options);
+      return new URL(url).pathname.endsWith('/presentation')
+        ? { ok: true, json: async () => ({ presentation, spoken: null }) }
+        : result;
+    });
+    emitFinal('presentation-control', text);
+    await flush();
+    expect(state.getState().pendingConfirm).toBeNull();
+    expect(turnRequests()).toHaveLength(0);
+    expect(
+      requests.filter((r) => r.path.endsWith('/presentation'))
+    ).toHaveLength(1);
+    expect(
+      requests.find((r) => r.path.endsWith('/presentation'))?.body
+        ?.presentation_command
+    ).toBe(action);
+  }
+);
+
+it.each(['Confirm', 'No'])(
+  'keeps spoken %s scoped to a transcript hold while a separate action decision is pending',
+  async (reply) => {
+    prefs.voiceReviewEveryRequest = true;
+    await controller.start();
+    const decision = {
+      decision_id: 'decision-1',
+      sequence: 7,
+      revision: 2,
+      preview_hash: 'preview-hash',
+      state: 'presented'
+    } as VoicePendingDecision;
+    decisions.setState({ decision });
+    const request = 'Which document should I read?';
+    emitFinal('separate-read-request', request);
+    await flush();
+    expect(state.getState().pendingConfirm?.text).toBe(request);
+    expect(turnRequests()).toHaveLength(0);
+    emitFinal('transcript-review-reply', reply);
+    await flush();
+    expect(state.getState().pendingConfirm).toBeNull();
+    expect(turnRequests().map((r) => r.body?.transcript)).toEqual(
+      reply === 'Confirm' ? [request] : []
+    );
+    expect(decisions.getState().decision).toBe(decision);
+    expect(decisions.getState().decide).not.toHaveBeenCalled();
+    emitFinal('separate-server-decision-reply', 'Yes');
+    await flush();
+    expect(turnRequests().at(-1)?.body?.transcript).toBe('Yes');
+    expect(turnRequests().at(-1)?.body?.decision_context).toEqual({
+      decision_id: decision.decision_id,
+      sequence: decision.sequence,
+      revision: decision.revision,
+      preview_hash: decision.preview_hash
+    });
+    expect(decisions.getState().decide).not.toHaveBeenCalled();
+  }
+);
 
 it('stops dead capture after a closed speech channel and never resubmits the completed turn', async () => {
   const onTurnResult = vi.fn();
@@ -370,7 +588,7 @@ it.each([
   await flush();
   expect(state.getState().pendingConfirm?.text).toBe(text);
   expect(requests.filter((r) => r.path.endsWith('/turns'))).toHaveLength(0);
-  const corrected = 'Where is stock for 002.01-PCBA located?';
+  const corrected = 'Correction: Where is stock for 002.01-PCBA located?';
   controller.handleEvent(
     JSON.stringify({
       type: 'conversation.item.input_audio_transcription.completed',
@@ -386,6 +604,109 @@ it.each([
   expect(turns).toHaveLength(1);
   expect(turns[0].body?.transcript).toBe(corrected);
   expect(decisions.getState().decide).not.toHaveBeenCalled();
+});
+
+it('retains a split capture without replacing or joining fragments and requires a complete new capture', async () => {
+  await controller.start();
+  const first =
+    'AIMMS, Avery Patel here. I am working on Pump 08, machine 102. Use the alarm, this moto';
+  const fragments = [
+    first,
+    'Give me the three highest priority checks to separate',
+    'Temperatures',
+    'Approve and cite the'
+  ];
+  for (const [index, text] of fragments.entries()) {
+    controller.handleEvent(
+      JSON.stringify({
+        type: 'conversation.item.input_audio_transcription.completed',
+        transcript: text,
+        item_id: `split-${index}`
+      })
+    );
+    await flush();
+  }
+  expect(state.getState().pendingConfirm?.text).toBe(first);
+  expect(state.getState().pendingConfirm?.itemId).toBe('split-0');
+  expect(state.getState().pendingConfirm?.reviewIssue).toBe(
+    'multiple_segments'
+  );
+  expect(state.getState().revisions.map((entry) => entry.text)).toEqual(
+    fragments
+  );
+  const prompts = requests.filter((request) =>
+    request.path.endsWith('/prompts')
+  );
+  expect(prompts).toHaveLength(1);
+  expect(prompts[0].body?.transcript).toBe(first);
+  await controller.confirmPending();
+  controller.handleEvent(
+    JSON.stringify({
+      type: 'conversation.item.input_audio_transcription.completed',
+      transcript: 'confirm',
+      item_id: 'split-confirm'
+    })
+  );
+  await flush();
+  expect(
+    requests.filter((request) => request.path.endsWith('/turns'))
+  ).toHaveLength(0);
+  controller.discardPending();
+  const complete =
+    'AIMMS, Avery Patel here. I am working on Pump 08, machine 102. Give me three checks to separate restricted cooling, excess load and a faulty sensor. Tell me what each check proves and cite the evidence.';
+  controller.handleEvent(
+    JSON.stringify({
+      type: 'conversation.item.input_audio_transcription.completed',
+      transcript: complete,
+      item_id: 'complete-capture'
+    })
+  );
+  await flush();
+  expect(state.getState().pendingConfirm?.text).toBe(complete);
+  expect(state.getState().pendingConfirm?.reviewIssue).toBeUndefined();
+  await controller.confirmPending();
+  await flush();
+  const turns = requests.filter((request) => request.path.endsWith('/turns'));
+  expect(turns).toHaveLength(1);
+  expect(turns[0].body?.transcript).toBe(complete);
+  expect(turns[0].body?.item_id).toBe('complete-capture');
+  expect(decisions.getState().decide).not.toHaveBeenCalled();
+});
+
+it('ignores a duplicate held final and accepts only an explicit full correction as its revision', async () => {
+  await controller.start();
+  const original = 'Read the 15 psi limit for Pump 08.';
+  const event = {
+    type: 'conversation.item.input_audio_transcription.completed',
+    transcript: original,
+    item_id: 'original-final'
+  };
+  controller.handleEvent(JSON.stringify(event));
+  controller.handleEvent(JSON.stringify(event));
+  await flush();
+  expect(state.getState().revisions).toHaveLength(1);
+  expect(state.getState().pendingConfirm?.reviewIssue).toBeUndefined();
+  const corrected = 'Correction: Read the 50 psi limit for Pump 08.';
+  controller.handleEvent(
+    JSON.stringify({
+      ...event,
+      transcript: corrected,
+      item_id: 'explicit-correction'
+    })
+  );
+  await flush();
+  expect(state.getState().pendingConfirm?.text).toBe(corrected);
+  expect(state.getState().pendingConfirm?.revision).toBe(2);
+  expect(state.getState().pendingConfirm?.supersedes).toBe('original-final');
+  expect(
+    requests.filter((request) => request.path.endsWith('/turns'))
+  ).toHaveLength(0);
+  await controller.confirmPending();
+  await flush();
+  expect(
+    requests.find((request) => request.path.endsWith('/turns'))?.body
+      ?.transcript
+  ).toBe(corrected);
 });
 
 it('starts once, gates PTT tracks, and survives minimize', async () => {
@@ -1321,12 +1642,12 @@ it('VOICE-H08: holds a warm-up final visibly with zero dispatch until explicit c
   ).toHaveLength(1);
 });
 
-it('VOICE-H08: double warm-up finals revise the hold; a drop discards it and reconnect capture never auto-fires', async () => {
+it('VOICE-H08: an explicit warm-up correction revises the hold; a drop discards it and reconnect capture never auto-fires', async () => {
   const releaseSdp = gateSdp();
   const started = controller.start();
   await flush8();
   emitFinal('warm-a', 'first warm-up words');
-  emitFinal('warm-b', 'second warm-up words');
+  emitFinal('warm-b', 'Correction: second warm-up words');
   const held = state.getState().pendingConfirm;
   expect(held?.itemId).toBe('warm-b');
   expect(held?.revision).toBe(2);
@@ -1353,6 +1674,27 @@ it('VOICE-H08: double warm-up finals revise the hold; a drop discards it and rec
   expect(turnRequests()).toEqual([]);
   await controller.confirmPending();
   expect(turnRequests()).toEqual([]);
+});
+
+it('VOICE-H08: unexpected warm-up segments block confirmation without dispatch or automatic replay', async () => {
+  const releaseSdp = gateSdp();
+  const started = controller.start();
+  await flush8();
+  emitFinal('warm-first', 'Pump 08, first part of the actual request');
+  emitFinal('warm-next', 'remaining unconfirmed speech');
+  expect(state.getState().pendingConfirm?.itemId).toBe('warm-first');
+  expect(state.getState().pendingConfirm?.reviewIssue).toBe(
+    'multiple_segments'
+  );
+  expect(dispatchRequests()).toEqual([]);
+  releaseSdp();
+  await started;
+  await controller.confirmPending();
+  emitFinal('warm-confirm', 'confirm');
+  await flush();
+  expect(dispatchRequests()).toEqual([]);
+  controller.discardPending();
+  expect(state.getState().pendingConfirm).toBeNull();
 });
 
 it('VOICE-H08: hidden/focus/logout/end boundaries and changed fences discard the warm-up without submitting', async () => {

@@ -960,11 +960,14 @@ class NormalizedTurnService:
         """
         if diagnostic_context is None or self.diagnostic_tool_registry is None:
             return ()
+        from ai.core.tools.diagnostics import diagnostic_source_tool_allowed
+
         capabilities = set(getattr(diagnostic_context, "capabilities", ()))
         return tuple(
             str(definition.name)
             for definition in getattr(self.diagnostic_tool_registry, "definitions", ())
             if getattr(definition, "capability", None) in capabilities
+            and diagnostic_source_tool_allowed(definition.name, diagnostic_context)
         )
 
     def _voice_write_enabled(self) -> bool:
@@ -1416,6 +1419,7 @@ class NormalizedTurnService:
         modality: str,
         modality_metadata: dict[str, Any],
         diagnostic_context: Any | None,
+        focus_snapshot: dict[str, Any] | None = None,
     ) -> Any | None:
         """Apply the explicit policy using only server-owned routing inputs."""
         router = self.complexity_router
@@ -1453,6 +1457,20 @@ class NormalizedTurnService:
         actor_role = (
             "administrator" if actor.is_superuser else "staff" if actor.is_staff else "technician"
         )
+        from ai.core.focus.contract import focus_from_stored
+
+        focus = focus_from_stored(
+            focus_snapshot.get("focus") if isinstance(focus_snapshot, dict) else None
+        )
+        confirmed_work_focus = bool(
+            focus is not None
+            and focus.kind == "work_order"
+            and focus.work_order_id == focus.id
+            and any(
+                root.entity_type == "machine" and root.entity_id == focus.machine_id
+                for root in getattr(diagnostic_context, "record_roots", ())
+            )
+        )
         routing_context = VoiceRoutingContext(
             actor_role=actor_role,
             actor_scope=trusted_context.server_policy_key,
@@ -1460,6 +1478,7 @@ class NormalizedTurnService:
             risk=risk,
             allowed_tools=tuple(allowed_tools),
             allowed_capabilities=capabilities,
+            confirmed_work_focus=confirmed_work_focus,
         )
         # Authority-shaped browser fields are intentionally never copied into
         # the request. The router receives final content only.
@@ -1541,6 +1560,7 @@ class NormalizedTurnService:
         diagnostic_context: Any | None,
         emitter: EventEmitter,
         conversation: str = "",
+        focus_snapshot: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Invoke the Foundry adapter and return the durable wrapper.
 
@@ -1590,16 +1610,9 @@ class NormalizedTurnService:
                 "route": route.to_dict(),
             }
 
-        machine_id: int | None = None
-        repair_packet_id: int | None = None
         authorized_records: list[AuthorizedRecord] = []
         for root in getattr(diagnostic_context, "record_roots", ()):
-            if getattr(root, "entity_type", None) == "machine":
-                machine_id = int(root.entity_id)
-            elif getattr(root, "entity_type", None) == "repair_packet":
-                repair_packet_id = int(root.entity_id)
-                machine_id = int(root.linked_machine_id)
-            else:
+            if getattr(root, "entity_type", None) not in {"machine", "repair_packet"}:
                 continue
             # Every tool call must quote a server-resolved id and revision, so
             # the model is handed the authorized roots verbatim; the registry
@@ -1618,14 +1631,49 @@ class NormalizedTurnService:
                 )
             )
 
+        from ai.core.reasoning.targets import reasoning_target_ids
+
+        machine_id, repair_packet_id = reasoning_target_ids(authorized_records, focus_snapshot)
+        from ai.core.reasoning.repair_source_context import bind_repair_sources
+
+        diagnostic_context = await self._call_sync(
+            bind_repair_sources,
+            diagnostic_context,
+            actor=actor,
+            thread_id=thread_id,
+            focus_snapshot=focus_snapshot,
+            content=content,
+            modality=modality,
+        )
+        allowed_tools = self._allowed_diagnostic_tool_names(diagnostic_context)
+        if getattr(diagnostic_context, "focused_repair_packet_id", None) is not None:
+            repair_packet_id = diagnostic_context.focused_repair_packet_id
+
+        from ai.core.reasoning.targets import voice_work_diagnostic_records
+
+        authorized_records = list(
+            voice_work_diagnostic_records(
+                authorized_records,
+                focus_snapshot,
+                focused_repair_packet_id=getattr(
+                    diagnostic_context, "focused_repair_packet_id", None
+                ),
+                content=content,
+                modality=modality,
+            )
+        )
+
         # Computed BEFORE the reasoning call so a no-match turn gets the
         # clarify-first directive (golden ambiguous-symptom trap), and
         # reused for the incomplete-note text. Matching semantics live in
         # _machine_name_matches (shared with the grounding fence seed).
         lowered_content = content.lower()
         record_names = [record.display_name for record in authorized_records if record.display_name]
-        machine_match = not record_names or any(
-            _machine_name_matches(name, lowered_content) for name in record_names
+        machine_match = (
+            machine_id is not None
+            if focus_snapshot is not None
+            else not record_names
+            or any(_machine_name_matches(name, lowered_content) for name in record_names)
         )
 
         envelope = TrustedReasoningEnvelope(
@@ -1644,10 +1692,17 @@ class NormalizedTurnService:
             machine_match=machine_match,
             conversation=conversation,
         )
+        selected_effort = route.effort.value
+        if modality == TurnModality.VOICE:
+            from ai.core.config import get_settings
+
+            selected_effort = (
+                getattr(get_settings(), "azure_luna_voice_reasoning_effort", "") or selected_effort
+            )
         outcome = await self.reasoning_adapter.reason(
             envelope=envelope,
             tool_context=diagnostic_context,
-            effort=route.effort.value,
+            effort=selected_effort,
         )
         response = outcome.response
         message = response.detailed_response
@@ -1663,6 +1718,9 @@ class NormalizedTurnService:
                 "and ask again."
             )
         route_record = route.to_dict()
+        if selected_effort != route.effort.value:
+            route_record["routing_effort"] = route.effort.value
+            route_record["effort"] = selected_effort
         run_id = f"reasoning:{turn_id}"
         await self._emit_canonical_events(
             emitter=emitter,

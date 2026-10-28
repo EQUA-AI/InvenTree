@@ -5,6 +5,8 @@ connectors and by the deterministic detectors, never by a browser: an operator
 must not be able to type a machine back to normal.
 """
 
+from datetime import timedelta
+
 from rest_framework import serializers
 
 from assets.health_models import (
@@ -35,10 +37,13 @@ class SignalTestAlarmSerializer(serializers.Serializer):
     """A synthetic condition, never a replacement signal observation."""
 
     anomaly_id = serializers.IntegerField(read_only=True)
-    status = serializers.ChoiceField(choices=['open', 'acknowledged'], read_only=True)
+    status = serializers.ChoiceField(
+        choices=['open', 'acknowledged', 'resolved'], read_only=True
+    )
     test_value = serializers.FloatField(read_only=True)
     unit = serializers.CharField(read_only=True)
     triggered_at = InvenTreeIsoDateTimeField(read_only=True)
+    resolved_at = InvenTreeIsoDateTimeField(read_only=True, allow_null=True)
 
 
 class MachineSignalSerializer(TelemetryPresentationSerializer):
@@ -117,6 +122,9 @@ class MachineAnomalySerializer(
     Acknowledgement, resolution and row times are *not* shifted: a person
     acknowledged an anomaly at a real moment on the server's clock, and moving
     that would misreport when somebody acted.
+
+    Native test-alarm observations already use the server clock. Their linked
+    source supplies measurement context, not the clock of the test action.
     """
 
     source_name = serializers.CharField(
@@ -139,6 +147,8 @@ class MachineAnomalySerializer(
 
     def _shift(self, anomaly):
         """The station's presentation offset, resolved once per anomaly."""
+        if anomaly.detector == 'test_alarm_ui':
+            return timedelta(0)
         cache = self.context.setdefault('_anomaly_shifts', {})
         key = (anomaly.machine_id, anomaly.source_id)
         if key not in cache:

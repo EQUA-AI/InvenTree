@@ -81,7 +81,8 @@ export function WorkOrderSafetyReadiness({
             <IconShieldLock size={18} />
             <Text fw={600}>{t`Safety and readiness`}</Text>
           </Group>
-          {blocking.length === 0 && unknown.length > 0 ? (
+          {gates.length === 0 ||
+          (blocking.length === 0 && unknown.length > 0) ? (
             <Badge
               color='gray'
               variant='light'
@@ -139,9 +140,14 @@ export function WorkOrderSafetyReadiness({
         )}
 
         {gates.length === 0 ? (
-          <Text c='dimmed' size='sm'>
-            {t`No safety gates are attached to this repair.`}
-          </Text>
+          <Stack gap='xs'>
+            <Text c='dimmed' size='sm'>
+              {t`No safety gates are attached to this repair.`}
+            </Text>
+            <Text size='sm'>
+              {t`The absence of attached gates does not establish site safety authorization or permission to start physical work.`}
+            </Text>
+          </Stack>
         ) : (
           <WorkTableScroll
             minWidth={720}

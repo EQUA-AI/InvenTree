@@ -8,8 +8,10 @@ Loads from environment variables with validation.
 import logging
 import re as _re
 from functools import lru_cache
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -40,6 +42,59 @@ class Settings(BaseSettings):
     env: Literal["development", "staging", "production"] = "development"
     debug: bool = True
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "DEBUG"
+    ai_provider: Literal["azure", "local"] = "azure"
+    local_openai_base_url: str = ""
+    local_openai_model: str = ""
+    local_openai_timeout_s: float = Field(default=90.0, gt=0, le=120)
+
+    @model_validator(mode="after")
+    def validate_local_chat_provider(self) -> "Settings":
+        """Restrict the opt-in local chat provider to development and local hosts."""
+        if self.ai_provider != "local":
+            return self
+        if self.env != "development":
+            raise ValueError("The local AI provider is available only in development")
+        url = urlsplit(self.local_openai_base_url.strip())
+        try:
+            host = (url.hostname or "").lower()
+            port = url.port
+            loopback = ip_address(host).is_loopback
+        except ValueError:
+            loopback = False
+            try:
+                port = url.port
+            except ValueError:
+                port = None
+        if (
+            url.scheme != "http"
+            or not (
+                loopback
+                or host
+                in {
+                    "localhost",
+                    "host.docker.internal",
+                    "gateway.docker.internal",
+                    "ollama",
+                    "forgeai-ollama",
+                }
+            )
+            or not port
+            or url.username is not None
+            or url.password is not None
+            or url.path.rstrip("/") != "/v1"
+            or url.query
+            or url.fragment
+        ):
+            raise ValueError("AIMMS_LOCAL_OPENAI_BASE_URL must be a local HTTP /v1 endpoint")
+        model = self.local_openai_model.strip()
+        if not model or len(model) > 255 or any(char.isspace() for char in model):
+            raise ValueError("AIMMS_LOCAL_OPENAI_MODEL must name an installed local model")
+        self.local_openai_base_url = url.geturl().rstrip("/")
+        self.local_openai_model = model
+        self.azure_openai_deployment = model
+        self.azure_openai_fast_deployment = model
+        self.azure_luna_deployment = model
+        return self
 
     # -------------------------------------------------------------------------
     # Server Configuration
@@ -625,6 +680,9 @@ class Settings(BaseSettings):
     azure_luna_reasoning_effort: Literal["low", "medium", "high"] = Field(
         default="medium", alias="AZURE_LUNA_REASONING_EFFORT"
     )
+    azure_luna_voice_reasoning_effort: Literal["", "medium", "high"] = Field(
+        default="", alias="AZURE_LUNA_VOICE_REASONING_EFFORT"
+    )
     azure_luna_diagnosis_max_tool_rounds: int = Field(
         default=6,
         ge=1,
@@ -789,6 +847,8 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_reasoning_provider(self) -> "Settings":
         """Fail closed for an incomplete or floating provider configuration."""
+        if self.ai_provider == "local":
+            return self
         if self.azure_voice_reasoning_invocation_mode == "agent_reference":
             if not self.azure_foundry_project_endpoint.startswith("https://"):
                 raise ValueError("AZURE_FOUNDRY_PROJECT_ENDPOINT must use HTTPS")
@@ -906,6 +966,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("FEATURE_VOICE_NATIVE_STS", "AIMMS_FEATURE_VOICE_NATIVE_STS"),
     )
     azure_voicelive_endpoint: str = Field(default="", alias="AZURE_VOICELIVE_ENDPOINT")
+    azure_voicelive_api_key: str = Field(default="", alias="AZURE_VOICELIVE_API_KEY")
     azure_voicelive_model: str = Field(default="gpt-4.1-mini", alias="AZURE_VOICELIVE_MODEL")
     azure_voicelive_api_version: str = Field(
         default="2026-04-10", alias="AZURE_VOICELIVE_API_VERSION"
@@ -917,6 +978,13 @@ class Settings(BaseSettings):
     azure_voicelive_language: str = Field(default="en-US", alias="AZURE_VOICELIVE_LANGUAGE")
     azure_voicelive_transcription_model: str = Field(
         default="azure-speech", alias="AZURE_VOICELIVE_TRANSCRIPTION_MODEL"
+    )
+    azure_voicelive_vad_silence_duration_ms: int = Field(
+        default=550,
+        ge=200,
+        le=2000,
+        alias="AZURE_VOICELIVE_VAD_SILENCE_DURATION_MS",
+        description="Application-bounded silence window for Azure semantic VAD, in milliseconds.",
     )
     azure_voicelive_phrase_hints: list[str] = Field(
         default_factory=list, alias="AZURE_VOICELIVE_PHRASE_HINTS"

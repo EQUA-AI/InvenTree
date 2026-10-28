@@ -75,6 +75,12 @@ async def resolve(service, run):
                     run.pre_speech_status = reply.spoken
                 reply = await pending_selection(service, run, coordinator, arguments)
                 if reply is None:
+                    from ai.core.decisions.adapters.repair_scope_adapter import (
+                        begin as begin_repair_scope,
+                    )
+
+                    reply = await begin_repair_scope(service, run, coordinator, arguments)
+                if reply is None:
                     reply = await service._call_sync(coordinator.begin, run.content, **arguments)
                 if reply is None:
                     return False

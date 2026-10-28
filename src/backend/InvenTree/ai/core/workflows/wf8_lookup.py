@@ -37,6 +37,7 @@ from ai.core.tools.invocation_guard import (
     bind_capability_run,
 )
 from ai.core.tools.rbac import read_tools
+from ai.core.tools.repair_scope_draft import REPAIR_SCOPE_DRAFT_TOOLS
 from ai.core.usage import record_usage
 from asgiref.sync import sync_to_async
 
@@ -179,6 +180,9 @@ class _PreparedLookupRun:
     #: M1 (GR-33): ``additional_chat_options`` for this run — the prompt cache
     #: key when the deployment is listed, else empty (nothing is sent).
     chat_options: dict[str, Any] = field(default_factory=dict)
+    saved_scope_read: dict[str, Any] | None = None
+    maintenance_source_read: dict[str, Any] | None = None
+    source_model_deployment: str = ""
 
     def run_kwargs(self) -> dict[str, Any]:
         """Extra ``agent.run`` kwargs: only ``additional_chat_options`` when set."""
@@ -628,6 +632,17 @@ explanation within what the source establishes; plausibility is not a citation.
 When describing a maintenance method, pattern or sequence, also retain the
 settings and units that the source directly couples to that procedure, such
 as the specified torque for a tightening sequence.
+
+For completed maintenance questions, use get_machine_maintenance_history or
+search_work_orders to identify the job, then get_work_order_repair_state and
+get_work_order_closeout when available to read the recorded findings and
+verification. A work-order description contains proposed instructions, not
+proof they were performed. An attached or named manual is not proof its contents
+were read or approved for the fitted equipment. An empty parts list establishes
+only that no parts are recorded, not that none were physically needed. Report
+unavailable verification as unavailable. A software exercise, synthetic reading
+or prepared check entry is not physical inspection, sustained operation or
+return-to-service authority. Preserve those qualifications in every summary.
 """
 
     #: Base toolset offered to lookups. Read-only inventory tools by design:
@@ -661,6 +676,7 @@ as the specified torque for a tightening sequence.
                 + BOARD_TASK_READ_TOOLS
                 + MEMORY_ACTION_TOOLS
                 + INVESTIGATION_PROPOSAL_TOOLS
+                + REPAIR_SCOPE_DRAFT_TOOLS
                 + CONTROLLED_CORPUS_TOOLS
                 + ATTACHMENT_CORPUS_TOOLS
                 + EVIDENCE_MEDIA_TOOLS
@@ -692,6 +708,57 @@ as the specified torque for a tightening sequence.
         from ai.core.memory.maf_adapter import replay_messages
 
         return replay_messages(query, context)
+
+    OPERATING_STATUS_RULES = """
+For pump running or idle status, use get_machine_health for the server-confirmed
+machine focus when present. Otherwise resolve the named station or pump with
+search_machines, then read get_machine_health for that exact equipment. A search
+page is not the station population and checking two pumps is not checking the
+whole station. A pumphouse health result's operating field carries the authorized
+bay states, running_count, population_count and observation time from the native
+station mimic. Use that result for station-wide operating questions, not a
+sample of child-pump reads. Never infer operating status from stock or active
+inventory. Unknown, stale or unavailable does not mean stopped. Distinguish the
+operating source and its freshness from any other unhealthy historical source.
+An inactive source is historical configuration, not evidence of a current outage.
+Do not turn its old last_success_at or unhealthy flag into a current fault. Base
+current source failures on active sources and their reporting/read_failed state.
+Identify the returned station, pump identifiers, source and observation time in
+the answer. State the running_count out of population_count explicitly. Never
+claim a full population when the result says it is incomplete.
+"""
+
+    @staticmethod
+    def _with_machine_focus(run_input: Any, context: dict[str, Any] | None) -> Any:
+        """Carry the server-confirmed machine identity without granting access."""
+        focus = (context or {}).get("conversation_focus")
+        if not isinstance(focus, dict) or focus.get("kind") != "machine":
+            return run_input
+        machine_id = focus.get("id")
+        if (
+            type(machine_id) is not int
+            or machine_id <= 0
+            or type(focus.get("machine_id")) is not int
+            or focus["machine_id"] != machine_id
+        ):
+            return run_input
+        note = (
+            f"[server-confirmed machine focus] machine_id={machine_id}. "
+            "This is the equipment selected for this conversation, not an access "
+            "grant or current operating evidence. Reauthorize every native read "
+            "and preserve the analysis-scope boundary. For operating status read "
+            f"get_machine_health(machine_id={machine_id}); do not substitute a "
+            "search-results page or a sample of other machines. For maintenance "
+            "or completed-job history, first read "
+            f"get_machine_maintenance_history(machine_id={machine_id}), then use "
+            "its authorized work-order reference to retrieve the recorded "
+            "repair state and closeout. An empty free-text work-order search "
+            "does not establish that this machine has no recorded history."
+        )
+        messages = run_input
+        if isinstance(messages, str):
+            messages = [ChatMessage(role=Role.USER, contents=[TextContent(text=messages)])]
+        return [*messages, ChatMessage(role=Role.USER, contents=[TextContent(text=note)])]
 
     #: Fixed template for the deterministic category hint. The matched terms are
     #: DB-derived category names quoted as data and delivered as a labelled USER
@@ -956,6 +1023,18 @@ as the specified torque for a tightening sequence.
                 + json.dumps(focus["evidence"])
                 + ". Reauthorize the source before use; focus grants no authority and changes no record. An identity is not source content: if the available tools do not return this exact item and its qualifiers, say the source facts are unavailable and ask the user to open the source. Do not invent readings or a media interpretation."
             )
+        if type(machine_id) is int and machine_id > 0 and focus.get("work_order_id"):
+            note += (
+                " For maintenance or completed-job history, first read "
+                f"get_machine_maintenance_history(machine_id={machine_id}), then use "
+                "its authorized work-order reference to read get_work_order_repair_state "
+                "and get_work_order_closeout. For the focused Work's current prepared "
+                "exercise checks, read "
+                f"get_work_order_repair_state(work_order_id={focus['work_order_id']}). "
+                "Earlier conversation is not a fresh read. Keep software-exercise "
+                "checks distinct from physical work or operating authority; "
+                "a missing source is unknown, not proof of no history."
+            )
         if focus.get("schema_version") in {2, 3} and focus.get("request_id") is not None:
             note += f" Investigation request {focus['request_id']} at revision {focus['request_version']} is the selected decision. Read its saved facts through get_work_order_repair_state; chat text alone does not save typed evidence or resolve it. For technician-supplied evidence, use propose_investigation_artifact to prepare an exact typed review in this chat. Only the technician can approve publication in Recent action proposals. Preserve unknowns and all sample/method/time/status facts; ask for missing facts. Never call a proposal a saved result."
         if focus.get("schema_version") in {2, 3} and focus.get("request_id") is not None:
@@ -1149,7 +1228,8 @@ as the specified torque for a tightening sequence.
                     else self.SYSTEM_PROMPT
                 )
                 + self.CONTEXT_SOURCE_RULES
-                + (self.STOCK_SOURCE_RULES if not clarify else ""),
+                + (self.STOCK_SOURCE_RULES if not clarify else "")
+                + ("" if clarify else self.OPERATING_STATUS_RULES),
                 name=(
                     "T1 Clarification Agent"
                     if clarify
@@ -1513,6 +1593,7 @@ as the specified torque for a tightening sequence.
                     *run_input,
                 ]
         if not clarify:
+            run_input = self._with_machine_focus(run_input, context)
             # P02/P33: the verified Work focus rides every tool-bearing run,
             # enforced selection or not; the clarify agent has no tools to
             # look it up with, so it does not get the note.
@@ -1592,6 +1673,27 @@ as the specified torque for a tightening sequence.
                     ],
                 ),
             ]
+        from ai.core.workflows.saved_scope_read import prepare_saved_scope_read
+
+        saved_scope = await prepare_saved_scope_read(query, context, tools)
+        if saved_scope is not None:
+            run_input, saved_scope_audit = saved_scope
+            runtime_tools = []
+        else:
+            saved_scope_audit = None
+        from ai.core.workflows.focused_maintenance_read import prepare_focused_maintenance_read
+
+        maintenance_audit = None
+        if saved_scope_audit is None:
+            maintenance = await prepare_focused_maintenance_read(
+                query,
+                context,
+                tools,
+                thread_id=thread_id,
+            )
+            if maintenance is not None:
+                run_input, maintenance_audit = maintenance
+                runtime_tools = []
         return _PreparedLookupRun(
             agent=agent,
             run_input=run_input,
@@ -1600,6 +1702,9 @@ as the specified torque for a tightening sequence.
             enforce=enforce,
             stock_location_category_id=stock_category,
             chat_options=chat_options,
+            saved_scope_read=saved_scope_audit,
+            maintenance_source_read=maintenance_audit,
+            source_model_deployment=self._agent_deployments.get(mode, ""),
         )
 
     async def execute(
@@ -1670,6 +1775,18 @@ as the specified torque for a tightening sequence.
                     prepared.run_input, tools=runtime_tools, **prepared.run_kwargs()
                 )
 
+            if (
+                prepared.saved_scope_read is not None
+                or prepared.maintenance_source_read is not None
+            ):
+                from ai.core.workflows.saved_scope_read import finish_saved_scope_read
+
+                finish_saved_scope_read(
+                    prepared.saved_scope_read or prepared.maintenance_source_read,
+                    response,
+                    deployment=prepared.source_model_deployment,
+                )
+
             # Extract response text
             response_text = ""
             if hasattr(response, "text"):
@@ -1699,6 +1816,14 @@ as the specified torque for a tightening sequence.
             response_text = self._apply_question_proposal(
                 response_text, modality=modality, context=context
             )
+            if prepared.maintenance_source_read is not None:
+                from ai.core.workflows.focused_maintenance_read import (
+                    project_maintenance_source_coordinates,
+                )
+
+                response_text = project_maintenance_source_coordinates(
+                    response_text, prepared.maintenance_source_read
+                )
 
             execution_time = (time.perf_counter() - start_time) * 1000
             usage_metrics = _response_usage_metrics(response)
@@ -1718,7 +1843,18 @@ as the specified torque for a tightening sequence.
             return LookupResult(
                 lookup_type=lookup_type,
                 success=True,
-                data={"raw_response": response_text, "usage": usage_metrics},
+                data={
+                    "raw_response": response_text,
+                    "usage": usage_metrics,
+                    **(
+                        {
+                            "server_source_read": prepared.saved_scope_read
+                            or prepared.maintenance_source_read
+                        }
+                        if prepared.saved_scope_read or prepared.maintenance_source_read
+                        else {}
+                    ),
+                },
                 formatted_response=response_text,
                 execution_time_ms=execution_time,
             )
@@ -1801,6 +1937,7 @@ as the specified torque for a tightening sequence.
         from ai.core.usage import maf_update_usage_metrics
 
         usage_metrics: dict[str, int] = {}
+        maintenance_chunks: list[str] = []
         try:
             with bind_capability_run(
                 workflow="wf8",
@@ -1822,13 +1959,23 @@ as the specified torque for a tightening sequence.
                         # non-empty reading.
                         usage_metrics = metrics
                     text = getattr(update, "text", "") or ""
-                    if text and prepared.stock_location_category_id is None:
+                    if text and prepared.maintenance_source_read is not None:
+                        maintenance_chunks.append(text)
+                    elif text and prepared.stock_location_category_id is None:
                         yield text
                 if prepared.stock_location_category_id is not None:
                     yield category_location_answer(
                         bound_run.stock_location_result,
                         category_id=prepared.stock_location_category_id,
                         modality=prepared.modality,
+                    )
+                if prepared.maintenance_source_read is not None:
+                    from ai.core.workflows.focused_maintenance_read import (
+                        project_maintenance_source_coordinates,
+                    )
+
+                    yield project_maintenance_source_coordinates(
+                        "".join(maintenance_chunks), prepared.maintenance_source_read
                     )
         except Exception as exc:
             _raise_classified(exc)

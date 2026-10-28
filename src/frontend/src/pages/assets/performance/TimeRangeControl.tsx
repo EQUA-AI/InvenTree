@@ -66,6 +66,7 @@ export interface TimeRangeControlProps {
   onRefresh: () => void;
   refreshing: boolean;
   dataRange: DataRange | undefined;
+  recordedHistory?: boolean;
   status?: (
     controls: (state: string, disclosure?: string) => ReactNode
   ) => ReactNode;
@@ -90,6 +91,7 @@ export function TimeRangeControl({
   onRefresh,
   refreshing,
   dataRange,
+  recordedHistory = false,
   status
 }: Readonly<TimeRangeControlProps>) {
   const scheme = useComputedColorScheme('light');
@@ -141,30 +143,36 @@ export function TimeRangeControl({
 
   const controls = (state = t`Live`, disclosure?: string) => (
     <Group gap={6} ml='auto' wrap='wrap'>
-      <Tooltip
-        events={{ hover: true, focus: true, touch: false }}
-        label={
-          (live
-            ? t`Live: the window follows the clock and re-reads as the source is polled.`
-            : t`Paused: the window is frozen where you left it.`) +
-          (disclosure ? ` ${disclosure}` : '')
-        }
-      >
-        <Switch
-          classNames={{ track: monitoring.track, thumb: monitoring.thumb }}
-          styles={{ root: { minHeight: phone ? 40 : undefined } }}
-          size={phone ? 'md' : 'sm'}
-          aria-label={`${t`Live updates`}: ${state}${disclosure ? ` · ${disclosure}` : ''}`}
-          checked={live}
-          onChange={(event) => onLive(event.currentTarget.checked)}
+      {recordedHistory ? (
+        <StatusBadge tone='neutral' variant='outline' color='blue'>
+          {state === t`Live` ? t`Recorded history` : state}
+        </StatusBadge>
+      ) : (
+        <Tooltip
+          events={{ hover: true, focus: true, touch: false }}
           label={
-            <Text size='xs' fw={500}>
-              {state}
-            </Text>
+            (live
+              ? t`Live: the window follows the clock and re-reads as the source is polled.`
+              : t`Paused: the window is frozen where you left it.`) +
+            (disclosure ? ` ${disclosure}` : '')
           }
-          labelPosition='left'
-        />
-      </Tooltip>
+        >
+          <Switch
+            classNames={{ track: monitoring.track, thumb: monitoring.thumb }}
+            styles={{ root: { minHeight: phone ? 40 : undefined } }}
+            size={phone ? 'md' : 'sm'}
+            aria-label={`${t`Live updates`}: ${state}${disclosure ? ` · ${disclosure}` : ''}`}
+            checked={live}
+            onChange={(event) => onLive(event.currentTarget.checked)}
+            label={
+              <Text size='xs' fw={500}>
+                {state}
+              </Text>
+            }
+            labelPosition='left'
+          />
+        </Tooltip>
+      )}
       <Tooltip
         events={{ hover: true, focus: true, touch: false }}
         label={t`Re-read now`}
@@ -314,6 +322,7 @@ export function TimeRangeControl({
 }
 
 export interface LiveIndicatorProps {
+  recordedHistory?: boolean;
   live: boolean;
   fetching: boolean;
   failed?: boolean;
@@ -348,6 +357,7 @@ export function LiveIndicator({
   response,
   freshnessSeconds,
   now,
+  recordedHistory = false,
   controls,
   information,
   tiles = []
@@ -384,6 +394,11 @@ export function LiveIndicator({
     word = fetching ? t`Reading` : t`Not read yet`;
   } else if (response.live.read_failed ?? !!response.live.last_error_code) {
     word = t`Read failed`;
+  } else if (
+    recordedHistory ||
+    response.telemetry_presentation === 'recorded_history'
+  ) {
+    word = t`Recorded history`;
   } else if (
     recordedTelemetryAsLive(response) &&
     response.series?.length > 0 &&

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 from types import SimpleNamespace
 
@@ -14,6 +15,7 @@ from ai.core.reasoning.luna_diagnostics import (
     ToolLoopBudget,
     TrustedReasoningEnvelope,
 )
+from jsonschema import Draft202012Validator
 
 
 def _envelope(*, tools: tuple[str, ...] = ()) -> TrustedReasoningEnvelope:
@@ -135,6 +137,501 @@ def _adapter(client, *, registry=None, mode="agent_reference", budget=None):
         tool_registry=registry,
         client_factory=lambda: client,
     )
+
+
+def _local_completion(*, content="", tool_calls=(), model="llama3.2:latest"):
+    return SimpleNamespace(
+        id="local-run",
+        model=model,
+        choices=[
+            SimpleNamespace(
+                finish_reason="tool_calls" if tool_calls else "stop",
+                message=SimpleNamespace(content=content, tool_calls=tool_calls, refusal=None),
+            )
+        ],
+        usage=SimpleNamespace(prompt_tokens=10, completion_tokens=20, total_tokens=30),
+    )
+
+
+def _local_adapter(completions, registry):
+    from dataclasses import replace
+    from unittest.mock import Mock
+
+    client = Mock()
+    client.with_options.return_value = client
+    client.chat.completions.create.side_effect = completions
+    config = replace(
+        _config("local_chat"),
+        direct_endpoint="http://localhost:11434/v1",
+        direct_deployment="llama3.2:latest",
+    )
+    adapter = LunaDiagnosticsAdapter(
+        provider_config=config,
+        budget=ToolLoopBudget(),
+        tool_registry=registry,
+        client_factory=lambda: client,
+    )
+    return adapter, client
+
+
+def test_local_diagnosis_uses_the_same_authorized_tool_loop_and_schema():
+    registry = _Registry()
+    call = SimpleNamespace(
+        id="call_1",
+        function=SimpleNamespace(name="get_machine_context", arguments='{"machine_id":44}'),
+    )
+    adapter, client = _local_adapter(
+        [
+            _local_completion(tool_calls=[call]),
+            _local_completion(content=_canonical_json()),
+        ],
+        registry,
+    )
+    context = object()
+    outcome = asyncio.run(
+        adapter.reason(envelope=_envelope(tools=("get_machine_context",)), tool_context=context)
+    )
+    assert registry.executions == [
+        {"name": "get_machine_context", "arguments": {"machine_id": 44}, "context": context}
+    ]
+    first, second = client.chat.completions.create.call_args_list
+    assert first.kwargs["model"] == "llama3.2:latest"
+    assert first.kwargs["parallel_tool_calls"] is False
+    assert "reasoning_effort" not in first.kwargs
+    assert first.kwargs["tools"][0]["function"]["name"] == "get_machine_context"
+    assert [message["role"] for message in second.kwargs["messages"]] == [
+        "system",
+        "user",
+        "assistant",
+        "tool",
+    ]
+    assert outcome.response.response_state == "complete"
+    assert outcome.provenance.invocation_mode == "local_chat"
+    assert outcome.provenance.deployment == "llama3.2:latest"
+    assert outcome.provenance.effort == "none"
+    assert outcome.provenance.tool_names == ("get_machine_context",)
+
+
+def test_local_diagnosis_does_not_execute_an_unauthorized_tool():
+    registry = _Registry()
+    call = SimpleNamespace(
+        id="call_1", function=SimpleNamespace(name="secret_tool", arguments="{}")
+    )
+    adapter, client = _local_adapter(
+        [_local_completion(tool_calls=[call]), _local_completion(content=_canonical_json())],
+        registry,
+    )
+    outcome = asyncio.run(adapter.reason(envelope=_envelope(tools=("get_machine_context",))))
+    assert registry.executions == []
+    assert (
+        "tool_unavailable"
+        in client.chat.completions.create.call_args.kwargs["messages"][-1]["content"]
+    )
+    assert outcome.response.response_state == "complete"
+
+
+def test_local_diagnosis_rejects_wrong_model_identity():
+    from ai.core.reasoning.luna_diagnostics import ProviderConfigurationError
+
+    adapter, _ = _local_adapter([_local_completion(model="other")], _Registry())
+    with pytest.raises(ProviderConfigurationError):
+        asyncio.run(adapter.reason(envelope=_envelope()))
+
+
+def test_local_diagnosis_requests_schema_constrained_json_without_tools():
+    adapter, client = _local_adapter([_local_completion(content=_canonical_json())], None)
+    outcome = asyncio.run(adapter.reason(envelope=_envelope()))
+    response_format = client.chat.completions.create.call_args.kwargs["response_format"]
+    assert response_format["type"] == "json_schema"
+    assert response_format["json_schema"]["name"] == "canonical_turn_response"
+    assert response_format["json_schema"]["strict"] is True
+    assert "response_state" in response_format["json_schema"]["schema"]["properties"]
+    assert (
+        response_format["json_schema"]["schema"]["properties"]["reasoning_summary"]["minLength"]
+        == 1
+    )
+    assert response_format["json_schema"]["schema"]["properties"]["evidence"]["maxItems"] == 0
+    assert (
+        response_format["json_schema"]["schema"]["properties"]["recommended_actions"]["maxItems"]
+        == 0
+    )
+    assert outcome.response.response_state == "complete"
+
+
+def test_local_schema_retry_preserves_tool_history_and_constrains_the_final():
+    adapter, client = _local_adapter(
+        [
+            _local_completion(content="{}"),
+            _local_completion(content=_canonical_json()),
+        ],
+        _Registry(),
+    )
+    outcome = asyncio.run(adapter.reason(envelope=_envelope(tools=("get_machine_context",))))
+    first, second = client.chat.completions.create.call_args_list
+    assert first.kwargs["tools"]
+    assert "tools" not in second.kwargs
+    assert second.kwargs["response_format"]["type"] == "json_schema"
+    assert second.kwargs["messages"][-1]["role"] == "user"
+    assert outcome.response.response_state == "complete"
+
+
+def test_local_final_after_tool_budget_is_schema_constrained():
+    registry = _Registry()
+    call = SimpleNamespace(
+        id="call_1",
+        function=SimpleNamespace(name="get_machine_context", arguments='{"machine_id":44}'),
+    )
+    adapter, client = _local_adapter(
+        [
+            _local_completion(tool_calls=[call]),
+            _local_completion(content=_canonical_json()),
+        ],
+        registry,
+    )
+    adapter.budget = ToolLoopBudget(max_tool_rounds=1)
+    outcome = asyncio.run(adapter.reason(envelope=_envelope(tools=("get_machine_context",))))
+    first, second = client.chat.completions.create.call_args_list
+    assert first.kwargs["tools"]
+    assert "tools" not in second.kwargs
+    assert second.kwargs["response_format"]["type"] == "json_schema"
+    assert second.kwargs["messages"][-1]["role"] == "tool"
+    assert (
+        second.kwargs["response_format"]["json_schema"]["schema"]["properties"]["evidence"][
+            "maxItems"
+        ]
+        == 0
+    )
+    assert outcome.provenance.tool_names == ("get_machine_context",)
+    assert outcome.response.response_state == "complete"
+
+
+def test_local_schema_keeps_authorized_evidence_available():
+    registry = _Registry(
+        result={
+            "status": "ok",
+            "evidence": [
+                {
+                    "source_type": "asset_machine",
+                    "id": "44",
+                    "revision": "2",
+                    "authorization_class": "maintenance_scope",
+                    "locator": "/machines/44",
+                    "as_of": "2026-08-01T00:00:00+00:00",
+                }
+            ],
+        }
+    )
+    call = SimpleNamespace(
+        id="call_1",
+        function=SimpleNamespace(name="get_machine_context", arguments='{"machine_id":44}'),
+    )
+    adapter, client = _local_adapter(
+        [_local_completion(tool_calls=[call]), _local_completion(content=_canonical_json())],
+        registry,
+    )
+    adapter.budget = ToolLoopBudget(max_tool_rounds=1)
+    asyncio.run(adapter.reason(envelope=_envelope(tools=("get_machine_context",))))
+    schema = client.chat.completions.create.call_args.kwargs["response_format"]["json_schema"][
+        "schema"
+    ]
+    assert "maxItems" not in schema["properties"]["evidence"]
+    assert "maxItems" not in schema["properties"]["recommended_actions"]
+
+
+def _citation(identifier, *, as_of="2026-08-01T03:00:00+03:00", claim="Tool claim"):
+    return {
+        "source_type": f"record_type_{identifier}",
+        "id": str(identifier),
+        "revision": f"revision-{identifier}",
+        "authorization_class": f"scope-{identifier}",
+        "locator": f"/records/{identifier}",
+        "as_of": as_of,
+        "claim": claim,
+    }
+
+
+def _evidence(citation, *, claim="The model selected this observation."):
+    return {
+        "source_type": citation["source_type"],
+        "source_id": citation["id"],
+        "source_revision": citation["revision"],
+        "authorization_class": citation["authorization_class"],
+        "locator": {"field": citation["locator"], "page": None, "chunk": None},
+        "as_of": citation["as_of"],
+        "claim": claim,
+    }
+
+
+def _request_with_outputs(adapter, outputs, *, tools=()):
+    request = adapter._base_request(
+        envelope=_envelope(tools=tools),
+        effort="medium",
+        tool_context=None,
+        output_token_limit=adapter.budget.max_output_tokens,
+    )
+    for index, output in enumerate(outputs):
+        request["input"].append({
+            "type": "function_call_output",
+            "call_id": f"call-{index}",
+            "output": output,
+        })
+    return request
+
+
+def _local_schema_from_request(adapter, client, request):
+    asyncio.run(adapter._dispatch_local(client, request, 10, None))
+    return client.chat.completions.create.call_args.kwargs["response_format"]["json_schema"][
+        "schema"
+    ]
+
+
+def test_local_evidence_schema_binds_whole_tuples_and_preserves_model_answer():
+    citations = [_citation("44"), _citation("45", as_of="2026-08-02T03:00:00+03:00")]
+    payload = json.loads(_canonical_json())
+    payload["evidence"] = [_evidence(citations[1], claim="The model chose the second record.")]
+    registry = _Registry(result={"status": "ok", "evidence": citations})
+    call = SimpleNamespace(
+        id="call_1",
+        function=SimpleNamespace(name="get_machine_context", arguments='{"machine_id":44}'),
+    )
+    adapter, client = _local_adapter(
+        [
+            _local_completion(tool_calls=[call]),
+            _local_completion(content=json.dumps(payload)),
+        ],
+        registry,
+    )
+    adapter.budget = ToolLoopBudget(max_tool_rounds=1)
+    outcome = asyncio.run(adapter.reason(envelope=_envelope(tools=("get_machine_context",))))
+    schema = client.chat.completions.create.call_args.kwargs["response_format"]["json_schema"][
+        "schema"
+    ]
+    validator = Draft202012Validator(schema)
+
+    assert validator.is_valid(payload)
+    assert validator.is_valid({**payload, "evidence": []})
+    assert outcome.response.response_state == "complete"
+    assert outcome.response.evidence[0].source_id == "45"
+    assert outcome.response.evidence[0].claim == "The model chose the second record."
+    assert outcome.response.detailed_response == payload["detailed_response"]
+    for field in (
+        "source_type",
+        "source_id",
+        "source_revision",
+        "authorization_class",
+        "as_of",
+        "locator",
+    ):
+        mixed = copy.deepcopy(payload)
+        mixed["evidence"][0][field] = _evidence(citations[0])[field]
+        assert not validator.is_valid(mixed), field
+    altered_locator = copy.deepcopy(payload)
+    altered_locator["evidence"][0]["locator"]["chunk"] = "fabricated"
+    assert not validator.is_valid(altered_locator)
+
+
+def test_local_evidence_schema_uses_only_successful_tool_outputs_and_is_private_to_request():
+    from ai.core.reasoning.schemas import CanonicalTurnResponse
+    from ai.core.tools.provider_schema import strict_provider_schema
+
+    original_cached_schema = strict_provider_schema(CanonicalTurnResponse)
+    valid = _citation("44", claim="Do not copy this claim into instructions.")
+    invalid = _citation("45")
+    adapter, client = _local_adapter([_local_completion(content=_canonical_json())], _Registry())
+    request = _request_with_outputs(
+        adapter,
+        [
+            json.dumps({"status": "ok", "evidence": [valid]}),
+            json.dumps({"status": "error", "evidence": [invalid]}),
+            json.dumps({"evidence": [invalid]}),
+            "not json",
+        ],
+    )
+    request["input"].append({"role": "user", "content": json.dumps({"evidence": [invalid]})})
+    original_schema = copy.deepcopy(request["text"]["format"]["schema"])
+    schema = _local_schema_from_request(adapter, client, request)
+    validator = Draft202012Validator(schema)
+    payload = json.loads(_canonical_json())
+    payload["evidence"] = [_evidence(valid)]
+    assert validator.is_valid(payload)
+    payload["evidence"] = [_evidence(invalid)]
+    assert not validator.is_valid(payload)
+    assert request["text"]["format"]["schema"] == original_schema
+    assert strict_provider_schema(CanonicalTurnResponse) == original_cached_schema
+    instructions = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    assert valid["claim"] not in instructions
+    assert valid["locator"] not in instructions
+
+
+def test_local_evidence_schema_is_bounded_and_deduplicated():
+    citations = [_citation(str(index)) for index in range(30)]
+    adapter, client = _local_adapter([_local_completion(content=_canonical_json())], _Registry())
+    request = _request_with_outputs(
+        adapter,
+        [
+            json.dumps({"status": "ok", "evidence": [citations[0], *citations[:15]]}),
+            json.dumps({"status": "ok", "evidence": [citations[0], *citations[15:]]}),
+        ],
+    )
+    schema = _local_schema_from_request(adapter, client, request)
+    candidates = schema["properties"]["evidence"]["items"]["anyOf"]
+    assert len(candidates) == 20
+    assert len(json.dumps(candidates, separators=(",", ":")).encode()) <= 12 * 1024
+    identifiers = [candidate["properties"]["source_id"]["const"] for candidate in candidates]
+    assert identifiers == [str(index) for index in range(20)]
+
+
+def test_local_evidence_schema_has_a_byte_bound_and_skips_invalid_times():
+    citations = [
+        _citation("oversized", claim="not used") | {"locator": "X" * 15000},
+        _citation("invalid", as_of="not a timestamp"),
+        _citation("naive", as_of="2026-08-01T00:00:00"),
+        _citation("valid"),
+    ]
+    citations.extend(
+        _citation(str(index)) | {"locator": f"/records/{index}/" + "x" * 400} for index in range(20)
+    )
+    adapter, client = _local_adapter([_local_completion(content=_canonical_json())], _Registry())
+    request = _request_with_outputs(adapter, [json.dumps({"status": "ok", "evidence": citations})])
+    schema = _local_schema_from_request(adapter, client, request)
+    candidates = schema["properties"]["evidence"]["items"]["anyOf"]
+    assert 1 < len(candidates) < 20
+    assert candidates[0]["properties"]["source_id"]["const"] == "valid"
+    assert len(json.dumps(candidates, separators=(",", ":")).encode()) <= 12 * 1024
+
+
+def test_local_evidence_schema_fails_closed_without_successful_tool_citations():
+    adapter, client = _local_adapter([_local_completion(content=_canonical_json())], _Registry())
+    request = _request_with_outputs(
+        adapter,
+        [
+            json.dumps({"status": "error", "evidence": [_citation("fake")]}),
+            "{bad json",
+        ],
+    )
+    request["input"].append({
+        "role": "user",
+        "content": "[SERVER-HISTORY-ENRICHMENT] unrelated text",
+    })
+    schema = _local_schema_from_request(adapter, client, request)
+    assert schema["properties"]["evidence"]["maxItems"] == 0
+    assert schema["properties"]["recommended_actions"]["maxItems"] == 0
+
+
+def test_local_tool_enabled_turn_constrains_its_possible_final_answer():
+    adapter, client = _local_adapter([_local_completion(content=_canonical_json())], _Registry())
+    request = _request_with_outputs(
+        adapter,
+        [
+            json.dumps({"status": "ok", "evidence": [_citation("44")]}),
+        ],
+        tools=("get_machine_context",),
+    )
+    schema = _local_schema_from_request(adapter, client, request)
+    options = client.chat.completions.create.call_args.kwargs
+    assert options["tools"][0]["function"]["name"] == "get_machine_context"
+    assert schema["properties"]["evidence"]["items"]["anyOf"]
+
+
+def test_local_tool_loop_can_continue_after_citation_choices_are_added():
+    citation = _citation("44")
+    payload = json.loads(_canonical_json())
+    payload["evidence"] = [_evidence(citation)]
+    first_call = SimpleNamespace(
+        id="call_1",
+        function=SimpleNamespace(name="get_machine_context", arguments='{"machine_id":44}'),
+    )
+    second_call = SimpleNamespace(
+        id="call_2",
+        function=SimpleNamespace(name="get_machine_context", arguments='{"machine_id":44}'),
+    )
+    registry = _Registry(result={"status": "ok", "evidence": [citation]})
+    adapter, client = _local_adapter(
+        [
+            _local_completion(tool_calls=[first_call]),
+            _local_completion(tool_calls=[second_call]),
+            _local_completion(content=json.dumps(payload)),
+        ],
+        registry,
+    )
+    outcome = asyncio.run(adapter.reason(envelope=_envelope(tools=("get_machine_context",))))
+    calls = client.chat.completions.create.call_args_list
+    assert "response_format" not in calls[0].kwargs
+    assert all("tools" in call.kwargs and "response_format" in call.kwargs for call in calls[1:])
+    assert len(registry.executions) == 2
+    assert outcome.response.response_state == "complete"
+    assert outcome.response.evidence[0].claim == payload["evidence"][0]["claim"]
+
+
+def test_local_final_validator_still_rejects_mixed_coordinates_when_schema_is_ignored():
+    first, second = _citation("44"), _citation("45")
+    payload = json.loads(_canonical_json())
+    payload["evidence"] = [_evidence(first) | {"source_id": second["id"]}]
+    call = SimpleNamespace(
+        id="call_1",
+        function=SimpleNamespace(name="get_machine_context", arguments='{"machine_id":44}'),
+    )
+    registry = _Registry(result={"status": "ok", "evidence": [first, second]})
+    adapter, _ = _local_adapter(
+        [
+            _local_completion(tool_calls=[call]),
+            _local_completion(content=json.dumps(payload)),
+            _local_completion(content=json.dumps(payload)),
+        ],
+        registry,
+    )
+    outcome = asyncio.run(adapter.reason(envelope=_envelope(tools=("get_machine_context",))))
+    assert outcome.response.response_state == "incomplete"
+    assert outcome.provenance.outcome_code == "unauthorized_evidence"
+
+
+def test_azure_schema_accepts_only_observed_citation_coordinates():
+    citation = _citation("44")
+    payload = json.loads(_canonical_json())
+    payload["evidence"] = [_evidence(citation)]
+    client = _Client([
+        _response(response_id="tool", calls=[_tool_call()]),
+        _response(response_id="final", text=json.dumps(payload)),
+    ])
+    registry = _Registry(result={"status": "ok", "evidence": [citation]})
+    outcome = asyncio.run(
+        _adapter(client, registry=registry).reason(
+            envelope=_envelope(tools=("get_machine_context",))
+        )
+    )
+    assert outcome.response.response_state == "complete"
+    schema = client.responses.calls[-1]["text"]["format"]["schema"]
+    entry = schema["properties"]["evidence"]["items"]
+    assert set(entry["properties"]) == {"citation_id", "claim"}
+    choices = entry["properties"]["citation_id"]["enum"]
+    assert len(choices) == 1
+    selected = {**payload, "evidence": [{"citation_id": choices[0], "claim": "Observed"}]}
+    Draft202012Validator(schema).validate(selected)
+
+
+def test_local_diagnosis_rejects_fabricated_citations():
+    payload = json.loads(_canonical_json())
+    payload["evidence"] = [
+        {
+            "source_type": "asset_machine",
+            "source_id": "44",
+            "source_revision": "2026-08-01T00:00:00+00:00",
+            "authorization_class": "maintenance_scope",
+            "as_of": "2026-08-01T00:00:00+00:00",
+            "locator": {"field": "/machines/44"},
+            "claim": "The machine context supports this.",
+        }
+    ]
+    adapter, _ = _local_adapter(
+        [
+            _local_completion(content=json.dumps(payload)),
+            _local_completion(content=json.dumps(payload)),
+        ],
+        _Registry(),
+    )
+    outcome = asyncio.run(adapter.reason(envelope=_envelope()))
+    assert outcome.response.response_state == "incomplete"
+    assert outcome.provenance.outcome_code == "unauthorized_evidence"
 
 
 def test_rejects_invalid_effort_before_provider_dispatch() -> None:

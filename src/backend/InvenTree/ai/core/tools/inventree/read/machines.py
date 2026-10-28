@@ -203,7 +203,7 @@ async def get_machine_overview(machine_id: int) -> dict[str, Any]:
 @ai_function
 async def get_machine_health(machine_id: int) -> dict[str, Any]:
     """
-    Get a machine's current condition, data freshness and connection status of its sources.
+    Get current condition, actual pump running states, freshness and source status.
 
     Answers "how is it doing", "is it running", "is the data stale" and
     "is the connector working".
@@ -213,8 +213,9 @@ async def get_machine_health(machine_id: int) -> dict[str, Any]:
 
     Returns:
       Health state, whether monitoring is configured, signal and stale counts,
-      anomaly counts, and per-source connection status including when each
-      source last succeeded or errored.
+      anomaly counts, per-source connection status, and operating states from
+      the native station mimic. For a pumphouse, operating includes each
+      authorized pump and the running count. Active inventory is not running.
 
     Honor telemetry_presentation: live uses displayed observation times without
     a clock-shift caveat; recorded_history must be labelled as recorded history.
@@ -227,7 +228,7 @@ async def get_machine_health(machine_id: int) -> dict[str, Any]:
     def _fetch():
         from assets import ai_read
 
-        _user, machine = _resolve(machine_id)
+        user, machine = _resolve(machine_id)
         if machine is None:
             return None
         from ai.core.analysis.scope_context import scope_miss_for_machine
@@ -235,7 +236,11 @@ async def get_machine_health(machine_id: int) -> dict[str, Any]:
         miss = scope_miss_for_machine(machine.pk)
         if miss is not None:
             return miss
-        return ai_read.machine_health(machine)
+        return {
+            "machine_id": machine.pk,
+            **ai_read.machine_health(machine),
+            "operating": ai_read.machine_operating_context(user, machine),
+        }
 
     result = await _fetch()
     return result if result is not None else {"error": _NOT_FOUND}
@@ -432,7 +437,10 @@ async def get_machine_maintenance_history(machine_id: int, limit: int = 25) -> d
         miss = scope_miss_for_machine(machine.pk)
         if miss is not None:
             return miss
-        return ai_read.machine_maintenance_history(user, machine, limit=limit)
+        return {
+            "machine_id": machine.pk,
+            **ai_read.machine_maintenance_history(user, machine, limit=limit),
+        }
 
     result = await _fetch()
     return result if result is not None else {"error": _NOT_FOUND}

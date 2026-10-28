@@ -1,0 +1,4 @@
+.action:focus-visible {
+  outline: 3px solid var(--mantine-color-blue-8);
+  outline-offset: 3px;
+}

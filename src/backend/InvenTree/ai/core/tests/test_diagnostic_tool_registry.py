@@ -93,6 +93,8 @@ def test_registry_snapshot_is_exact_and_separate() -> None:
         "search_approved_manuals",
         "find_published_repair_playbooks",
         "get_parts_availability",
+        "search_related_work_manuals",
+        "get_requested_prepared_inspection",
     )
     assert registry.snapshot() == BASE_DIAGNOSTIC_TOOL_NAMES
     assert DIAGNOSTIC_TOOL_NAMES == BASE_DIAGNOSTIC_TOOL_NAMES

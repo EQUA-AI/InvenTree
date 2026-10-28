@@ -104,6 +104,26 @@
 
 
 
+.forebayWater {
+	fill: light-dark(var(--mantine-color-blue-2), var(--mantine-color-blue-9));
+	stroke: none;
+}
+
+.forebayValue {
+	fill: light-dark(var(--mantine-color-text), var(--mantine-color-white));
+	stroke: none;
+	font-size: 13px;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.forebayCaption {
+	fill: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1));
+	stroke: none;
+	font-size: 12px;
+	font-weight: 500;
+}
+
 .manifold {
 	fill: var(
 		--aimms-panel,

@@ -8,7 +8,9 @@ from django.db.models import Q
 from common.models import Attachment
 from repair.intake_scenarios import prepared_scenario
 from repair.pump08_exercise import (
+    DEFAULT_EVIDENCE_PROFILE,
     EVIDENCE,
+    EVIDENCE_PROFILES,
     PROCEDURE_CODE,
     STEP_DEFINITIONS,
     evidence_bytes,
@@ -69,7 +71,7 @@ def exercise_source(work_order):
     return source
 
 
-def _evidence_registry(work_order):
+def _evidence_registry(work_order, *, codes=None):
     packet = packet_of(work_order)
     event = (
         work_order.events
@@ -79,11 +81,17 @@ def _evidence_registry(work_order):
     )
     if event is None or event.actor_id is None:
         return {}
-    records = event.metadata.get('result_metadata', {}).get('evidence', {})
+    metadata = event.metadata.get('result_metadata', {})
+    profile = metadata.get('profile', DEFAULT_EVIDENCE_PROFILE)
+    if profile not in EVIDENCE_PROFILES:
+        return {}
+    records = metadata.get('evidence', {})
     if not isinstance(records, dict):
         return {}
     result = {}
     for code, record in records.items():
+        if codes is not None and code not in codes:
+            continue
         if code not in EVIDENCE or not isinstance(record, dict):
             continue
         attachment = (
@@ -103,10 +111,83 @@ def _evidence_registry(work_order):
         except Exception:
             continue
         digest = hashlib.sha256(content).hexdigest()
-        if digest != record.get('sha256') or content != evidence_bytes(code):
+        if digest != record.get('sha256') or content != evidence_bytes(
+            code, profile=profile
+        ):
             continue
         result[code] = {'id': attachment.pk, 'label': code, 'prepared': True}
     return result
+
+
+def _recorded_readings(work_order, execution, application, evidence_id, step_event):
+    """Read both separately audited inputs bound to the current step version."""
+    summary = (
+        work_order.events
+        .filter(
+            event_type='EXERCISE_READINGS_RECORDED',
+            metadata__step_execution_id=execution.pk,
+            metadata__version=execution.version,
+        )
+        .order_by('-pk')
+        .first()
+    )
+    if (
+        not summary
+        or not step_event
+        or summary.actor_id != execution.completed_by_id
+        or summary.correlation_id != step_event.correlation_id
+        or summary.created_at < step_event.created_at
+    ):
+        return None
+    metadata = summary.metadata
+    identities = metadata.get('reading_event_ids')
+    if (
+        metadata.get('application_id') != application.pk
+        or metadata.get('step_key') != str(execution.step_key)
+        or metadata.get('evidence_id') != evidence_id
+        or not isinstance(identities, dict)
+        or set(identities) != {'W5', 'W6'}
+        or any(type(identity) is not int for identity in identities.values())
+        or len(set(identities.values())) != 2
+    ):
+        return None
+    readings = {}
+    for channel, identity in identities.items():
+        event = work_order.events.filter(
+            pk=identity, event_type='EXERCISE_READING_RECORDED'
+        ).first()
+        if (
+            event is None
+            or event.actor_id != execution.completed_by_id
+            or event.correlation_id != summary.correlation_id
+            or event.created_at < execution.completed_at
+            or event.created_at > summary.created_at
+            or event.metadata.get('application_id') != application.pk
+            or event.metadata.get('step_execution_id') != execution.pk
+            or event.metadata.get('step_key') != str(execution.step_key)
+            or event.metadata.get('version') != execution.version
+            or event.metadata.get('channel') != channel
+            or event.metadata.get('evidence_id') != evidence_id
+        ):
+            return None
+        try:
+            value = Decimal(str(event.metadata['value']))
+        except (KeyError, InvalidOperation, TypeError, ValueError):
+            return None
+        if not value.is_finite():
+            return None
+        readings[channel] = value
+    try:
+        maximum = Decimal(str(metadata['maximum']))
+    except (KeyError, InvalidOperation, TypeError, ValueError):
+        return None
+    if not maximum.is_finite() or maximum != max(readings.values()):
+        return None
+    return {
+        'W5': str(readings['W5']),
+        'W6': str(readings['W6']),
+        'maximum': str(maximum),
+    }
 
 
 def project(work_order, actor):
@@ -270,6 +351,16 @@ def project(work_order, actor):
         )
         raw = execution.value
         numeric = expected['value_type'] == 'number'
+        step_event = (
+            work_order.events
+            .filter(
+                event_type__in=['STEP_COMPLETED', 'STEP_FAILED'],
+                metadata__step_execution_id=execution.pk,
+                metadata__version=execution.version,
+            )
+            .order_by('-pk')
+            .first()
+        )
         value = (
             raw.get('number' if numeric else 'boolean')
             if isinstance(raw, dict)
@@ -277,36 +368,45 @@ def project(work_order, actor):
         )
         if numeric:
             try:
-                number = (
-                    Decimal(str(value))
-                    if not isinstance(value, bool)
-                    else Decimal('NaN')
-                )
                 criteria_ok = (
                     criteria_ok
                     and Decimal(str(snapshot.get('max_value'))) == Decimal('124.9')
                     and snapshot.get('unit') in {'C', '°C', 'degC'}
                 )
+            except (InvalidOperation, TypeError, ValueError):
+                criteria_ok = False
+            readings = None
+            try:
+                number = (
+                    Decimal(str(value))
+                    if not isinstance(value, bool)
+                    else Decimal('NaN')
+                )
+                if execution.completed_at and registry.get('P08-TEMP-E06'):
+                    readings = _recorded_readings(
+                        work_order,
+                        execution,
+                        application,
+                        registry['P08-TEMP-E06'],
+                        step_event,
+                    )
                 value_ok = (
                     number.is_finite()
-                    and number == Decimal('96.0')
-                    and number <= Decimal('124.9')
+                    and readings is not None
+                    and Decimal(readings['W5']) == Decimal('94.0')
+                    and Decimal(readings['W6']) == Decimal('96.0')
+                    and number == Decimal(readings['maximum'])
+                    and number < Decimal('125.0')
                 )
             except (InvalidOperation, TypeError, ValueError):
                 value_ok = False
-                criteria_ok = False
         else:
             criteria_ok = criteria_ok and snapshot.get('max_value') is None
             value_ok = value is True
         event = (
-            work_order.events
-            .filter(
-                event_type='STEP_COMPLETED',
-                metadata__step_execution_id=execution.pk,
-                metadata__version=execution.version,
-            )
-            .order_by('-pk')
-            .first()
+            step_event
+            if step_event and step_event.event_type == 'STEP_COMPLETED'
+            else None
         )
         evidence_ids = event.metadata.get('evidence_ids', []) if event else []
         if not isinstance(evidence_ids, list) or any(
@@ -349,6 +449,8 @@ def project(work_order, actor):
                 revision_ok and criteria_ok and value_ok and evidence_ok and recorded
             ),
         })
+        if numeric:
+            check['readings'] = readings
         if not criteria_ok:
             check['reasons'].append('criteria_invalid')
         if not recorded:

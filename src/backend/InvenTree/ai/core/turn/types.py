@@ -24,6 +24,7 @@ class CanonicalTurn(TypedDict):
     canonical_response: dict[str, Any] | None
     spoken_summary: str
     reasoning_provenance: dict[str, Any] | None
+    server_source_reads: NotRequired[list[dict[str, Any]]]
     route: dict[str, Any] | None
     events: NotRequired[list[dict[str, Any]]]
     grounding: NotRequired[dict[str, Any]]

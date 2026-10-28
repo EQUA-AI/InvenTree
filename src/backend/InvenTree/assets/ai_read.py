@@ -349,6 +349,59 @@ def machine_search_row(machine) -> dict[str, Any]:
     }
 
 
+def machine_operating_context(user, machine) -> dict[str, Any]:
+    """Read authorized operating states from the same projection as the mimic."""
+    from ai.core.analysis.scope_context import scope_miss_for_machine
+    from machine_health.services.mimic import station_mimic
+
+    station = machine if machine.asset_type == 'pumphouse' else machine.parent
+    if (
+        station is None
+        or station.asset_type != 'pumphouse'
+        or authorized_machine(user, station.pk) is None
+    ):
+        return {'available': False, 'reason': 'station_unavailable'}
+    projection = station_mimic(station)
+    source = projection.get('source') or {}
+    authorized_bays = []
+    for bay in projection['bays']:
+        if machine.pk != station.pk and bay['machine'] != machine.pk:
+            continue
+        if authorized_machine(user, bay['machine']) is None:
+            continue
+        if scope_miss_for_machine(bay['machine']) is not None:
+            continue
+        authorized_bays.append({
+            'machine_id': bay['machine'],
+            'name': fence(bay['name'], limit=255),
+            'operating_state': bay['state'],
+            'alarm': bay.get('alarm'),
+        })
+    return {
+        'available': True,
+        'source': 'machine_health.station_mimic',
+        'source_name': fence(source.get('name'), limit=200),
+        'station_id': station.pk,
+        'station_name': fence(station.name, limit=255),
+        'generated_at': _iso(projection['generated_at']),
+        'last_observed_at': _iso(projection['last_observed_at']),
+        'reporting': projection['reporting'],
+        'read_failed': projection['read_failed'],
+        'telemetry_presentation': projection['telemetry_presentation'],
+        'population_count': len(authorized_bays),
+        'running_count': sum(
+            bay['operating_state'] == 'running' for bay in authorized_bays
+        ),
+        'unknown_count': sum(
+            bay['operating_state'] in {'unknown', 'stale', 'not_bound'}
+            for bay in authorized_bays
+        ),
+        'bays': authorized_bays[:MAX_SEARCH_RESULTS],
+        'display_truncated': len(authorized_bays) > MAX_SEARCH_RESULTS,
+        'coverage': 'authorized_analysis_scope_only',
+    }
+
+
 def machine_health(machine) -> dict[str, Any]:
     """The Health tab header: current condition, freshness and source status.
 
@@ -656,6 +709,7 @@ def machine_maintenance_history(
 
     records = []
     for record in rows[:bounded]:
+        work_order_id = None
         work_order_reference = None
         work_order_title = None
         if record.work_order_id:
@@ -664,6 +718,7 @@ def machine_maintenance_history(
             except ScopeError:
                 work_order_reference = None
             else:
+                work_order_id = record.work_order_id
                 work_order_reference = _visible_work_order_reference(record.work_order)
                 work_order_title = fence(record.work_order.title, limit=255)
         records.append({
@@ -675,6 +730,7 @@ def machine_maintenance_history(
             # S5b (Q15): free-text performer identity cannot be reliably
             # pseudonymized — presence only, never the recorded name.
             'performed_by_recorded': bool((record.performed_by or '').strip()),
+            'work_order_id': work_order_id,
             'work_order_reference': work_order_reference,
             'work_order_title': work_order_title,
         })
@@ -939,6 +995,7 @@ def machine_overview(user, machine) -> dict[str, Any]:
         'identity': machine_identity(machine),
         'profile': machine_profile(user, machine),
         'health': machine_health(machine),
+        'operating': machine_operating_context(user, machine),
         'signals': machine_signals(machine),
         'anomalies': machine_anomalies(machine, limit=5),
         'installed_parts': machine_installed_parts(machine, limit=10),
@@ -961,6 +1018,7 @@ __all__ = [
     'machine_identity',
     'machine_installed_parts',
     'machine_maintenance_history',
+    'machine_operating_context',
     'machine_overview',
     'machine_profile',
     'machine_search_row',

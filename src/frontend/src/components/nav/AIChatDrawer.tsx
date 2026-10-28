@@ -300,12 +300,6 @@ function AIChatSessionDrawer({
   const targetHint: ContextTargetHint | undefined =
     hintThreadId === null || hintThreadId === activeThreadId
       ? pendingTargetHint
-        ? {
-            kind: pendingTargetHint.kind,
-            id: pendingTargetHint.id,
-            label: pendingTargetHint.label
-          }
-        : undefined
       : undefined;
   // P02/P33: a question asked from one Work order (never with a machine hint).
   const pendingWorkFocus = useAIChatState((state) => state.workFocusHint);
@@ -538,6 +532,7 @@ function AIChatSessionDrawer({
     if (previousThreadIdRef.current !== activeThreadId) {
       composerVersionRef.current += 1;
       sendPreparationRef.current = null;
+      scopeSendFocus.current = null;
       setIsPreparingSend(false);
       setIsApplyingScope(false);
       setMemoryThreadId(null);
@@ -702,17 +697,28 @@ function AIChatSessionDrawer({
   const [isApplyingScope, setIsApplyingScope] = useState(false);
   const scopeSendFocus = useRef<Element | null>(null);
   useLayoutEffect(() => {
-    if (isApplyingScope || isLoading || isSyncing) return;
+    if (!opened) {
+      scopeSendFocus.current = null;
+      return;
+    }
+    if (isApplyingScope || isPreparingSend || isLoading || isSyncing) return;
     const previous = scopeSendFocus.current;
     scopeSendFocus.current = null;
     if (
-      opened &&
+      activeTab === 'chat' &&
       previous &&
       (document.activeElement === document.body ||
         document.activeElement === previous)
     )
       inputRef.current?.focus();
-  }, [opened, isApplyingScope, isLoading, isSyncing]);
+  }, [
+    opened,
+    activeTab,
+    isApplyingScope,
+    isPreparingSend,
+    isLoading,
+    isSyncing
+  ]);
 
   // P02/P33: why a Work-focused send was held back, if it was.
   const [workFocusLaunchError, setWorkFocusLaunchError] = useState<
@@ -861,6 +867,7 @@ function AIChatSessionDrawer({
       // click or suggested follow-up. A stale finally cannot unlock a new send.
       const preparation = Symbol();
       sendPreparationRef.current = preparation;
+      if (fromComposer) scopeSendFocus.current = document.activeElement;
       setIsPreparingSend(true);
       setSendNotice(null);
       const version = composerVersionRef.current;

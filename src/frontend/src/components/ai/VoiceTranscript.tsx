@@ -32,13 +32,13 @@ export interface VoiceTranscriptProps {
 
 function holdPromptLine(prompt: VoiceHoldPrompt | null | undefined): string {
   if (!prompt) {
-    return t`Contains critical values — confirm it was heard correctly, or say the correction.`;
+    return t`Contains critical values. Confirm it was heard correctly, discard it, or say “correction” followed by the full corrected request.`;
   }
   if (prompt.playbackState === 'requested') {
-    return t`Read-back requested — say confirm, discard, or say the correction.`;
+    return t`Read-back requested. Say confirm, discard, or “correction” followed by the full corrected request.`;
   }
   if (prompt.playbackState === 'failed') {
-    return t`The spoken prompt could not be played — read it here, then say confirm, discard, or the correction.`;
+    return t`The spoken prompt could not be played. Read it here, then say confirm, discard, or “correction” followed by the full corrected request.`;
   }
   return t`Waiting for the spoken prompt…`;
 }
@@ -90,17 +90,34 @@ export function VoiceTranscript({
       >
         <Group gap='xs' wrap='nowrap' align='flex-start'>
           <Text size='xs' c='orange' fs='italic' style={{ flexShrink: 0 }}>
-            {pendingConfirm.revision && pendingConfirm.revision > 1
-              ? t`Confirm (revision ${pendingConfirm.revision}):`
-              : t`Confirm:`}
+            {pendingConfirm.reviewIssue
+              ? t`Incomplete:`
+              : pendingConfirm.revision && pendingConfirm.revision > 1
+                ? t`Confirm (revision ${pendingConfirm.revision}):`
+                : t`Confirm:`}
           </Text>
           <Text size='sm'>
             <HighlightedText text={pendingConfirm.text} />
           </Text>
         </Group>
-        <Text size='xs' c='dimmed' mt={4} data-testid='voice-hold-prompt-state'>
-          {holdPromptLine(holdPrompt)}
-        </Text>
+        {pendingConfirm.reviewIssue ? (
+          <Text
+            size='sm'
+            c='orange'
+            mt={4}
+            role='alert'
+            data-testid='voice-transcript-review-issue'
+          >{t`More than one speech segment was received. This capture cannot be submitted. Discard it and say the full request again, or say “correction” followed by the full corrected request.`}</Text>
+        ) : (
+          <Text
+            size='xs'
+            c='dimmed'
+            mt={4}
+            data-testid='voice-hold-prompt-state'
+          >
+            {holdPromptLine(holdPrompt)}
+          </Text>
+        )}
       </Paper>
     );
   }

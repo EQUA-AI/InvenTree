@@ -97,6 +97,7 @@ import {
 } from './execution/ExecutionFacts';
 import { NotSupplied } from './execution/NotSupplied';
 import { PreparedPackage } from './execution/PreparedPackage';
+import { RepairScopeDraftPanel } from './execution/RepairScopeDraftPanel';
 import { RoutineLinks } from './execution/RoutineLinks';
 import { RoutineWork } from './execution/RoutineWork';
 import { ScopeRevisionNotice } from './execution/ScopeRevisionReview';
@@ -563,6 +564,10 @@ function WorkOrderWorkspace({
         <Stack gap='md'>
           <ScopeRevisionNotice workOrder={workOrder} full />
           <WorkContinuityConstraints workOrder={workOrder} />
+          <RepairScopeDraftPanel
+            workOrder={workOrder}
+            active={activePanel === 'plan'}
+          />
           <PreparedPackage
             value={workOrder.prepared_package}
             authority={workOrder.operational_authority}

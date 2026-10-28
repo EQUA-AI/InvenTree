@@ -1,10 +1,11 @@
 """Governed software-exercise checks cannot manufacture physical authority."""
 
-import copy
 import uuid
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.db import IntegrityError, transaction
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -21,11 +22,20 @@ from company.models import Company
 from machine_health.services.test_alarm_work import trigger_with_work, work_plan
 from part.models import Part
 from repair.pump08_exercise import STEP_DEFINITIONS
-from tasks.exercise_verification_api import attach_prepared_evidence
 from tasks.authority_models import OperationalAuthorityRecord
-from tasks.models import Procedure, ProcedureRevision, WorkOrder, WorkOrderEvent
+from tasks.exercise_verification_api import (
+    attach_prepared_evidence,
+    record_exercise_readings,
+)
+from tasks.models import Procedure, WorkOrder, WorkOrderEvent
 from tasks.scope import ScopeError, scoped_procedures
-from tasks.services.procedure_execution import StepValidationError, _snapshot_hash, apply_procedure_revision, complete_step, mark_step_not_applicable, reopen_step
+from tasks.services.procedure_execution import (
+    StepValidationError,
+    apply_procedure_revision,
+    complete_step,
+    mark_step_not_applicable,
+    reopen_step,
+)
 from tasks.services.procedures import next_draft_revision, request_review
 from tasks.services.pump08_procedure import prepare_procedure
 from tasks.work_execution.exercise_verification import project
@@ -72,6 +82,15 @@ class Pump08ExerciseTest(TestCase):
         """Record one versioned native step with owned evidence."""
         state = project(self.work, self.actor)
         check = state['checks'][sequence - 1]
+        if sequence == 2:
+            record_exercise_readings(
+                work_order_id=self.work.pk, application_id=self.application.pk,
+                step_key=check['step_key'], actor=self.actor, expected_version=check['version'],
+                idempotency_key=uuid.uuid4().hex, winding_5=Decimal('94.0'), winding_6=value,
+                note=STEP_DEFINITIONS[1]['note'],
+                evidence_ids=check['suggested_evidence_ids'] if evidence else [],
+            )
+            return self.application.step_executions.get(sequence=2)
         return complete_step(
             work_order_id=self.work.pk, application_id=self.application.pk,
             step_key=check['step_key'], actor=self.actor, expected_version=check['version'],
@@ -173,8 +192,118 @@ class Pump08ExerciseTest(TestCase):
 
     def test_nonfinite_native_values_are_validation_errors(self):
         """Verify nonfinite native values are validation errors."""
-        for value in ['NaN', 'Infinity', '-Infinity']:
-            with self.subTest(value=value), self.assertRaises(StepValidationError): self.record(2, value)
+        from rest_framework.exceptions import ValidationError
+
+        for value in ['NaN', 'Infinity', '-Infinity', True, None]:
+            with self.subTest(value=value), self.assertRaises(ValidationError): self.record(2, value)
+
+    def test_readings_are_distinct_audited_values_and_survive_refresh(self):
+        """Each prepared input and the derived maximum has its own native audit."""
+        self.all_pass()
+        check = project(self.work, self.actor)['checks'][1]
+        self.assertEqual(check['readings'], {'W5': '94.0', 'W6': '96.0', 'maximum': '96.0'})
+        events = self.work.events.filter(event_type='EXERCISE_READING_RECORDED')
+        self.assertEqual(events.count(), 2)
+        self.assertEqual(set(events.values_list('metadata__channel', flat=True)), {'W5', 'W6'})
+        response = self.api.get(f'/api/tasks/work-orders/{self.work.pk}/exercise-verification/')
+        self.assertEqual(response.data['checks'][1]['readings'], check['readings'])
+
+    def test_standalone_maximum_or_changed_reading_cannot_approve(self):
+        """An entered maximum and inconsistent audit never replace both inputs."""
+        self.record(1, True)
+        self.record(3, True)
+        check = project(self.work, self.actor)['checks'][1]
+        complete_step(work_order_id=self.work.pk, application_id=self.application.pk,
+            step_key=check['step_key'], actor=self.actor, expected_version=check['version'],
+            idempotency_key=uuid.uuid4().hex, value={'number': '96.0'},
+            evidence_ids=check['suggested_evidence_ids'])
+        self.assertFalse(project(self.work, self.actor)['approved'])
+        self.record(2, Decimal('96.0'))
+        self.assertTrue(project(self.work, self.actor)['approved'])
+        reading = self.work.events.get(event_type='EXERCISE_READING_RECORDED', metadata__channel='W5')
+        reading.metadata = {**reading.metadata, 'value': '99.0'}
+        reading.save(update_fields=['metadata'])
+        self.assertFalse(project(self.work, self.actor)['approved'])
+
+    def test_http_readings_require_both_and_reject_inconsistent_maximum(self):
+        """Only a matching optional expectation can accompany both typed inputs."""
+        check = project(self.work, self.actor)['checks'][1]
+        payload = {
+            'application_id': self.application.pk, 'step_key': check['step_key'],
+            'expected_version': check['version'], 'idempotency_key': uuid.uuid4().hex,
+            'winding_5': '94.0', 'winding_6': '96.0',
+            'evidence_ids': check['suggested_evidence_ids'], 'note': 'Prepared exercise values',
+        }
+        url = f'/api/tasks/work-orders/{self.work.pk}/exercise-verification/'
+        missing = {key: value for key, value in payload.items() if key != 'winding_6'}
+        self.assertEqual(self.api.post(url, missing, format='json').status_code, 400)
+        self.assertEqual(self.api.post(url, {**payload, 'winding_6': None}, format='json').status_code, 400)
+        self.assertEqual(self.api.post(url, {**payload, 'winding_6': True}, format='json').status_code, 400)
+        self.assertEqual(self.api.post(url, {**payload, 'maximum': '94.0'}, format='json').status_code, 400)
+        self.assertEqual(self.api.post(url, {**payload, 'value': {'number': '94.0'}}, format='json').status_code, 400)
+        response = self.api.post(url, payload, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['maximum'], '96.0')
+        replay = self.api.post(url, payload, format='json')
+        self.assertEqual(replay.status_code, 200, replay.data)
+        self.assertEqual(replay.data, response.data)
+        self.assertEqual(self.api.post(url, {**payload, 'winding_5': '93.0'}, format='json').status_code, 409)
+
+    def test_reading_failure_rolls_back_step_and_allows_same_key_retry(self):
+        """A failed audit append cannot leave a standalone passing maximum."""
+        check = project(self.work, self.actor)['checks'][1]
+        command = {
+            'work_order_id': self.work.pk, 'application_id': self.application.pk,
+            'step_key': check['step_key'], 'actor': self.actor, 'expected_version': check['version'],
+            'idempotency_key': uuid.uuid4().hex, 'winding_5': Decimal('94.0'),
+            'winding_6': Decimal('96.0'), 'note': 'Prepared exercise values',
+            'evidence_ids': check['suggested_evidence_ids'],
+        }
+        count = self.work.events.count()
+        with patch('tasks.exercise_verification_api._record_command', side_effect=RuntimeError('audit unavailable')):
+            with self.assertRaises(RuntimeError): record_exercise_readings(**command)
+        self.assertEqual(self.work.events.count(), count)
+        self.assertEqual(project(self.work, self.actor)['checks'][1]['version'], check['version'])
+        receipt = record_exercise_readings(**command)
+        self.assertEqual(receipt['maximum'], '96.0')
+
+    def test_readings_reject_foreign_evidence_and_stale_revision(self):
+        """The input command cannot bind evidence or a revision from elsewhere."""
+        from rest_framework.exceptions import ValidationError
+
+        check = project(self.work, self.actor)['checks'][1]
+        command = {
+            'work_order_id': self.work.pk, 'application_id': self.application.pk,
+            'step_key': check['step_key'], 'actor': self.actor, 'expected_version': check['version'],
+            'idempotency_key': uuid.uuid4().hex, 'winding_5': Decimal('94.0'), 'winding_6': Decimal('96.0'),
+            'note': 'Prepared exercise values', 'evidence_ids': [999999],
+        }
+        with self.assertRaises(ValidationError): record_exercise_readings(**command)
+        self.revision.status = 'superseded'
+        self.revision.save(update_fields=['status'])
+        command['evidence_ids'] = check['suggested_evidence_ids']
+        with self.assertRaises(ValidationError): record_exercise_readings(**command)
+
+    def test_readings_require_native_execution_permission(self):
+        """Work visibility alone cannot record prepared verification values."""
+        viewer = get_user_model().objects.create_user(username='exercise-viewer')
+        group = Group.objects.create(name='Exercise view without execution')
+        role = group.rule_sets.get(name='work_order')
+        role.can_view = True
+        role.save()
+        viewer.groups.add(group)
+        check = project(self.work, self.actor)['checks'][1]
+        payload = {
+            'application_id': self.application.pk, 'step_key': check['step_key'],
+            'expected_version': check['version'], 'idempotency_key': uuid.uuid4().hex,
+            'winding_5': '94.0', 'winding_6': '96.0',
+            'evidence_ids': check['suggested_evidence_ids'], 'note': 'Prepared exercise values',
+        }
+        count = self.work.events.count()
+        self.api.force_authenticate(viewer)
+        response = self.api.post(f'/api/tasks/work-orders/{self.work.pk}/exercise-verification/', payload, format='json')
+        self.assertEqual(response.status_code, 403, response.data)
+        self.assertEqual(self.work.events.count(), count)
 
     def test_read_is_pure_and_refresh_keeps_actor_time(self):
         """Verify read is pure and refresh keeps actor time."""
@@ -228,6 +357,7 @@ class Pump08ExerciseTest(TestCase):
         with override_settings(AIMMS_PROCEDURES_ENABLED=False):
             self.assertEqual(self.api.get(f'/api/tasks/work-orders/{self.work.pk}/exercise-verification/').status_code, 404)
             self.assertEqual(self.api.post(f'/api/tasks/work-orders/{self.work.pk}/exercise-verification/evidence/', {'idempotency_key': uuid.uuid4().hex}, format='json').status_code, 404)
+            self.assertEqual(self.api.post(f'/api/tasks/work-orders/{self.work.pk}/exercise-verification/', {}, format='json').status_code, 404)
 
     def test_client_owned_procedure_can_be_authored_through_http(self):
         """Explicit client identity works without inventing a sales customer."""

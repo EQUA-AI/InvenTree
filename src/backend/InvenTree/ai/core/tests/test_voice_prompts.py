@@ -57,10 +57,11 @@ def test_transcript_review_prompt_is_templated_and_sanitized():
 
 
 def test_transcript_is_bounded_and_control_characters_dropped():
-    spoken = prompts.compose_transcript_review("x" * 1000 + "\x00\x1f")
-    assert len(prompts.sanitize_transcript("x" * 1000)) == prompts.TRANSCRIPT_MAX_CHARS
+    oversized = "x" * (prompts.TRANSCRIPT_MAX_CHARS + 1000)
+    spoken = prompts.compose_transcript_review(oversized + "\x00\x1f")
+    assert len(prompts.sanitize_transcript(oversized)) == prompts.TRANSCRIPT_MAX_CHARS
     assert "\x00" not in spoken
-    assert spoken.startswith("I heard: " + "x" * prompts.TRANSCRIPT_MAX_CHARS)
+    assert spoken == prompts.TRANSCRIPT_REVIEW_OVERSIZED
 
 
 def test_empty_transcript_is_refused():

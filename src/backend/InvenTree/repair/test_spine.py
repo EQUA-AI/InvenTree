@@ -225,14 +225,16 @@ class RepairPacketRevalidationTest(TestCase):
         )
 
     def test_revalidation_passes_with_sufficient_stock(self):
-        """Enough stock -> revalidation passes and execution starts."""
+        """Enough stock passes revalidation but still requires the owning start."""
         packet = self._packet_with_part(stock_qty=10, needed=2)
         ok, detail = revalidate(packet)
         self.assertTrue(ok, detail)
 
-        ok2, _ = advance_packet(packet, PacketStatus.EXECUTING)
-        self.assertTrue(ok2)
-        self.assertEqual(packet.status, PacketStatus.EXECUTING)
+        advanced, detail = advance_packet(packet, PacketStatus.EXECUTING)
+        self.assertFalse(advanced)
+        self.assertIn('Start repair', detail)
+        packet.refresh_from_db()
+        self.assertEqual(packet.status, PacketStatus.APPROVED)
 
     def test_revalidation_fails_when_part_short(self):
         """No stock -> revalidation fails closed and status is unchanged."""

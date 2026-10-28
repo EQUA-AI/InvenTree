@@ -22,8 +22,14 @@ def finish_operation(operation, *, state, receipt=None, detail=""):
     operation.receipt = receipt or {}
     operation.detail = detail
     if state == "succeeded":
-        family = "approval" if operation.action.startswith("approval.") else "proposal"
-        operation.receipt_ref = f"{family}:{operation.source_id}"
+        if operation.action == "save_proposed_repair_scope_draft" and operation.receipt.get(
+            "draft"
+        ):
+            draft = operation.receipt["draft"]
+            operation.receipt_ref = f"repair-scope:{draft['id']}:r{draft['revision']}"
+        else:
+            family = "approval" if operation.action.startswith("approval.") else "proposal"
+            operation.receipt_ref = f"{family}:{operation.source_id}"
     else:
         operation.receipt_ref = ""
     operation.save(update_fields=["state", "receipt", "detail", "receipt_ref", "updated_at"])
@@ -52,6 +58,8 @@ def lookup_operation(*, actor, thread_id, operation_id=None, decision_id=None):
     )
     if operation is None:
         return None
+    if operation.action == "save_proposed_repair_scope_draft":
+        return _repair_scope_receipt(operation, owner)
     if operation.action.startswith("approval."):
         return _approval_receipt(operation, owner)
     proposal = ChatActionProposal.objects.filter(
@@ -87,6 +95,67 @@ def lookup_operation(*, actor, thread_id, operation_id=None, decision_id=None):
     return {
         "operation_id": str(operation.pk),
         **({"remaining_gates": remaining_gates} if remaining_gates is not None else {}),
+        "source_id": operation.source_id,
+        "execution_state": operation.state,
+        "target_label": operation.target_label,
+        "receipt_ref": operation.receipt_ref or None,
+        "receipt": operation.receipt,
+        "detail": operation.detail,
+    }
+
+
+def _repair_scope_receipt(operation, owner):
+    """Reconcile only an actor-owned immutable native draft command and event."""
+    from tasks.models import WorkOrderCommand, WorkOrderEvent
+    from tasks.services.repair_scope_drafts import (
+        COMMAND,
+        EVENT_TYPE,
+        _snapshot,
+        read_repair_scope_draft,
+    )
+
+    key = f"voice-repair-scope:{operation.source_id}"
+    commands = list(
+        WorkOrderCommand.objects.filter(
+            command=COMMAND,
+            idempotency_key=key,
+            status="succeeded",
+        )[:2]
+    )
+    verified = None
+    if len(commands) == 1:
+        command = commands[0]
+        event = WorkOrderEvent.objects.filter(
+            pk=command.result_ref,
+            work_order_id=command.work_order_id,
+            actor=owner,
+            event_type=EVENT_TYPE,
+            idempotency_key=key,
+            correlation_id=command.correlation_id,
+        ).first()
+        if event is not None:
+            try:
+                read_repair_scope_draft(command.work_order_id, owner)
+                verified = _snapshot(event)
+            except Exception:
+                return None
+    if verified is not None:
+        finish_operation(
+            operation,
+            state="succeeded",
+            receipt={
+                "command": "save_proposed_repair_scope_draft",
+                "draft": verified,
+            },
+        )
+    elif operation.state == "succeeded":
+        finish_operation(
+            operation,
+            state="unknown",
+            detail="The native draft command receipt could not be verified.",
+        )
+    return {
+        "operation_id": str(operation.pk),
         "source_id": operation.source_id,
         "execution_state": operation.state,
         "target_label": operation.target_label,
@@ -353,6 +422,18 @@ def recover_latest(*, actor, thread_id, session_id, now):
     )
 
 
+def _scope_receipt_items(values, *, limit, budget, separator, fallback):
+    """Read complete leading planning items without cutting safety conditions."""
+    selected = []
+    for value in values[:limit]:
+        item = " ".join(str(value).split()).rstrip(". ")
+        candidate = separator.join([*selected, item])
+        if not item or len(candidate) > budget:
+            break
+        selected.append(item)
+    return separator.join(selected) or fallback
+
+
 def spoken_receipt(result):
     """Use business-result vocabulary, not HTTP success or assistant assertions."""
     from ai.core.decisions.pronunciation import spoken_target
@@ -370,6 +451,29 @@ def spoken_receipt(result):
         receipt = result["receipt"]
         label = spoken_target(result["target_label"])
         command = receipt.get("command")
+        if command == "save_proposed_repair_scope_draft":
+            draft = receipt["draft"]
+            scope = draft["scope"]
+            sequence = _scope_receipt_items(
+                scope["steps"],
+                limit=2,
+                budget=250,
+                separator=". ",
+                fallback="The proposed sequence is listed in the saved draft",
+            )
+            tools = _scope_receipt_items(
+                scope["tools_and_supplies"],
+                limit=3,
+                budget=160,
+                separator="; ",
+                fallback="review the proposed list in the saved draft",
+            )
+            return (
+                f"Proposed repair scope saved to {label}, draft {draft['id']}, revision {draft['revision']}. "
+                f"{sequence}. Tools and supplies: {tools}. "
+                "Zero replacement parts. Sources are linked; manual applicability remains unverified. "
+                "Supervisor review and site-safety authorization remain pending. Physical work has not started."
+            )
         if command == "closeout.consent":
             return "Consent recorded. Say note followed by your dictation. No closeout note has been handed off."
         if command == "closeout.accept":

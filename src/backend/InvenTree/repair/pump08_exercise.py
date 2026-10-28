@@ -2,6 +2,9 @@
 
 PROCEDURE_CODE = 'P08-MOTOR-COOL-RTS-EX'
 PROCEDURE_NAME = 'Pump 08 | Motor Cooling Return Verification'
+DEFAULT_EVIDENCE_PROFILE = 'P08-MOTOR-COOL-RTS-EX'
+TECH_A_V9_EVIDENCE_PROFILE = 'tech-a-v9'
+EVIDENCE_PROFILES = (DEFAULT_EVIDENCE_PROFILE, TECH_A_V9_EVIDENCE_PROFILE)
 STEP_DEFINITIONS = [
     {
         'sequence': 1,
@@ -35,6 +38,21 @@ EVIDENCE = {
 }
 
 
-def evidence_bytes(code):
+def evidence_bytes(code, *, profile=DEFAULT_EVIDENCE_PROFILE):
     """Return the exact versioned evidence sheet, explicitly labelled prepared."""
+    if profile not in EVIDENCE_PROFILES:
+        raise ValueError('Unknown prepared evidence profile.')
+    if profile == TECH_A_V9_EVIDENCE_PROFILE and code == 'P08-TEMP-E03':
+        observation = (
+            'Prepared exercise observation: deposits are represented on the assumed '
+            'motor heat-exchanger air-side surfaces, with no visible component damage '
+            'represented in this prepared inspection record. This is not an actual '
+            'field inspection. Fitted cooling configuration, actual component condition '
+            'and the physical root cause remain unverified.'
+        )
+        return (
+            f'# {code}\n\nPREPARED EXERCISE EVIDENCE — NOT PHYSICAL WORK\n\n'
+            f'{observation}\n\nSource: owner-supplied Tech-A V9 prepared exercise '
+            f'specification.\nTemplate profile: {profile}.\n'
+        ).encode()
     return f'# {code}\n\nPREPARED EXERCISE EVIDENCE — NOT PHYSICAL WORK\n\n{EVIDENCE[code]}\n\nSource: owner-supplied October25 Pump08 final work-order specification.\n'.encode()

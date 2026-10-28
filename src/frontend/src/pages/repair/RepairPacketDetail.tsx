@@ -31,6 +31,7 @@ import { useApi } from '../../contexts/ApiContext';
 import { useInstance } from '../../hooks/UseInstance';
 import { DiagnosisPanel } from './components/DiagnosisPanel';
 import { InvestigationPanel } from './components/InvestigationPanel';
+import { PacketWorkLifecycle } from './components/PacketWorkLifecycle';
 import { SafetyPanel } from './components/safety/SafetyPanel';
 
 /** Renders a structured JSON blob (diagnosis / closeout). */
@@ -94,7 +95,7 @@ export default function RepairPacketDetail() {
       case 'diagnosed':
         return { to: 'approved', label: t`Request Approval` };
       case 'approved':
-        return { to: 'executing', label: t`Start Work` };
+        return ownsWorkOrder ? null : { to: 'executing', label: t`Start Work` };
       case 'executing':
         return ownsWorkOrder ? null : { to: 'closed', label: t`Close Packet` };
       default:
@@ -136,19 +137,6 @@ export default function RepairPacketDetail() {
           }
         >
           {nextTransition.label}
-        </Button>
-      );
-    }
-    if (packet?.status === 'executing' && ownsWorkOrder) {
-      items.push(
-        <Button
-          key='closeout'
-          component={Link}
-          to={`/repair/packets/${packet.pk}/closeout/`}
-          variant='light'
-          leftSection={<IconFlagCheck size={16} />}
-        >
-          {t`Open Closeout`}
         </Button>
       );
     }
@@ -334,6 +322,12 @@ export default function RepairPacketDetail() {
           breadcrumbs={[{ name: t`Repair Packets`, url: '/repair/packets/' }]}
           actions={[<Group key='actions'>{actions}</Group>]}
         />
+        {packetData?.work_order && (
+          <PacketWorkLifecycle
+            packet={packetData}
+            onChanged={() => instanceQuery.refetch?.()}
+          />
+        )}
         <PanelGroup
           pageKey='repair-packet-detail'
           panels={panels}

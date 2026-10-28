@@ -168,6 +168,16 @@ export function VoiceExperienceControls({
           }
         />
       </Group>
+      <Switch
+        label={t`Review every request before sending`}
+        description={t`Review the words heard, then say Confirm to send or Discard to try again. Action approvals still require their own confirmation.`}
+        checked={p.voiceReviewEveryRequest}
+        onChange={(event) =>
+          p.setVoicePreferences({
+            voiceReviewEveryRequest: event.currentTarget.checked
+          })
+        }
+      />
       {s.notice && <Text>{noticeText(s.notice)}</Text>}
       {s.networkDiagnostics && (
         <Text size='sm' data-testid='voice-network-diagnostics'>
@@ -208,7 +218,9 @@ export function VoiceExperienceControls({
         <Stack gap={2} aria-label={t`Transcript revisions`}>
           {s.revisions.map((item, index) => (
             <Text key={`${item.itemId}:${index}`} size='sm'>
-              {t`Revision ${item.revision ?? 1}`}: {item.text}
+              {item.reviewIssue
+                ? t`Additional speech segment: ${item.text}`
+                : t`Revision ${item.revision ?? 1}: ${item.text}`}
             </Text>
           ))}
         </Stack>

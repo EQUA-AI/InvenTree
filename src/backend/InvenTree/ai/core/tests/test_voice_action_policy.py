@@ -71,6 +71,11 @@ def test_external_and_irreversible_tools_require_full_review():
 def test_tool_rail_execution_is_off_until_governed_adapters_land():
     """Doc §5.2: no receipt / version guard / idempotency => unavailable by voice."""
     for name, policy in tool_policies().items():
+        if name == "save_proposed_repair_scope_draft":
+            assert policy.voice_execution_allowed is True
+            assert policy.voice_review_allowed is True
+            assert policy.review == "brief"
+            continue
         assert policy.voice_execution_allowed is False, name
         assert policy.follow_up in {"B6", "C7", "E5", "E6", "F-OTHER", "OD-15"}, name
 

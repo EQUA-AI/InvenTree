@@ -295,6 +295,14 @@ REGISTRY: tuple[FlagEntry, ...] = (
         description='Administrator-only synthetic alarm exercises; no telemetry writes',
     ),
     FlagEntry(
+        'AIMMS_TEST_ALARM_EVENT_WORK_ENABLED',
+        'bool',
+        False,
+        'django',
+        config_key='aimms_test_alarm_event_work_enabled',
+        description='Allow authorized test events to create native planned work',
+    ),
+    FlagEntry(
         'AIMMS_SERVICE_REPORT_APPROVAL_REQUIRED',
         'bool',
         False,

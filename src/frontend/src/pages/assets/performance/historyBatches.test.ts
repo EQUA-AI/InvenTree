@@ -38,6 +38,27 @@ const failed: PromiseRejectedResult = {
   reason: new Error('offline')
 };
 describe('multi-batch history provenance', () => {
+  it('rejects a different historical source even when its machine and clock match', () => {
+    const first = response(1, {
+      history_source: 1,
+      source_id: 1,
+      telemetry_presentation: 'recorded_history'
+    });
+    const other = response(2, {
+      history_source: 2,
+      source_id: 2,
+      telemetry_presentation: 'recorded_history'
+    });
+    const merged = mergeHistoryBatches(
+      [ok(first), ok(other)],
+      [{ bindings: [1] }, { bindings: [2] }]
+    );
+    expect(merged.series.map((entry) => entry.binding_id)).toEqual([1]);
+    expect(merged.read_batches?.map((batch) => batch.failed)).toEqual([
+      false,
+      true
+    ]);
+  });
   const base = Date.parse('2026-10-01T00:00:00Z');
   const cadenceRead = (
     id: number,

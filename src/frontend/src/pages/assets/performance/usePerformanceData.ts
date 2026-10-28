@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { createContext, useContext, useMemo } from 'react';
 
 import { ApiEndpoints } from '@lib/enums/ApiEndpoints';
 import { apiUrl } from '@lib/functions/Api';
@@ -9,6 +9,16 @@ import { useApi } from '../../../contexts/ApiContext';
 import { recordedTelemetryAsLive } from '../telemetryPresentation';
 import { seriesBatches } from './channelNavigation';
 import { mergeHistoryBatches } from './historyBatches';
+import { historySourceQueryKey } from './recordedHistory';
+
+/** Only the explicitly selected pump Performance subtree reads this source. */
+export const PerformanceHistorySourceContext = createContext<
+  number | undefined
+>(undefined);
+
+export function usePerformanceHistorySource() {
+  return useContext(PerformanceHistorySourceContext);
+}
 
 /**
  * Data access for the Performance tab.
@@ -69,23 +79,62 @@ export function pointsFor(seconds: number): number {
 const LIVE_SERIES_INTERVAL_MS = 60 * 1000;
 const LIVE_SIGNALS_INTERVAL_MS = 15 * 1000;
 
-export function useMachineSignals(machineId: number, live: boolean) {
+export function useMachineSignals(
+  machineId: number,
+  live: boolean,
+  window?: WindowSpec,
+  enabled = true
+) {
   const api = useApi();
+  const historySource = usePerformanceHistorySource();
+  const windowKey = window
+    ? window.kind === 'relative'
+      ? `last:${window.seconds}`
+      : `${window.from}:${window.to}`
+    : undefined;
   return useQuery<MachineSignal[]>({
-    // Shared with the Health tab so the two never disagree about a value.
-    queryKey: ['machine-health-signals', machineId],
+    queryKey: historySourceQueryKey(
+      windowKey
+        ? ['machine-health-signals', machineId, windowKey]
+        : ['machine-health-signals', machineId],
+      historySource
+    ),
+    enabled,
     refetchInterval: (query) =>
-      live
-        ? LIVE_SIGNALS_INTERVAL_MS
-        : query.state.data?.some((signal) => signal.test_alarms?.length)
-          ? LIVE_SERIES_INTERVAL_MS
-          : false,
+      historySource
+        ? false
+        : live
+          ? LIVE_SIGNALS_INTERVAL_MS
+          : query.state.data?.some((signal) =>
+                signal.test_alarms?.some((alarm) =>
+                  ['open', 'acknowledged'].includes(alarm.status)
+                )
+              )
+            ? LIVE_SERIES_INTERVAL_MS
+            : false,
     refetchIntervalInBackground: false,
     queryFn: async () => {
+      const bounds = window ? resolveWindow(window, Date.now()) : undefined;
+      const params: Record<string, string> = {};
+      if (bounds) {
+        params.from = new Date(bounds.from).toISOString();
+        params.to = new Date(bounds.to).toISOString();
+      }
+      if (historySource) params.history_source = String(historySource);
       const response = await api.get(
-        apiUrl(ApiEndpoints.machine_health_signals, machineId)
+        apiUrl(ApiEndpoints.machine_health_signals, machineId),
+        Object.keys(params).length ? { params } : undefined
       );
-      return response.data?.results ?? [];
+      const signals: MachineSignal[] = response.data?.results ?? [];
+      return historySource
+        ? signals
+            .filter((signal) => signal.source_id === historySource)
+            .map((signal) => ({
+              ...signal,
+              snapshot_at: response.data.snapshot_at,
+              test_alarms: []
+            }))
+        : signals;
     }
   });
 }
@@ -103,6 +152,7 @@ export function useMachineSeries(
   points: number = pointsFor(windowSeconds(window))
 ) {
   const api = useApi();
+  const historySource = usePerformanceHistorySource();
   const bindings = useMemo(
     () => [...new Set(targets.bindings ?? [])].sort((a, b) => a - b),
     [targets.bindings]
@@ -115,32 +165,48 @@ export function useMachineSeries(
     window.kind === 'relative'
       ? `last:${window.seconds}`
       : `${window.from}:${window.to}`;
-  const enabled = bindings.length > 0 || keys.length > 0;
+  const enabled =
+    (bindings.length > 0 || keys.length > 0) &&
+    (!historySource || window.kind === 'absolute');
 
   return useQuery<SeriesResponse>({
-    queryKey: [
-      'machine-health-series',
-      machineId,
-      bindings.join(','),
-      keys.join(','),
-      windowKey,
-      points
-    ],
+    queryKey: historySourceQueryKey(
+      [
+        'machine-health-series',
+        machineId,
+        bindings.join(','),
+        keys.join(','),
+        windowKey,
+        points
+      ],
+      historySource
+    ),
     enabled,
     // Keep the last window on screen while the next one loads: a chart that
     // blanks on every refetch reads as a fault, not as a refresh.
     placeholderData: (previous, previousQuery) =>
       previousQuery?.queryKey[1] === machineId &&
       previousQuery?.queryKey[2] === bindings.join(',') &&
-      previousQuery?.queryKey[3] === keys.join(',')
+      previousQuery?.queryKey[3] === keys.join(',') &&
+      (historySource
+        ? previousQuery?.queryKey.at(-2) === 'history-source' &&
+          previousQuery.queryKey.at(-1) === historySource
+        : previousQuery?.queryKey.at(-2) !== 'history-source')
         ? previous
         : undefined,
     staleTime: 30 * 1000,
     refetchInterval:
-      live && window.kind === 'relative' ? LIVE_SERIES_INTERVAL_MS : false,
+      !historySource && live && window.kind === 'relative'
+        ? LIVE_SERIES_INTERVAL_MS
+        : false,
     refetchIntervalInBackground: false,
     retry: false,
     queryFn: async ({ signal }) => {
+      if (historySource && window.kind !== 'absolute') {
+        throw new Error(
+          'Recorded history requires an explicit source-clock window'
+        );
+      }
       // "Now" is taken at fetch time, so a live window keeps moving.
       const { from, to } = resolveWindow(window, Date.now());
       const batches = seriesBatches(bindings, keys);
@@ -151,6 +217,7 @@ export function useMachineSeries(
             to: new Date(to).toISOString(),
             points: String(points)
           };
+          if (historySource) params.history_source = String(historySource);
           if (batch.bindings?.length)
             params.bindings = batch.bindings.join(',');
           if (batch.keys?.length) params.keys = batch.keys.join(',');
@@ -173,6 +240,9 @@ export function useMachineSeries(
 
 /** What history the source holds for this machine's station. */
 export interface DataRange {
+  history_source?: number;
+  source_id?: number;
+  telemetry_presentation?: 'recorded_history';
   recorded_telemetry_as_live?: boolean;
   available: boolean;
   from?: string;
@@ -186,17 +256,24 @@ export interface DataRange {
 
 export function useDataRange(machineId: number, recordedLink = false) {
   const api = useApi();
+  const historySource = usePerformanceHistorySource();
   return useQuery<DataRange>({
-    queryKey: ['machine-health-data-range', machineId],
+    queryKey: historySourceQueryKey(
+      ['machine-health-data-range', machineId],
+      historySource
+    ),
     staleTime: recordedLink ? 0 : 60 * 60 * 1000,
     refetchInterval: (query) =>
-      recordedTelemetryAsLive(query.state.data)
+      !historySource && recordedTelemetryAsLive(query.state.data)
         ? LIVE_SERIES_INTERVAL_MS
         : false,
     refetchIntervalInBackground: false,
     queryFn: async () => {
       const response = await api.get(
-        apiUrl(ApiEndpoints.machine_health_data_range, machineId)
+        apiUrl(ApiEndpoints.machine_health_data_range, machineId),
+        historySource
+          ? { params: { history_source: String(historySource) } }
+          : undefined
       );
       return response.data;
     }

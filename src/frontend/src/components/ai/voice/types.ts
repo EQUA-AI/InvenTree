@@ -72,6 +72,8 @@ export interface VoicePreferences {
   voiceListeningMode: ListeningMode;
   voiceEarcons: boolean;
   voiceSrAnnounceTranscripts: boolean;
+  /** Hold new requests for explicit transcript confirmation; off by default. */
+  voiceReviewEveryRequest: boolean;
   voiceConsentVersion: string;
   voiceLocale: string;
   voiceOutputVoice: string;
@@ -88,6 +90,11 @@ export interface VoicePreferences {
 }
 export type VoiceProgressMode = 'off' | 'brief' | 'guided';
 export const DEFAULT_VOICE_PROGRESS_MODE: VoiceProgressMode = 'brief';
+export const DEFAULT_VOICE_REVIEW_EVERY_REQUEST = false;
+/** Only an explicit stored boolean enables review of every new request. */
+export function normalizeVoiceReviewEveryRequest(value: unknown): boolean {
+  return value === true;
+}
 /** Persisted/entered values are normalized safely to the Brief default. */
 export function normalizeVoiceProgressMode(value: unknown): VoiceProgressMode {
   return value === 'off' || value === 'guided' ? value : 'brief';
@@ -96,7 +103,10 @@ export function normalizeVoiceProgressMode(value: unknown): VoiceProgressMode {
 export function mergeVoicePreferences<S extends object>(
   persisted: unknown,
   current: S
-): S & { voiceProgressMode?: VoiceProgressMode } {
+): S & {
+  voiceProgressMode?: VoiceProgressMode;
+  voiceReviewEveryRequest: boolean;
+} {
   const source =
     persisted && typeof persisted === 'object'
       ? (persisted as Record<string, unknown>)
@@ -104,9 +114,15 @@ export function mergeVoicePreferences<S extends object>(
   const merged = {
     ...current,
     ...source
-  } as S & { voiceProgressMode?: VoiceProgressMode };
+  } as S & {
+    voiceProgressMode?: VoiceProgressMode;
+    voiceReviewEveryRequest: boolean;
+  };
   merged.voiceProgressMode = normalizeVoiceProgressMode(
     source.voiceProgressMode
+  );
+  merged.voiceReviewEveryRequest = normalizeVoiceReviewEveryRequest(
+    source.voiceReviewEveryRequest
   );
   return merged;
 }

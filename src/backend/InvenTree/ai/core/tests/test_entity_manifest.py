@@ -17,11 +17,49 @@ django.setup()
 from ai.core.entities import (  # noqa: E402
     MAX_ENTITIES,
     build_entity_manifest,
+    observed_work_order_roots,
 )
 
 
 def _root(entity_type="machine", entity_id=44, display_name="Influent Pump Station No. 1"):
     return SimpleNamespace(entity_type=entity_type, entity_id=entity_id, display_name=display_name)
+
+
+def test_observed_work_links_reauthorize_each_native_identity():
+    user = object()
+    work = SimpleNamespace(pk=19, reference="WO-000019")
+    with patch(
+        "tasks.ai_read.authorized_work_order",
+        side_effect=lambda _actor, entity_id: work if entity_id == 19 else None,
+    ) as authorize:
+        roots = observed_work_order_roots(
+            user, {("workorder", 19), ("workorder", 20), ("assetmachine", 19)}
+        )
+    assert [call.args for call in authorize.call_args_list] == [(user, 20), (user, 19)]
+    chips = build_entity_manifest(
+        canonical={}, record_roots=roots, observed_entities={("workorder", 19)}
+    )
+    assert chips == [
+        {"model": "workorder", "pk": 19, "label": "WO-000019", "source": "record_root"}
+    ]
+
+
+def test_unobserved_or_invalid_work_ids_never_get_resolved():
+    with patch("tasks.ai_read.authorized_work_order") as authorize:
+        assert observed_work_order_roots(None, {("workorder", 19)}) == []
+        assert (
+            observed_work_order_roots(
+                object(), {("workorder", True), ("workorder", -1), ("part", 19)}
+            )
+            == []
+        )
+    authorize.assert_not_called()
+
+
+def test_observed_work_link_resolution_is_bounded():
+    with patch("tasks.ai_read.authorized_work_order", return_value=None) as authorize:
+        observed_work_order_roots(object(), {("workorder", index) for index in range(1, 50)})
+    assert authorize.call_count == MAX_ENTITIES
 
 
 class TestBuildEntityManifest:

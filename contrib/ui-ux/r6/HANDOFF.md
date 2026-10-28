@@ -1,5 +1,611 @@
 # AIMMS R6 — start here (Claude Code / Copilot / Codex)
 
+## Current task — commit and Azure release in progress
+
+User authorized committing the application fixes to `IOT-Merge` and deploying
+the Azure application on 28 October 2026. The isolated release candidate starts
+from `ec1e85c5fb590a1f1b168e3216bb7d83c23628d7` and preserves its spoken-reference
+normalization. All source dependency closure and regression tests are included;
+five local-only replay files and all media/private runtime assets are excluded.
+
+Static merge/dependency review passes. Fresh frontend verification: 1,343 unit
+tests and TypeScript pass. Backend tests, immutable image build, schema lineage
+and authenticated candidate checks are in progress. The current Azure web app
+is `aimms-experimental` in `EpconChat`; its existing release remains serving.
+Worker access is currently denied and must be reported separately. No Azure
+deployment or product acceptance is claimed at this checkpoint.
+
+See [deployment record](reports/azure-iot-release-2026-10-28.md).
+
+## Current task — revision4 ready; scoped remediation verified
+
+Deliver ONE combined16:46.405 movie:
+`/Users/Aniketkumar/EQUA-AIMMS-Recorder/EQUA_COMBINED_DEMO_20261028/release/revision-4/EQUA-AIMMS-Demo.mp4`.
+SHA256 `baa30d45aaaaa52d1366abf22225aac9e718588632b9b4fc500763026b5630cb`.
+27scenes/239captions; all7checksums, completeAVdecode, scoped actualfinal
+visual review and source/audio preservation pass. Prior releases are unchanged.
+
+The904-frame sequential review and independent Hyperagent review found outro,
+manual/preview/readability and temporal continuity issues. These are corrected;
+genuine voice is179.163seconds with actualYes/commit/receipt preserved. A
+separate104.5second real local purchasing example broadens coverage without
+adding parts to Pump08. All capture/render helpers are stopped.
+
+Native fresh E05/history readers and exact-source guards are live and verified;
+one typed read17.054s is not a voice-latency benchmark. Mic warning recovery,
+lossless preview formatting, saved-proposal status wording, winding order,
+spacing/notification copy and ISO completion timestamps are fixed and checked
+at their documented source, fixture or native-runtime level. Case records are
+unchanged. No cloud write, migration, physical work or new purchasing occurred.
+
+See [final scoped report](reports/combined-demo-sequential-remediation-2026-10-28.md)
+and external `qa/revision-4/MASTER_FINDINGS.json`. It retains all42original
+requirements plus both prior/new findings; do not imply all original product
+requirements are satisfied. SAP still needs a genuine sandbox configuration;
+currentCosmos6h has no records. The movie keeps explicit2025historical dates,
+manual assignment, correct pending/unsaved states and procurement alternatives.
+Human continuous watching/listening and two full rehearsals were not performed.
+No further unblocked media or local defect work remains in this scoped pass.
+
+## Previous delivery — revision3 complete; preserved
+
+The final combined demo is15:03.905/1920×1080,26scenes/209captions:
+`/Users/Aniketkumar/EQUA-AIMMS-Recorder/EQUA_COMBINED_DEMO_20261028/release/revision-3/EQUA-AIMMS-Demo.mp4`.
+SHA256 `c8e73cbfec3b30d176a8a4ba185c31aa157c46fcdf76c0da8ae4678c39e3265d`.
+Original and revision2 remain unchanged. New native cursor/actions, valuable
+scrolling, larger framing, W6 focus, Parts and two expanded Performance charts
+are included; genuine Diagnose voice/preview/Yes/5800r1 and the3995→3994
+bridge remain. All captures/helpers are stopped. No further capture or render
+is required. Deliver ONE combined movie.
+
+Real Cosmos historical6h reads are integrated in optional native
+`history_source=1`, without changing default replay bindings or maintenance
+records. Exact source-clock dates31July2025 20:59:55.099UTC–1August2025
+02:59:55.099UTC,180 sampled snapshots across58 channels, are explicitly shown.
+Current wall-clock6h probes were empty. Backend35 and frontend40 focused tests,
+TypeScript/Ruff/Biome, native browser/API200 and recorded interactions pass.
+Owned local runtime is deployed; no cloud write or migration was required.
+
+Complete media decode/caption checks and independent final audio regression
+pass; root inspected14 actual final frames. No continuous human watch/listen,
+full-system acceptance or production deployment is claimed. Original process,
+procurement and retrieval-provenance limits remain disclosed. The30–40minute
+target was exceeded by the data-source repair and requested Cosmos integration.
+See [final revision report](reports/combined-demo-dynamic-cosmos-revision-2026-10-28.md)
+and external `qa/revision-3/ROOT_REVISION3_EXECUTION.json` for current evidence.
+Earlier checkpoints below describe historical stages.
+
+## Focused revision delivered — scoped media checks passed
+
+The user authorized START10:08:35UTC and now says continue until they request a
+pause; the earlier sleep break is superseded. The original body is preserved.
+Revised full video14:57.4 and edited native-Diagnose voice chapter3:03.2 are
+rendered. Genuine spoken Yes saved new Work3995/draft5800r1 with all safety and
+review gates pending; explicit later3995/earlier3994 labels preserve chronology.
+Complete decode, soundtrack ASR/number/negation checks, caption checks and50
+independent actual-output frame samples pass within documented scope. Final scoped QA
+receipts and all12delivery checksums are complete and independently verified.
+No open P0/P1/P2 media issue remains in the reviewed scope; no new recording,
+application write or delivery action is required. See [focused revision report](reports/combined-demo-focused-revision-2026-10-28.md) and
+[execution checkpoint](/Users/Aniketkumar/EQUA-AIMMS-Recorder/EQUA_COMBINED_DEMO_20261028/qa/revision-execution/root-execution-checkpoint.json).
+Original full-system/process limits remain disclosed; no continuous human
+listening/viewing or product/deployment acceptance is inferred.
+
+Historical checkpoints below describe earlier stages and are superseded by the
+current revision report.
+
+## Revision preparation and recording hold — 28 October 2026
+
+User explicitly withholds START for screen recording. Read-only preparation is complete: [concrete plan and timeline](/Users/Aniketkumar/EQUA-AIMMS-Recorder/EQUA_COMBINED_DEMO_20261028/qa/revision-preparation/REVISION_PLAN.md). No capture/audio/provider/runtime/source/business action was started.147 raw frames found no usable3994 pre-Yes preview; new correct save requires active-case continuity and substantial linked recapture. Earlier90–120minute full-fix estimate is corrected:90–120 editorial polish only;3–4hours estimated for coherent full recapture/QA excluding feature engineering. Hard120minute limit conflicts with full scope; scope clarification required, then explicit START. Proposed controls/checks are unexecuted. Original movie e69c8b47 remains unchanged.
+
+## Post-delivery prompt alignment review — 28 October 2026
+
+Fresh independent review of the unchanged final movie identifies presentation and original-contract gaps despite valid technical media QA. See [timestamped audit](reports/combined-demo-post-delivery-audit-2026-10-28.md). P1: T05 preview/Yes plays over stale previous-answer visual; first diagnostic sequence differs from V9. P2: AI insert pacing; model scroll; evidence focus; recap/capability-proof gaps. Administrator38 is user-authorized. Review complete; proposed revisions unimplemented. No new app/movie/business action and no exact-prompt/full-system acceptance claim.
+
+## Combined V5 and V9 demo — final artifact verified with disclosed limits, 28 October 2026
+
+Final delivery is available at
+`/Users/Aniketkumar/EQUA-AIMMS-Recorder/EQUA_COMBINED_DEMO_20261028/release/EQUA-AIMMS-Final-Demo.mp4`
+with matchingSRT, editmap, assembly receipt, QA JSON and checksums. The complete
+28scene film is22:58.8/1920×1080/nominal30fps/76,050,783bytes; movieSHA256
+`e69c8b47f5c15a2c109a6f570d635423c7f35d3e7201df05aa5c90862559f338`,
+SRTSHA256`c2edc6ce4a67ffee98c3077ef555a03bd8221c915897603aace2ec76605816b4`,
+QA SHA256`3c584f4e8715cf1c0cfc63060b05ce2b26368e99413381a37deb861717867a39`.
+Actual checks pass: completeAVdecode; all28/27joins independently pixel-sampled;
+full soundtrackASR plus targeted clause confirmation;29ordered canonical
+assets/words;256valid audible captions; no black/loading/silent-caption
+candidates; four sampled finalspeech windows0mslag;−16.13LUFS/−3.89dBTP.
+No human ears-on/continuous human audiovisual review or product/deployment
+acceptance is claimed. Source-authorized alternates, typed closeout, explicit
+administrator/manual agent field edits under user delegation, real confirmation/
+clarification handling, prepared-only/no-authority limits and unmet two-clean
+rehearsal clause remain disclosed in the release deviations/crosswalk. Native
+Work3994v11/packet36/closeout151/report5790 remain completed/closed/verified.
+No media/application/business work or approval gate remains in this delivery scope.
+
+Earlier capture-stage checkpoint: all28scenes finish08:08:13.796UTC; media confirms final Cap808853572675 stopped
+with metadata08:09:41.543. Driver performs no further browser/business actions.
+The selected edit uses actual Cap1/2/4/5 sources; failed Cap3 is unselected.
+Media's `assembly-map.production.PENDING.json` binds all28selected scenes and
+their source cuts; the final movie/SRT join and final audiovisual verification
+are in progress. A rendered scene or source test is not a full-film pass.
+Final artifact paths/checksums and measured QA will be recorded only from the
+completed media receipt. The release truthful-deviations document now separates
+selected case18/3994 footage from retained qualification history and records
+source-authorized alternates, native UI/API action methods, typed closeout,
+real S18 clarification and source-trace limits. Native closeout remains
+completed/verified; no application or business change is made during finishing.
+
+08:04UTC S18 scoped content pass: genuine canonical turn53b96c9a asks which
+authorized Pump08, despite valid trusted Work3994/Machine102 focus. Its actual
+ambiguity is retained; a real operator clarification identifies Cedar Creek102/
+completed3994 once. Substantive turn57ca52e3 completes08:03:36.104 as actual38,
+correctly summarizing3994/packet36/report5790, unverified suspected cause/fit,
+PreparedE05/no physical maintenance, zero parts, all three prepared checks with
+94/96/max96, no physical/historian/operating authority and unknown downtime.
+The board is actually Done. Limits: legacywf8 evidence is empty and no explicit
+TOOLCALL/server-read audit persists; context_used reports facts0/history not
+consulted. Entitymanifest record_root includes102/3994 and older records, but
+does not prove an explicit fresh tool call. The text supplies correct record
+identifiers without a literal URL. These limits and both genuine turns are
+retained in `s18-scoped-native-content-audit.json` and companion artifacts;
+actual38 restoration is confirmed. Driver finishes S19; final media assembly,
+whole-film QA and delivery remain pending. No final film acceptance.
+
+07:49UTC native closeout checkpoint: report5790 is independently approved by40
+(event5791/07:39:11.644); operator38 then closes owning packet36 atomically
+with Work3994 COMPLETEDv10/closeout151/capture5consumed
+(event5792/07:43:21.906). Reviewer40's native return verification succeeds
+(event5794/07:45:23.062), Workv11 and verifiedtrue, resolving only synthetic18.
+These are exact NativeContinuation authenticated API commands under root's
+concrete standing delegation, following actual driver account/report/role
+review; they are not claimed as UI-button clicks. All receipts are serialized,
+fresh-GET reconciled and tied to the same approved six-field account6296af5c…
+and service-report896ddf93…. Parts and promoted readings stay empty, physical
+downtime staysNULL and all prepared/unverified/no-authority limits remain.
+Actual completion mail arrives07:45:23.454 as Mailpit0pOKNnijbjO59TzExxnWCx;
+its real report3994/machine102 anchors are retained. New native maintenance
+record2887 is the latest completed Machine102 record, linked to3994/151.
+The native history reader queries that durable table directly, with no async
+index dependency. Serialized sources16/17 remain exactly unchanged. Evidence
+is in `private/final-continuation/` including native verification, actual mail
+and latest-history artifacts. Driver captures final mail/equipment/history/
+fresh AI-history scenes after the authorized safe Cap4→5 roll; whole-film
+audiovisual QA and delivery are still pending. No final film acceptance.
+
+07:33UTC checkpoint: Work3994 is VERIFYINGv8, packet36 executing, with all
+three prepared checks already persisted PASS by38 at06:20:58/06:21:53/06:21:54.
+Cap4 7c68ae87ce72 recaptures these existing results read-only; no checks are
+repeated. Capture5/revision1 retains the exact root-reviewed typed story
+83bfba94…. The first extraction was cancelled by the native five-second client
+timeout; its known-failure API retry returned a strict string-candidate schema
+error, with no proposal. While capture was stopped, the backend prompt gained
+the complete candidate object schemas and the extract-only frontend timeout
+became80s; the authoritative validator stayed unchanged. Focused checks pass
+21 extraction/binding plus33 native disposable-PG16 contract tests. The actual
+post-fix native UI extraction persists proposal2, genuinegpt4.1/runEds3B…,
+SHA65139cb0…. Root explicitly reviews all six field decisions; native event5789
+records four source-exact edits plus accepted PreparedE05 action and NULL
+downtime. After the driver visibly reviews all six final values, operator38
+submits native report5790/event5790 at07:32:36.476, reportSHA896ddf93… and exact
+accountSHA6296af5c…. Parts/readings remain empty and no physical work, fitted
+applicability, OEM limit or operating release is asserted. Root's bounded
+standing delegation authorizes independent40 approval, owning-packet closure
+by38 and native verification by40 only after fresh state/hash checks and actual
+driver review. Those effects and whole-film QA remain pending; no film acceptance.
+
+06:14UTC actual procedure application10 binds publishedID3/humanrevision1 to
+Work3994, snapshotSHAcef4a48a…. A single sequential authorized batch rechecks
+native readiness and GETreconciles each apply→plannedv4→readyv5→in_progressv6;
+packet36executes, zero parts and all three prepared checks remainunrecorded.
+Driver's exact exported TECH-BAsk completes as turn199dd1cf/wf8 on current
+Workv6 and saved5776r1. It preserves conditionalfit/energy/no physical authority
+and cites205+68, but freshE05retrieval is not proven: no tool/function/serverread
+trace persists, and206is not cited. It says E05checks unrecorded while giving
+physical actual-not-prepared verification guidance rather than naming all three
+training steps. These content/provenance limits are sent to root; no extraAsk or
+probe is run by the auditor. S12writes pause for root's safe TECH-B→S12Caproll
+and require newCap/actualsource review/driver scene-ready. S13/S14root concrete
+story/field/account/hashGO and final audiovisual QA remain required.
+
+06:07UTC S09fresh read/holds and S10digital exercise governance are complete.
+After explicit driver scene-ready, the exact serialized software-only requests
+waive117–119by38 and create high-risk approval055b437d for116. Reviewer40
+actually reads both native required sections, opens review, confirms reviewed,
+enters the displayed approve055b437dphrase and commits one native UI decision.
+Its successful effect waives116by40; all four physical confirmed/verified fields
+remainnull. Only then reviewer40advances packet36toDIGITALapproved. Work3994v3
+remainsDRAFT/Avery27 and zero parts; no physical work/OT authority is claimed.
+Every request is exact-private-command guarded and GETreconciled, including
+the first blocked UIOpen/no-effect and actual empty-body retry. Native viewed
+confirmation actor/time/event persist; the optional revision-bound ACK table
+is empty under unchanged current policy and is not claimed as evidence.
+Actual published procedureID3 is humanrevision1/codeP08-MOTOR-COOL-RTS-EX,
+hash e49358c0…, authored39/reviewed+published40; its three prepared verification
+steps are read before apply. Driver restoresadmin38 and holds S11same-case
+zero-parts alternate, then must signal TECH-Bscene-ready before apply/plan/ready/
+start. S12requires actual source review and all three persisted prepared checks;
+S13/S14still require concrete root story/field/account/hashGO. No film acceptance.
+
+05:50UTC final new-case native save/read qualifies. After one discarded held
+T05and one retained unqualified wf8refusal, a genuinely spoken full request
+explicitly containing repair scope reaches the native proposal adapter in
+freshC66c25131on the same3994thread. Root and independent full-scope audit pass
+the actual previewceba3c6b/a0406b48: conditionalp25air/brush method and material
+cautions, fitfirst/inspectbeforeclean, effective energy control/absence of
+hazardous energy, all four post-service categories, zero parts and pending
+physical/review gates. Root gives exactGO only after full preview playback.
+ActualVoiceOperationf3a81949 succeeds: draft5776r1 saves05:48:24.322569UTC by38,
+Work3994v3/Avery27. Audited preview, durable receipt and native readback match;
+draftSHA256`ff4bf7019eeea0d80090184ac5cd05004931a144daba967c94e2c90fd0b1a2ad`.
+T06performs one genuine server readcaa1577c at05:49:57before actualgpt4.1SDK
+generation. Its full-readbackSHA256
+`347f809dea3d3463f358c5ddbf628fee79ec4101821605f360a8a53483304510` exactly
+matches independent readback;205/68actual source file hashes match. It states
+pending reviews, fitfirst, prepared-not-field evidence and no physical authority.
+It says Work3994/revision1while omitting numericdraftID5776 and explicit
+not_started wording; root accepts those limits using actualaudit/UIidentity.
+No extra question is run. Actual fulltail/export/end/T07/S09and the remaining
+V5continuation/whole-film QA remain separate. No continuation effect has run.
+Retained failed turns and visible T03Confirm recovery are not relabeled as a
+clean rehearsal, perfect ASR, exactly six total attempts or film acceptance.
+
+05:32UTC final production continues on Capf8ede109d9c2 after the first final
+Cap4ecd1240f07d stops at the actual PDF25safehold. VoiceA9bcb143c ends with
+exactly three completed, explicitly mapped T01–T03turns and no early prepared
+E03/E05/E06. T01uses the approved entire-visible-answer fallback359words;
+T02distinguishes prepared exercises from ordinary inspections in its written
+sources; T03genuinely reads manual68page25 and speaks fouling/cooling capacity
+and unverified fitted applicability. T03's original spoken Confirm has no ASR
+completion or business POST; after reconciliation, root authorizes one visible
+native Confirm click on the same original held transcript, creating the sole
+T03turn at05:26:25.272551. This recovery is not claimed as successful voice
+confirmation. Both actual manual68and208file hashes independently matchc67a3937….
+The endedAproof is `part2-audit/voice-proof/final-tech-a-a-ended-native.json`,
+SHA256`43c907e386be6e51bf83872ad8986ea5b98b24b7adf864bf306ff82340960467`.
+FreshB72e9ac6f continues the same Work3994/thread_t4bh5qp for T04onward.
+T05quality/Yes/save/T06read/S09and downstream V5/whole-film QA remain pending.
+No continuation effect has run. Root's bounded S10–S12delegation begins only
+after qualified T05and driver-completeS09/scene-ready; S13/S14concrete commands
+remain approved:false until root reviews the actual story/fields/account and
+grants the exact full-request hash. No app source changes or reload occurs.
+
+05:31UTC: first production Cap4ecd1240f07d is confirmed stopped with native
+metadata at the genuine T03 manual boundary. Its exact T01–T03 native turns
+have grounded source/content proof; T01's full359-word answer is captured and
+its duplicate page is not replayed. T03's spoken Confirm has no completedASR,
+so one real visible Confirm-transcript action admits the original held question;
+that deviation is retained. Actual manual68 physicalp25/section4.6.3 is readable
+and held, with source/material/applicability cautions. VoiceA ends and both
+exports match their browser/disk hashes. Terminal native proof is
+`part2-audit/voice-proof/final-tech-a-a-ended-native.json`, SHA256
+`43c907e386be6e51bf83872ad8986ea5b98b24b7adf864bf306ff82340960467`.
+No currentE03/E05/E06, saved draft or business operation appears in those turns.
+New bounded continuation Capf8ede109d9c2 starts05:31:35.337UTC on the same
+window/case/thread for T04 onward. This is a disclosed source-document capture
+handoff, not a claim of one continuous file. First-section export/audio/edit
+checks run in parallel. T05Yes, durable save/readback, remaining V5 scenes and
+whole-film acceptance remain pending. Application source stays frozen.
+
+05:09UTC: final capture continues after actual S01–S06 and a qualified
+source-grounded S07 diagnostic follow-up. Full14-pump schematic/legend,
+truthful test/replay provenance and actual125/145limits are captured. The
+failed first S07 answer stays retained. New turnbd08bb884d6c4843b8ce99a242e21e86
+completes through native wf1/gpt-5.6-luna with three conditional comparisons,
+real18/36/history/manual citations and no earlyE03/E05/E06. Its complete native
+proof is `part2-audit/voice-proof/final-s07-diagnostic-complete-native.json`
+(SHA2567ec49b3609cbb61035e2541381c8db59ac3912430fbc258ae9e65f9de86c51b6).
+Audio export, fresh chronological S08, T00–T07, remaining V5 scenes and final
+whole-film audiovisual verification remain pending. S04 follows the exact
+delivered email URL using the owned tab; the iframe link click is unexecuted.
+No source changes, clean-rehearsal claim or final-film acceptance accompanies
+this progress checkpoint.
+
+04:35UTC final production capture is active as Cap4ecd1240f07d, with the
+application source still frozen at the qualified03:27checkpoint. The new native
+case is source18, Work3994v2, packet36, machine102, admin38 and assigneeAvery27.
+Its preparation receipt binds E03attachment205 and packet manual208 to their
+actual hashes; the master manual68 is unchanged. The prior source17 exercise
+ends separately at native event5771/Work3993v6 while its Work remainsDRAFT, not
+physically complete; closed source16 remains untouched. The previous retake's
+six-turn/save/read functional proof is retained, but its IDE pixels and OS
+dialogue fail clean visual rehearsal acceptance. No clean rehearsal or final
+film is claimed. The coordinator proceeds under the owner's finish-ASAP
+instruction with truthful functional-versus-visual reporting. The final new
+case still requires actual source/model/audio proof, fast full T05preview
+review before native Yes, durable save/T06fresh read, S09fresh GET, the remaining
+V5scenes and whole-film audiovisual QA. External receipt-derived collector
+binding is `part2-audit/voice-proof/final-native-binding.json`; it does not inject
+prepared E03/E05/E06 into early AI context or claim product acceptance.
+
+The owner's latest instruction is to finish as soon as possible after five hours.
+The coordinator interprets that urgency as one actual clean full rehearsal,
+followed directly by uninterrupted final production and whole-film QA. This is
+an explicit process deviation from the earlier two-rehearsal plan, not evidence
+that two clean rehearsals happened. All source, native confirmation/receipt,
+physical-authority and audiovisual quality gates remain. The existing software
+exercise close guard's two-clean prerequisite still needs the coordinator's
+bounded truthful owner-urgency exception before any close; it is not bypassed
+or marked complete here. Application source stays frozen during capture.
+
+Current actual retake2 completes all six native questions and the real T05Yes
+across sessions850cc120/e7cece24 onthreadc7sz1b4. T01has all three conditional
+checks/proofs; T02's six retrieved records map to actual software-exercise
+Work3987–3992; T03genuinely reads WEG68page25 and speaks the fouling/cooling
+mechanism and applicability limit; T04names a conditional record-based leader.
+The new T05preview avoids the former filter-method errors by proposing only
+the complete conditional page25method, with explicit energy-source/effective
+control/absence-of-hazardous-energy checks and all four post-service categories.
+Root authorizes Yes only after its fast full-scope audit and actual preview tail.
+Native operationf27ca49e succeeds: draft5770r3 is saved03:53:40.427920UTC byadmin38;
+Work3993isv5/Avery27. Audited preview, actual receipt and authorized readback
+match; draftSHA256 isf147b26a4ed107505890412c0050fe3deb5d81e8a8804e95c38f7e3e961b521c.
+T06now performs one actual server read of5770r3 and persists full-readback hash
+78896055530a9125544caf6212303e0019887c028d133469678ff3a05c206f61 with native
+actor/focus/model provenance. Both source hashes, zero parts and all four pending/
+notstarted gates survive the fresh S09GET and actual visible holds. Both voices
+end. The combined native proof is `part2-audit/voice-proof/rehearsal-r1-retake2-combined-native-proof.json`.
+This is one rehearsal across two voice sessions. T05ASR drops as-a-draft while
+the native preview/Yes remain explicitly proposed-draft bound; T06does not
+explicitly repeat preparedE03/notstarted and its next-step ordering is cautious.
+Those wording/fidelity limits remain recorded for root judgment. Complete AV
+QA, clean-rehearsal classification and final production acceptance stay separate.
+
+03:27UTC current checkpoint: failedCap250c43d35422stops03:19:10UTC with no
+new saved draft. T03is silent; T04does not rank a conditional leading cause;
+T05's real preview still broadens the filter-source conditions and omits drying
+handling, so it is not confirmed. OriginalBsession expires beforeT06admission.
+A freshC T06does persist the new distinct server-read audit, but reports
+unavailable: its relevance pack is machines.read and omits the actual authorized
+native getter. The exact recording-container read-only probe proves the base
+RBAC set has the true native getter and the direct read succeeds. The fix now
+passes that same authorized base set to the strict voice/Work handoff; actual
+per-read authorization and identity checks stay intact. Its real _prepare_run
+probe returns5769r2/full-readbackSHA3381d06e... with no model call or tool fiction.
+
+All approved source repairs are applied and frozen: whole public-response speech
+fallback only after answer-only marker/negation/boundary rejection; original
+manual-passage topic retained through the same authorized model tool call;
+conditional relative-evidence and requested-mechanism guidance;300word prose
+onepage/policyv4 with lists/sections/stock pages preserved; prior saved scope
+body omitted only from proposal context while authentic metadata/hash and
+current sources remain; and value-free native read offered/invoked/reason audit.
+409isolated regressions and34native disposablePG16 checks pass, including all17
+inventory tests and real saved-context/reader seams. Exact actualT03public
+258word record passes unchanged canonical validation and stays one complete page.
+Ruff/diff checks pass. Root's coordinated app reload starts03:27:21.501UTC;
+direct8018and8000relay both returnalive/AIready, and critical source hashes match
+`part2-audit/final-source-ready-checkpoint-20261028.json`. This source/runtime
+qualification is not a clean rehearsal or final film. Further app edits are
+frozen until the new capture handoff; no engineering provider preflight is run.
+
+Latest checkpoint: the retained 02:24UTC failed rehearsal nevertheless contains
+an actual native confirmed save of proposed draft5769r2 at02:18:36UTC byadmin38.
+Work3993isv4/Avery27; source17/packet35 remainopen/draft, with zero replacement
+parts and all four review/physical gates pending/notstarted. Its receipt and
+authorized readback match; draft SHA256 is
+`f16160ecf159a91ddf8022f4ef222d0abaab7759345af5ef96313151ed7aa0f8`.
+T03/T04 still have validated written answers but no speech after their single
+formatter fails; T06 answers from history without the required native read.
+Those failures remain unaccepted. The frozen repair now permits only the
+entire plain visible answer after that one failed formatter, reusing unchanged
+canonical source/safety/uncertainty validation and budgets. A narrow voice-only
+saved-scope request now performs one offered native RBAC read before the existing
+SDK generation, replaces old history with untrusted source data, and persists a
+distinct server-read audit with actual draft/revision/hash/actor/focus.
+127focused backend checks and18native disposablePG16 checks pass, including the
+real decorated reader with enforced capability selection and unchanged stock
+pagination. Frontend's first prose policy failed that stock test; its narrow
+fix now passes the original assertion. Native voice persistence/cursor/sourcehash
+checks pass within37/38; the remaining failure is the native-settings timezone
+fixture mismatch and is retained. Root applies the coordinated frozen candidate
+at02:47UTC. Actual Cap250c43d35422starts02:49:41UTC, with freshsession
+37475472-7b51-42aa-aa1c-04d8b115dfc5/admin38 on the sameWork3993.
+This is an active rehearsal, not a clean completed take or final acceptance.
+Its actualT01/T02 have substantive grounded speech, with T02 preserving ordinary
+inspection versus software-exercise provenance. ActualT03 completes02:58:53UTC
+silently: the one formatter fails new_tokens, and full-visible fallback correctly
+fails unchanged missing_marker validation because the public reasoning summary
+uses unverified while the visible answer uses not approved or verified.
+No substantiveT03utterance is persisted, and page25 fouling/cooling-capacity
+coverage is absent. The failure is retained; no model retry, extra speech clause
+or app edit is introduced during capture. Current take is not a clean rehearsal.
+Application sources remain frozen during capture. See the production ledger
+and private `part2-audit/readback-readiness-checkpoint.json` for exact hashes,
+test scopes and retained harness failures.
+
+Owner requests a smooth complete localhost5173 admin recording using the
+original V5 pack and newly supplied `AIMMS Demo part 2 Video Blueprint`.
+V9 replaces TECH-A between S08 and S09 with T00–T07; it is not an appended
+unrelated tour. Exact narrator/Avery text and revised S09 remain authoritative;
+AIMMS replies must be genuine native speech and real persisted draft results.
+Both supplied manifests pass. Current engineering closes the missing native
+pending-review repair-scope draft and explicit server-side Voice Live API-key
+configuration. Domain tests use disposable PostgreSQL, not the recording DB.
+Old completed case16/WO3992/packet34 must remain closed; fresh event-owned work
+is required for an honest pending-review sequence. Existing admin38 remains
+the requested browser identity; Avery27 is a separate native technician.
+Old recordings and frozen no-AI contracts remain historical and preserved.
+The native pilot and failed attempts below are retained; no clean full
+rehearsal or final film is complete.
+See [combined production ledger](reports/combined-demo-production-2026-10-28.md).
+
+First native rehearsal preparation now owns anomaly17/WO3993/packet35 with
+explicit eligible Avery27 assignment, versioned prepared E03 attachment201
+and unchanged related WEG PDF attachment204. Admin38 remains the actual
+operator. Existing16/3992/34 and legacy E03 remain unchanged. Helper resume
+reconciles the retained case after its initial read-only active-alarm planning
+failure; it does not repeat the alarm command. Native domain/voice checks68
+pass; pure regressions1989pass with19HEAD-identical existing failures.
+The actual diagnostic rail needs its separate honest source handoff before
+T01–T04 acceptance. User requests closing the admin warning on each load;
+the recorder clicks that warning's native close button, keeping admin rights.
+Owner approves the exact Cap setup and asks to verify both packs in full.
+Pilot c80d35ae3cb8 is recorded/stopped with native metadata; actual Cap mic,
+remote speech stem and full-window footage are under QA. Scripted rehearsals
+and the combined final film remain pending. Native diagnostic source handoff
+and narrowly scoped read-only source-navigation routing are being qualified.
+
+Owner then goes to sleep and explicitly directs continued autonomous work:
+"you keep working dont wait for anything" and careful coverage/clear speech,
+AI accuracy, full-screen visibility, synchronization and complete audio/video
+verification. Continue the authorized local demo/capture/retake/edit/QA work;
+do not introduce routine confirmation pauses. Both source packs remain the
+scope, and actual native actions and safety/physical boundaries still apply.
+Rehearsal1 currently fails long-utterance admission (four ASR fragments held
+for review, zero ChatTurns); the fragment is discarded and voice ended.
+Raw Cap8d357f043753 and matching native stem are retained as FAILED, not a
+clean rehearsal. Bounded VAD timing and held-transcript safety fixes are underway.
+
+Subsequent qualified fixes: native1200ms VAD admits the full unchanged T01;
+73frontend voice checks pass and incomplete fragments cannot be confirmed.
+Direct Luna now honors existing API-key mode instead of always trying managed
+identity;93isolated checks and a real native63-token READY probe pass. New
+captures0ba6528b32f0 and45c1e4492890 retain genuine full ASR/confirmation but
+fail authentication (before fix) and the existing six-read diagnostic budget,
+respectively. All originals are retained, not counted as clean rehearsals.
+The current full read-only model preflight uses existing12-round/10000-output
+bounds; medium effort yields a grounded answer but strict speech validation
+strips an incomplete-uncertainty summary. A native bounded model correction and
+diagnostic TEST-date fix are being qualified. T05 real planner preflight catches
+an untyped nested scope schema; typed DTO/source-ranking fixes are underway.
+No scope draft or physical/business advancement has been saved live yet.
+Extended raw capture timing720s rehearsals/1800s production is separately
+recorded under the owner's autonomous instruction, preserving original consent.
+
+The actual typed T05 planner retake now validates in14.569s;9schema/PDF and
+60native regressions pass. It remains an engineering proposal, not a saved
+voice draft. Full native T01 now passes in55.977s with3grounded checks,
+6authorized citations, correct event17date and a real67word spoken summary.
+One bounded actual model correction preserves the validated answer/evidence;
+140isolated regressions pass. The existing strict validators remain intact.
+Coordinated local configuration is12reads/10000outputtokens/voice-only medium
+reasoning within the unchanged75s/RBAC/source bounds. Live voice qualification
+remains pending. Console is locked at23:19UTC; failed take45c1 also contains
+protected desktop pixels late in its timeline. Cap target enumeration alone
+is not usable-screen proof. Continue independent native/audio/editor checks;
+accept no new video take until actual AIMMS pixels are verified. No unlock is
+attempted. A temporary task-owned display-awake assertion prevents subsequent
+idle sleep but does not unlock the console or change security settings.
+
+Actual native audio/workflow qualification74eb6c7a completes all6spoken user
+requests. T01still fails cumulative output; T02–T04 have truthful sourced text
+but no authorized speech. T05 actual spoken Yes saves proposed draft5768r1
+at23:30:39UTC as admin38; successful VoiceOperation and read-after-write hashes
+match. Work3993isv3; zero parts/all4pending gates and original sources survive
+reopen. This is real save qualification, not acceptance of its incomplete
+planning detail. T06 reads the actual draft but generic speech pagination
+reorders its sections; a narrow source-order fix passes19prompt/presentation
+regressions. Root also fixes complete-item receipts and long transcript review
+without silently clipped words;6pure checks and Ruff pass. Revised native
+planning requirements and voice-only brief readback guidance are qualified
+outside live writes; next real proposal still requires full review.
+Console becomes visibly usable at23:34UTC without an agent unlock. Native PDF
+68 opens actual page25; section4.6.3is below its initial fold, so source-shot
+scroll/zoom is required. Current owned browser1779uses100%forlegibility with
+fresh preserved capture authorization. New source changes await a coordinated
+reload after repeated real-model spoken quality checks. No clean full
+rehearsal, final production take or final MP4 is complete.
+
+Current visible target is dedicated Chrome1803at1512x892/100%, admin38;
+fresh `combined-main-20261028` authorization retains the owner's explicit
+autonomous instruction. Recording app/worker reload at00:32UTC applies the
+source/citation/focused-root/fast-formatter/voice-prompt fixes; authenticated
+health200is healthy.209diagnostic regressions and19voice prompt/presentation
+checks pass; additional6complete-review/receipt checks and format pass.
+Written diagnostic sources now qualify reliably in engineering, but spoken
+summary generation remains stochastic and is not accepted as reliable.
+Actual Cap85b680c62131fails T01 ASR omission of restricted cooling; full WAV
+delivery is proven by0.999998mic correlation. It is discarded with0turns and
+preserved asFAILED_QA. Actual ca8281745b73has faithful T01 ASR but silent
+diagnostic reply, followed by voiced T02 and a T03 read-source routing failure
+when ASR changes passage-on to based-on. It stops at00:56:50with metadata and
+originals intact; no E03/open/save or business effect occurs in that take.
+Both remain failed, not clean rehearsals. Native speak-skip diagnostics,
+qualified manual-read routing and effective ASR configuration are now being
+investigated from actual evidence. No further speculative prompt experiments;
+resume actual full captures after concrete runtime defects are addressed.
+
+The next actual Cap9f00d9813956 runs01:28:12–01:38:56UTC and is preserved
+asFAILED_QA. Native session3b202c50-5355-4c3b-8c2d-1d10edadaddc admits
+three faithful complete requests under the optional Review every request
+preference, enabled by the operator. The preference defaults off and preserves
+native Yes/No/correction fences;123frontend checks plus types/Biome pass.
+Thirteen neutral domain hints use the existing provider configuration, and
+passive input diagnostics retain actual sender/track facts without raw device
+identifiers. T01 and T02 produce substantive native speech. T01 has3conditional
+checks/proofs and actual authorized sources with no E03/postrepair leakage.
+T02 retains an accuracy flag: ordinary reference inspections2799–2801are
+incorrectly grouped with the genuine software-exercise history2886and
+closeouts146–150in one written paragraph. T03 now correctly reads the related
+WEG manual and states unverified applicability, but its primary speech loses
+an uncertainty marker; one real fast correction fails validation and leaves
+it silent. The exact secondary refusal rule was not retained by the old log.
+There is no T04 or new write in this take; Work3993remainsdraft/v3 with the
+earlier proposed5768r1, zero parts and all review/physical gates pending.
+
+Root applies the frozen correction-policy repair at01:56:10UTC: only the
+single correction's formatting ceiling becomes120words (prefer50–85; minimum45),
+reserving the exact unchanged safety boundary and rejecting oversize speech
+without clipping. Canonical source/lexical/uncertainty/safety validation, one-call
+limit,75s/10000token budgets, RBAC and native confirmation are unchanged.
+Value-free refusal-rule logging now distinguishes the actual next failure
+without candidate/token content.423isolated checks, Ruff and diff checks pass;
+recording app/worker run the matching source hash and both8018and8000relay
+return live/AI-ready200. No further engineering provider calls occur. A fresh
+actual rehearsal is being prepared; no clean full rehearsal, final combined
+film or whole-film acceptance exists. See the ledger for exact turn/proof IDs.
+
+## Current AI setup: Azure credentials applied and model probes pass
+
+Owner replaces Ollama/Qwen with Azure API-key models and grants secret reads.
+Existing OpenAI/Search keys are saved privately and applied to all three local
+AI processes; local endpoint/model are empty. Both actual serving and latest
+Azure revisions match the selected configuration. Native API probes verify
+gpt-5.6-luna-2026-07-09 and gpt-4.1-2025-04-14; backend boot verifies embeddings
+and the controlled index. UI200/liveness/AI-ready pass. Actual native admin38
+station chat returns200in11.224s and correctly identifies Pump08as1of14running;
+thread/focus200and no pageerrors or business writes. The omitted local policy
+setting found during initial recreation is restored with all original
+nonprovider environment values verified unchanged. Full script acceptance is
+not claimed; source deployment and this scoped Azure chat check are verified.
+Attachment/media planes remain dark pending their separate credentials.
+No local-model fallback. Both local PostgreSQL schemas remain at997matching
+Azure; no additional provider migration or cloud mutation.
+[Configuration evidence](reports/local-azure-ai-configuration-2026-10-27.md).
+
+## Current local deployment: merged code and PostgreSQL updated
+
+Owner authorizes local deployment and Azure/local migration comparison.
+Current merged source7e33232c7 plus retained local edits serves5173 through
+the existing8000relay/8018combined ASGI recording environment. Health is
+alive/AI-ready; the local model identity passes boot. Both local databases
+receive voice0012 after validated backups; all997migration identities and
+the new column match freshly inspected Azure. No Azure data replacement or
+Azure write is needed. Business counts and completed case16/3992/34 remain.
+The guarded database address is restored after Docker restart; app grants and
+native identity guards remain. Fresh Vite/gatewayPIDs are13474/13473; historical
+recorder receipts are not fresh capture consent. Actual admin browser and
+read-only station AI smoke remain in progress. Details and actual limits:
+[deployment ledger](reports/local-deployment-and-postgres-2026-10-27.md).
+
+## Current integration: latest IOT-Merge with local recording changes
+
+Owner authorizes resolving all conflicts while preserving features. This
+checkout now fast-forwards to7e33232c7 and reapplies its local shoot/AI work.
+All six conflicts are resolved; the recovery archive and stash remain.
+All76local and219incoming non-overlap files match their original bytes;
+37Python-file AST checks find no missing new definitions. TypeScript;
+125frontend units;263backend components;112native PostgreSQL cases;
+57complete visualization cases;36desktop/phone context cases;33mimic cases
+and8draft/admission cases pass. All60work/intake browser cases are exercised
+successfully with one unchanged case qualified by focused rerun. Earlier
+failed attempts remain recorded. Complete live admin/script acceptance is pending.
+Detailed decisions and actual results:
+[integration ledger](reports/pump08-iot-merge-resolution-2026-10-27.md).
+No source commit/push;recording-runtime migration;new capture or deployment.
+Historical source-port and inventory entries below retain their original scope.
+
 ## Selective chat/voice port to IoT - 27 October 2026
 
 The approved 17-commit chat/voice series is copied locally onto published
@@ -10,6 +616,554 @@ passing focused checks, reproduced target-baseline failures and browser reruns.
 This is a local integration candidate awaiting human review, not a published
 branch or a deployment. Older source and Azure sections below retain their
 historical scope and do not qualify this candidate.
+## Prior inventory: script fidelity and incoming AI-chat fixes
+
+Owner requests the latest IOT-Merge fixes before the final recording and asks
+for the local shoot inventory first. Fetch completed: origin/IOT-Merge is
+7e33232c7, eighteen commits beyond this checkout's721c72f08. Source is not
+merged or deployed. The pre-inventory checkout has63tracked edits and30new
+files; eighteen paths overlap upstream and six require text conflict resolution.
+Full inventory and actual comparison evidence:
+[recording integration inventory](reports/pump08-local-changes-before-iot-merge-2026-10-27.md).
+Preserve the dirty primary and sandbox worktrees and external recorder assets.
+Owner also requires exact original V5 script coverage, admin browsing, shorter
+pauses and full mimic framing. Existing review exports are historical; their
+checks do not establish full listening, script acceptance or final release.
+Incoming AI fixes require native Pump08 validation before restoring chat scenes.
+No new capture, source merge, migration, business action or deployment occurred.
+
+## Latest playback variant: six-second clearance-mail reading hold
+
+Final compatible MP4:
+`/Users/Aniketkumar/EQUA-AIMMS-Recorder/EQUA_V5_DELIVERY/release/pump08-no-ai-demo/pump08-demo.mp4`.
+9m27.433s,1080p30,H.264 High/AAC,English captions,35,711,890bytes;
+SHA256 `4fffa49e7b3ef3391420f70a715a25073e0e2f0c40093ee5e81efbbc141378e5`.
+This preserves the earlier9m21 REVIEW and adds only six seconds of genuine
+same-case clearance-mail reading time. Later speech/captions shift together.
+Full video/audio decode passes; AAC/captions match the verified held master;
+measured−16.32LUFS/−2.44dBTP. Final critical chart, three checks, report preview,
+clearance email and recovered station frames were inspected. Actual script,
+scene plan, preflight, execution report and generated audits are beside the MP4.
+Human listening/release acceptance remains unperformed. Closure in-app drawer
+and separate post-closeout performance-chart shots were not captured; do not
+claim those views, physical authority, AI chat, SAP writeback or95+ acceptance.
+No new business action, external upload, commit, push or deployment occurred.
+
+## Current execution: narrated and captioned REVIEW delivered
+
+Owner explicitly authorizes final narration/caption alignment, assembly and
+audiovisual review. Native capture is complete: child `noai-continuous-01`
+has all sixteen remaining steps passed, `continuation.captureComplete=true`,
+and actual stop metadata and native export; Cap reports no active recording.
+Case16 / WO3992 / packet34 remains the same completed exercise. The five
+original clips and the continuous export remain preserved.
+
+Editing completed in
+`~/EQUA-AIMMS-Recorder/EQUA_V5_DELIVERY/edit/continuous-review-LBoB9v`.
+The agreed REVIEW has twenty scenes: AI chat stays deferred and optional
+S17 ROI narration/playback is omitted. S04/S05 genuine reading holds and
+S05/S09 factual narration corrections are derived. The actual561.433333-second
+1080p30 H.264/AAC REVIEW is delivered at
+`~/EQUA-AIMMS-Recorder/EQUA_V5_DELIVERY/release/pump08-final-review-20261027/Pump08-V5-NO-AI-CONTINUOUS-REVIEW.mp4`.
+Full audio/video decode passes;84embedded caption cues match the speech text
+and sidecar timing within2ms. Actual Chrome playback and20scene seek/caption
+samples pass; all20final scene images were inspected in five contact sheets.
+Audio measures-16.31LUFS/-2.42dBTP; decoded voice correlation with selected
+PCM is0.980. SRT/VTT and `AV-checks.json` accompany the MP4. Caption phrases
+use measured paragraph timing proportionally rather than forced word alignment.
+Native loading/transitions and brief PDF/completion-mail appearances remain.
+Human listening, voice provenance and product/release acceptance remain
+unverified; no external upload or new business action was performed.
+Execution evidence: `reports/pump08-v5-runtime-2026-10-27.md`.
+
+## Current scope: owner defers AI chat from the main recording
+
+On 27 October the owner explicitly asks to skip AI chat now and record it
+separately later. The main film is now the native, non-chat Pump08 lifecycle,
+scope `owner-no-ai-chat-20261027`. Keep the original V5 pack, narration and all
+failed AI probes as historical evidence. Revised scene actions and narration
+must not imply an AI diagnosis or chat interaction occurred. Station and
+closed-case evidence come from the actual mimic, work order and report views.
+
+This changes recording scope only: retain event-owned work creation, duplicate
+protection, all five work tabs, safety and verification requirements, separate
+exercise-role report approval, local notifications and recovery/history checks.
+Two fresh scope-bound operational rehearsals now pass: rehearsal5 uses
+anomaly14/WO3990/packet32 and rehearsal6 uses anomaly15/WO3991/packet33.
+The earlier unclean and pending-narration runs remain unchanged. All21 revised
+WAVs exist with319.987seconds of speech;12focused editor tests pass. Native
+frame review found loader/end-view timing gaps in Health, verification and
+closeout; the recorder is adding actual loaded-view checks before capture.
+Native Cap recording actually began at17:37:33UTC after explicit owner consent.
+S01–S05 are captured and exported for the same new anomaly16/WO3992/packet34.
+S05 succeeded after fresh target-specific consent; S06 then failed discovery
+before capture or a business action. Five original clips and both failed
+attempts remain intact. Fresh title/geometry sampling and a narrowly audited
+recorder retry pass30focused checks, but did not solve native discovery.
+Actual Cap diagnostics show a long Chrome title truncated with an ellipsis;
+the continuation is changing only its temporary title to a short unique value.
+A single600-second native capture actually started at18:25:07UTC after the
+owner approved fresh Chrome window292552. Cap identifier `ed1f7481dd56`
+continues the remaining16scenes without intervening target discovery or
+exports. Short-title target matching is now verified natively. All16 remaining
+steps completed; Cap stopped18:34:02UTC with metadata and exported534.411133s
+of native1080p30 footage. Case16 is resolved, WO3992 completed and packet34
+closed. Report5759 was submitted by exercise planner39 and approved by the
+distinct exercise reviewer40; three prepared checks persisted94/96/max96.
+This is software-role approval, not independent human or physical acceptance.
+Postproduction is now complete as the bounded REVIEW described above, using
+disclosed genuine S04/S05 reading holds and factual S05/S09 speech corrections.
+Some native transitions and PDF/completion-mail views remain brief; no stronger
+visual proof or product/release acceptance is asserted. OpenRouter is not
+configured or needed for this film; no external inference was started.
+
+## Active execution: 27 October; owner authorizes all four completion steps
+
+Owner explicitly directs native AI setup, reversible clean replay, complete
+governed lifecycle and remaining V5 recording without stopping at another plan.
+Fresh CURRENT primary snapshot is restored into separate local
+`aimms_v5_take_20261027`; original primary DB remains unchanged. Native staging
+ASGI8018 is now the5173 backend through a fixed host8000TCP relay. The
+original backend is stopped and retained for rollback. New replay
+bindings2684/2685 carry prepared W5=94/W6=96; original readings/history
+remain unchanged. Local Ollama and the native OpenAI-compatible client
+answered actual inference probes. The first station conversation nevertheless
+returned an incorrect operating-state answer; AI grounding is NOT accepted.
+
+Event-owned WO/packet and separately persisted W5/W6 server max are now ported
+to original source:141PostgreSQL tests;14desktop/phone fixture cases;29units;
+both TypeScript checks;Ruff/Biome pass.17prior dirty source hashes preserved.
+Default event flag remains OFF outside new runtime. No migration added.
+These checks are not full runtime/product acceptance. Distinct exercise
+accounts and the21segment native runner are provisioned in the clone.
+First rehearsal created native anomaly10/WO3986/packet28 using a reviewed
+duplicate override; its manual-planned path does not prove event-owned
+staffing. It is now completed but unclean: three checks and PDF submission
+passed; distinct exercise reviewer approved; native closeout resolved10 and
+closed28/completed3986 with maintenance history2880. Real alarm and clearance
+emails arrived in local Mailpit. No final capture has begun.
+The native AI operating reader now shares authorized station-mimic states;
+39PostgreSQL reader regression tests and a current-clone read pass. A fresh
+full assistant turn previously failed. The routing fix now passes171focused
+tests and is reloaded with a verified local16kcontext model and90slookup
+timeout. The native-shell machine-context crash is fixed:6desktop/phone plus
+2existing picker checks andTypeScript/Biome pass. Authenticated live station
+and history turns are being rechecked; neither fixture evidence nor model
+readiness is full assistant acceptance.
+Private native history is activated and reloaded; read-only native DRF gives
+W5=94/W6=96 plus recorded forebay120.97 and bounded resolved TEST history.
+S19 actual browser recovery passes. Two clean event-owned rehearsals and
+all21final captures remain required. Details: reports/pump08-v5-runtime-2026-10-27.md.
+All mail is restricted to local Mailpit; no production/OT/SAP dispatch,
+forced healthy historian readings or fabricated AI/manual approvals.
+
+## Latest continuation: 27 October; narrated opening plus native baseline capture
+
+Owner asks finish all ASAP. Actual5173 login works; no new login is needed.
+All21 canonical narration WAVs now exist; S01 has a narrated/captioned60s
+1080p30 preview. Native Cap `eee410bc30a8` records90s Pump08 baseline
+2D/reference3D/motor/Health/Performance, stopped with metadata and validation
+passing. Native exported frames were reviewed. Performance history lines
+ARE visible despite an automation selector0count; motor-inspector framing
+needs refinement. Preview paths and full limits are in
+`~/EQUA-AIMMS-Recorder/EQUA_V5_DELIVERY/release/continuation-execution-report.md`.
+
+Full V5 film is NOT complete: authenticated AI routes404 under primary
+Django-only; approved provider/retrieval config absent from inspected runtime.
+Pinned read-only local PG proves underlying W5=149.8 andW6=152 against145°C,
+not new test overlays. Source observations are2025-08-01 under existing
+display-time shift; no active anomalies does not mean healthy. Do not force
+green or rewrite measured data. Intake/max prerequisites remain sandbox-only;
+distinct-reviewer and two full rehearsals remain unverified. No new alarm/WO,
+email, app source/deployment or business data mutation. Recording has stopped
+and owned browser closed.48 recorder and7 source checks pass; not product
+acceptance. One local Whisper discovery unexpectedly fetched generic external
+model metadata; no script/audio reported transmitted. No paid action/upload.
+
+## Latest capture: 27 October; provisional S01 recorded on actual5173
+
+Owner approved one60-second opening. Native Cap Studio `5c5c0f46e125` actually
+started and stopped; metadata exists and native project validation/export
+decode pass. Review MP4 is `~/EQUA-AIMMS-Recorder/EQUA_V5_DELIVERY/scenes/S01-provisional.mp4`:
+59.966667s at1920×1080/30fps with no audio track. Camera/mic/system audio OFF.
+Actual exported frames show owner dashboard then14-pump station; P8 Running
+matches1of14 and forebay fill is visible. Pump10 hover and clipped legend
+need refinement. Narration is unrecorded; S01 is provisional not accepted.
+Twenty other segments remain NOT_STARTED. No recording or owned browser
+remains active; no business writes occurred. AI404 under primary Django-only,
+unverified AI/retrieval/narration/reviewer access and two full rehearsals remain
+open. Sandbox-only source prerequisites are not deployed5173. Full-film gates
+are unverified. See `reports/pump08-v5-opening-2026-10-27.md`. Older checkpoints
+below describe their observation time, not current capture status.
+
+## Latest target decision: 27 October; existing localhost5173 authenticated
+
+Owner rejects filming5190 and explicitly chooses `http://localhost:5173/web/home`,
+approving local DB/mail scope. Recorder now uses that URL and the original source;
+same dedicated profile authenticates without another login, daemon PID25700.
+Native screenshot matches9 open orders,8 overdue,3 notifications and Asia/Riyadh.
+Read-only connection metadata verifies `aimms_azure_copy` at local Docker PG
+172.21.0.2; SMTP targets local Mailpit1025. No primary database or source changes.
+5190 is preserved, not the film target. Window290101 was observed for Chrome;
+rediscover it before capture rather than reuse historical IDs or smoke consent.
+
+Actual5173 backend `aimms-r6-viewer-server` runs Django `runserver`, not the native
+ASGI entrypoint, and AI reads return404. Inspection overcounts those background
+AI errors as dashboard failure; actual screenshot proves the dashboard loads.
+AI/retrieval and narration connections remain unproven; owner was asked for
+existing configuration paths, not secrets. No primary service restart was made.
+
+Native prerequisite fixes remain ONLY in new sandbox source, not deployed5173:
+event-owned WO/packet and separately persisted W5/W6 with server max. Independent
+review restored shared staffing behavior while retaining event-only escalation.
+Latest corrected tests119 PostgreSQL plus a focused event test and24 frontend
+cases pass; TypeScript, Ruff lint and Biome pass. Recorder48 fixtures pass.
+These are source evidence, not product/deployment acceptance. Full native case,
+two rehearsals and all12 release gates remain unverified; all21 scenes remain
+NOT_STARTED. No recording job, runtime alarm, WO or email message was created.
+
+## Latest continuation: 27 October; isolated services prepared, workflow work active
+
+Owner explicitly directs completion of all steps and the recording. This extends
+the supplied Pump08 V5 story to isolated implementation and local rehearsals;
+it does not waive authentication, role authority, release checks or fresh
+target-specific Cap consent. No external email, production/OT write, purchase
+or SAP dispatch is authorized. Camera/microphone/system audio remain OFF.
+
+The new detached source preserves the original17-file dirty-source baseline.
+An authorized read-only dump of the previous local demo was restored into the
+distinct new PostgreSQL15 cluster/database `aimms_v5_20261027`; primary, previous
+demo and Azure were not changed. Frontend5190, backend8017 and local Mailpit8031
+respond200. Native `/web/login` visibly renders with0 page errors; the earlier
+blank `/login` probe used the wrong React Router basename. This proves login
+presentation only, not authenticated product readiness. Media remains shared
+read-only and the fixed-target ingress has an ordinary bridge; do not claim
+complete infrastructure isolation.
+
+The new app still has restricted login-only DB writes, a business-request gate,
+dummy email and deliberately disabled AI. Worker remains stopped; copied
+0queued/46schedules/527historical tasks have not been processed. Recorder
+readiness fixtures now pass38 tests, but actual primary inspection correctly
+blocks on AI HTTP404/loading rather than accepting a loader screenshot.
+
+Three requested-model jobs are active: Terra Max moves the owned dedicated
+browser to5190 without weakening guards; Terra Max implements minimum native
+event-owned work/staff escalation and separately persisted W5/W6 verification
+in NEW source only; Sol Max refines the execution/access critical path. Their
+briefs/results use `~/EQUA-AIMMS-Recorder/logs/v5-*-20261027.*`. These are tasks
+in progress, not accepted features or deployments. Manual sandbox login and
+effective AI/Speech/role access remain to be verified. No alarm, WO, workflow
+approval, provider call, mail message or capture has occurred in this phase.
+All21 V5 scenes remain NOT_STARTED and all12 product/release gates unverified.
+Two clean native rehearsals must precede final capture; preserve all older
+cases, clips and source projects. Announce actual recording before starting.
+
+The owned recorder browser now uses5190 and its native login page. The cloned
+`admin` account was inactive; owner explicitly approved reactivation. A guarded
+transaction verified the new database and cluster identifier and changed only
+that account's active flag. Password and permissions were not changed; no auth
+session was forged. Owner must retry native login; authenticated readiness is
+not yet established. Private activation receipt is retained outside delivery.
+
+## Previous final-start request: 27 October; native export fixed, V5 prerequisites unmet
+
+Owner says `now start final recoridng`. Bounded Sol Max advice and Terra Max
+implementation are invoked with the requested6.1 model slugs/reasoning max.
+No Hyperagent. Both reports and the current assessment are in
+`~/EQUA-AIMMS-Recorder/logs/v5-final-start-*.md`.
+
+Terra fixes native Cap export on a hash-verified copy of the clean existing
+smoke source: `aspectRatio: wide` and verified-silent `audio.mute: true` yield
+actual1920×1080/30fps with no audio track. Original14 project files and previous
+MP4 stay unchanged. New focused tests5/5 and independent full recorder tests21/21
+pass. No FFmpeg capture, crop/stretch, remux substitute or weakened media check.
+The corrected clip and proof paths are in `v5-final-start-assessment-20261027.md`.
+Permissions remain resolved; neither licensing nor native export blocks this
+personal/local scope. Full presentation/menu/framing QA remains separate.
+
+Final capture is NOT_STARTED: V5 demands validated product claims and two complete
+rehearsals, neither supplied by the smoke tests. Current prepared plan/caller-
+selected owner path and approved-trade matcher do not prove autonomous qualified/
+available/experienced assignment. Reviewed approved-manual reader abstains, and
+verification does not compute max from two separate readings. New host receipt
+`EQUA_V5_DELIVERY/provenance/host-receipt-2026-10-27-final-start.json` verifies
+distinct local DB identities but still finds primary static routing in demo config;
+loaded routing and same-case AI/notifications/review/SAP/history remain unverified.
+Read-only browser inspection proves navigation only; dashboard screenshot still
+loads. The recorder `shoot` remains blocked F01-F11 scaffolding, not V5 automation.
+
+Owner was asked to choose completing strict V5 prerequisites or recording only
+truthfully supported features; no answer is assumed. No fourth capture, new alarm,
+WO, DB/historian change, external email, app-source change, upload or paid action.
+All21 scenes remain NOT_STARTED and all12 film gates unverified. Preserve existing
+dirty app edits, old WO-003826 and all prior videos/projects.
+
+## Earlier permission recheck: 27 October, 08:47 UTC; permission dialogs resolved
+
+Owner says `now enabled it check again`. Same Chrome window288941 is freshly
+rediscovered and the same12-second Studio test is run once, all camera/audio
+inputs OFF and local save/export only. Non-prompting `AXIsProcessTrusted()` returns
+true. Actual exported frames at1s and10s show neither the screen-access nor
+Accessibility dialog. Permission/dialog check passes; these are no longer blockers.
+
+Native recording `a63d53edd3ca` stops with metadata present; native validation
+and full MP4 decode pass. Source, MP4 and review are preserved at
+`~/EQUA-AIMMS-Recorder/sessions/smoke-2026-10-27T08-46-18-354Z/`.
+Native export is12.233333 seconds at30fps,1636×1080 with all-zero AAC; the exact
+1920×1080/no-audio-track policy still correctly fails. Source has display only.
+No recording remains active. No fourth test, permission bypass, business mutation,
+source-project edit, upload or full V5 scene was performed. All21 V5 scenes remain
+NOT_STARTED and all12 film release gates unverified. Previous tests are retained.
+
+## Previous retry: 27 October, 08:40 UTC; Accessibility dialog remained
+
+Owner says `try again`. The same Chrome window288941 is freshly rediscovered and
+the same12-second Studio test is retried once, all camera/audio inputs OFF and
+local save/export only. Actual native recording `e5fbaee7ee00` stops with metadata
+present; native project validation and full MP4 decode pass. Export is12.2 seconds
+at30fps; native source has display only, while exported AAC samples are all zero.
+Source, MP4 and review are preserved in
+`~/EQUA-AIMMS-Recorder/sessions/smoke-2026-10-27T08-40-11-655Z/`.
+
+Inspected exported frames at1s and10s show the screen-access prompt is gone, but
+the IntelliJ IDEA Accessibility Access dialog remains over the dashboard. Owner
+must dismiss that prompt or explicitly enable desktop-control access in Settings;
+this does not prove Accessibility is required for capture itself. Exact1920×1080
+and no-track output acceptance still fails for native1636×1080 plus silent AAC.
+No permission is changed or bypassed. No recording remains active, no third test
+is started and no business data, source project, upload or full V5 scene changes.
+The previous test and both chat-consent receipts remain preserved. All21 V5
+scenes remain NOT_STARTED and all12 film release gates unverified.
+
+## Previous capture: 27 October, approved local test recorded; clean-footage QA fails
+
+Owner replies `approved` to the exact12-second Studio test proposal for the
+freshly verified Chrome dashboard window288941,15-second hard stop and all
+camera/audio inputs OFF. The agent relays that chat consent into the existing
+CLI prompt; a separate receipt records this provenance honestly. One actual
+native Cap recording, `dbc76f642aa5`, stops with metadata present; native project
+validation and full MP4 decode pass. The source and export are preserved at
+`~/EQUA-AIMMS-Recorder/sessions/smoke-2026-10-27T08-28-38-939Z/`; review is
+`handoff/test-review.md`, native MP4 `exports/SMOKE.mp4`.
+
+This is not accepted demo footage: actual frames at1s and10s show macOS
+screen-access and Accessibility prompts over the dashboard. The owner must
+resolve those OS prompts directly. Native MP4 is12.233333 seconds,1636×1080 at30fps
+with one silent AAC track, so the wrapper correctly rejects its exact1920×1080
+and no-track output policy. Decoded audio is all zero; native source metadata
+contains display only. No recording remains active. No automatic recapture,
+source-project editing, app mutation, upload or sharing is performed. Resolve
+the OS prompts and export framing using the preserved source before seeking
+fresh target-specific capture consent. All21 full-film scenes remain NOT_STARTED
+and all12 V5 product/release gates unverified. Cap Free personal/local scope is
+retained; no licence purchase or OBS switch is needed for this session.
+
+## Earlier scope: personal/local Cap use — 27 October, prior to capture approval
+
+Owner explicitly clarifies this recording is personal and local, not commercial
+promotion. Cap Free personal/local use is accepted; the earlier commercial-film
+licensing assumption is superseded for this session. No purchase, OBS switch,
+upload, sharing or commercial release is authorized. Do not fabricate a paid
+licence: native `license.confirmed` remains false. A separate operator-purpose
+receipt authorizes personal_local with localOnly true and publication/uploads
+false. The corrected doctor passes its usage gate;16 recorder tests pass.
+
+Terra's origin/authenticated-page focus helper is independently inspected and
+its tests pass. The old owned daemon is gracefully stopped outside any capture,
+then reloaded with the same private profile; login persists without exporting
+cookies. Live focus succeeds on the allowed5173 dashboard. Fresh Cap discovery
+finds the owned Chrome dashboard window288941; this is an observed ephemeral ID,
+not permission to reuse a stale target. A12-second Studio test with15-second hard
+stop and camera/mic/system-audio OFF plus local export is proposed to the owner.
+At that checkpoint explicit confirmation was pending and no recording or export
+had begun; the approved test and its actual failed-QA outcome are recorded above.
+
+The bounded proof collector is complete:8 collector and7 V5 source-preflight
+tests pass, alongside the16 recorder tests. Its commercial-entitlement and
+off-screen warnings below do not incorporate this personal-scope correction or
+the subsequent live helper reload. This does not clear product/workflow evidence:
+all12 full-film release gates remain unverified. No test alarm, work order, app
+source, database or Azure change is performed by these recording-tool changes.
+
+## Pump08 V5 host proof — 27 October, 08:05 UTC; capture remains blocked
+
+Keep Cap as the selected recorder. The separate read-only collector and current
+[host receipt](../../../../../EQUA-AIMMS-Recorder/EQUA_V5_DELIVERY/provenance/host-observations-2026-10-27.md)
+report the local primary and demo PostgreSQL identities and distinct OIDs on one
+cluster; both server/worker pairs and separate Mailpit configurations were
+observed without a business write. This is not full infrastructure isolation.
+The current 5180 config points API/media at8007 but static at primary8000;
+the config changed after the listener started, so its live loaded routing remains
+unverified. All four app containers and both Vite frontends use the same dirty
+source checkout; the receipt records its hashes and limitations.
+
+The isolated trade/calendar counts and selected provider-configuration presence
+checks are recorded without personnel records or secret values. Event-worker
+creation and skill/availability/experience matching, cited AI, two-reading
+verification and SAP acknowledgement remain unproved. The native Cap doctor now
+reports screen permission granted and captureReady; dedicated Chrome is
+authenticated, but the Cap window list contains only IntelliJ and native metadata
+reports the dedicated Chrome window off-screen. Commercial entitlement and
+fresh exact-target Studio/audio/duration consent are not established. No capture,
+app mutation or film acceptance occurred; all 12 V5 release gates remain open.
+During this audit, recorder focus and usage-authorization code changed on disk
+through separate concurrent work. This collector did not make or use those
+changes; the running daemon predates the edited file. Separate scoped review is
+required before using the focus helper. Current `npm test` passes16 fixture tests;
+this does not prove actual capture readiness.
+
+## Pump08 V5 shoot — 27 October, preflight in progress; capture blocked
+
+Owner supplied `EQUA_AIMMS_Pump08_FINAL_Shoot_Ready_V5` and requested shooting.
+V5 is authoritative over older film scripts:21 segments; genuine event-to-WO
+automation and evidence gates; no fake AI or physical maintenance. V5 explicitly
+prohibits Hyperagent. Local Codex runners use `gpt-6.1-sol`/reasoning max for
+read-only planning and `gpt-6.1-terra`/reasoning max for recorder-side preparation.
+Both bounded workers have finished; results are
+`~/EQUA-AIMMS-Recorder/logs/v5-sol-result.md` and `v5-terra-result.md`.
+Terra created `~/EQUA-AIMMS-Recorder/EQUA_V5_DELIVERY/` with source hashes,
+21-scene manifests and honest pending proof/QA. Seven new preflight tests and
+10 existing recorder safety tests pass. No scene or film is recorded. Source
+inspection flags genuine V5 gaps in autonomous qualified/available assignment,
+cited AI analysis, two-reading verification calculation and SAP proof; these
+are not fixed or accepted. The earlier worker sandbox could not access Docker or
+the browser socket; the later host receipt above supersedes that limitation.
+
+After the owner enables IntelliJ IDEA permission, fresh native Cap checks report
+screenRecording granted and captureReady true. The currently listed window is
+IntelliJ IDEA, not the dedicated Chrome target; do not capture the IDE. The
+owner must bring the dedicated browser forward for fresh target discovery.
+Dedicated Chrome authentication is now verified at the native5173 dashboard;
+Cap still does not enumerate that Chrome window as an available target.
+Owner confirms using the free Cap version, with commercial entitlement not
+established, and explicitly directs that Cap remain the recorder. The earlier
+alternative was never authorized.
+No capture,
+alarm, business mutation, source-application change or external mail is started.
+Do not substitute Playwright/FFmpeg capture, reuse personal browser cookies,
+waive the consent gate or call recorder fixture tests production acceptance.
+Preserve all dirty application edits and previous videos. Primary5173/8000
+remains read-only for this task; isolated5180/8007 needs current isolation and
+workflow verification before any new authorized case is triggered.
+
+## Forebay water fill — 27 October, restored locally; scoped reviews pass
+
+Owner authorized restoration after the diagnosis below. Native StationSchematic
+now draws blue schematic water only with a usable finite numeric forebay reading.
+It displays the real value and an explicit Not to scale caption; there is no
+invented tank range or percentage. Disabled polling and stale/missing/failed
+readings suppress the fill. Current primary backend read-only projection for
+Cedar Creek/station93 supplies120.97157287597656m with good quality and no reason,
+enabled/polling true and read_failed false. Primary5173 serves the changed module.
+Typecheck and catalog compilation pass;29 native fixture browser checks pass
+including existing pump-count and responsive station regressions. Actual light,
+dark, phone and unavailable screenshots are inspected. These are not an
+authenticated browser/product acceptance run. Follow-up fixes align the top
+forebay KPI with tank availability and improve contrast/accessible state names.
+Final independent scoped reviews pass: Fable95/100 and Gemini96/100, with no
+remaining mandatory blockers. No database,
+telemetry ingestion, Azure deployment or equipment-control change. See
+[restoration verification](reports/forebay-fill-restoration-2026-10-27.md).
+
+### Prior diagnosis
+
+Owner's reference shows blue water while its level reads Polling disabled.
+Before this restoration5173 served StationSchematic with the tank outline and independent
+numeric KPI, not the old fixed wave. The earlier UI review explicitly removed
+that unscaled illustration; see reports/ui-r2.md S3 at line513. This is not a
+missing database restore or stale frontend module. No rendering, telemetry or
+polling behavior was changed during that read-only investigation. A genuinely scaled fill needs
+verified level bounds/datum and explicit unavailable/stale behavior; do not
+reintroduce an arbitrary fill as measured water depth.
+
+## Azure local snapshot and Pump08 files — 26 October, completed
+
+Primary5173/backend8000 now use the verified local Azure PostgreSQL snapshot
+from19:36:15 UTC:1,693 work orders;298 table counts and996 migration records
+match before normal local startup. Native postflight finds zero pending or
+unknown migrations. Azure remains read-only; no migration or deployment occurs.
+Original local-only data is retained, not merged, in
+`aimms_azure_copy_before_20261026t193609z` with a verified full backup.
+
+Ten Cedar Creek Pump08/asset102 PDFs are copied from the verified Azure Files
+share into the actual primary media mount. All10 open through native Django
+storage with matching downloaded SHA256 and sizes. Files are under
+`/Users/Aniketkumar/IdeaProjects/InvenTree-r6/viewer/data/media/attachments/assetmachine/102/`.
+Other equipment's missing media is not included in this scoped pull.
+
+Restored Azure plugin events expose recursion in the old explicit `--sync`
+development mode. Local runtime now uses native async dispatch and a verified
+local worker with scheduler/catch-up disabled and Mailpit email capture. No app
+business source changes. Original container is retained stopped. A transient
+Docker-management timeout recovers without restarting unrelated stacks.
+Primary and isolated5180/8007 return HTTP200; the isolated recording DB retains
+its original identity. No full workflow or recording-tool acceptance is claimed.
+See [data and media execution report](reports/azure-local-refresh-and-pump08-files-2026-10-26.md).
+
+## Computer 1 recording tools — 26 October, software set up; BLOCKED on human gates
+
+Owner requests setup only; the exact future filming script will arrive later.
+External workspace `~/EQUA-AIMMS-Recorder` has official Cap Desktop0.6.1 / CLI0.1,
+Codex-only skills/MCP, Playwright1.64.1, headed private Chrome155 and FFmpeg9.0.2.
+Cap creator login is verified; 76MCP schemas and10controller safety tests pass.
+Unrelated Codex config is preserved. No app code/dependency/database/deployment
+change or recording is performed. Primary5173/backend8000 remain healthy.
+Cap screen permission is denied; private AIMMS login and activated commercial
+license confirmation remain manual. A real consented capture/export has not
+been tested; no READY TO RECORD claim. F01–F11 are fail-closed runbook scaffolds
+awaiting approved script/bindings, not completed workflows. See the
+[setup acceptance report](reports/computer-1-recorder-setup-2026-10-26.md).
+
+## Procurement video — 26 October, 1.25× revision recorded; quality gate not met
+
+Owner requests a separate3–5 minute actual-app procurement demonstration with
+strict visible-action/narration synchronization and natural voice. Inspect
+native routes and data first; reuse safe isolated5180/8007 and Mailpit8030.
+No outside supplier order/email or physical receipt is authorized. The pump
+video and its completed incident must remain unchanged. See
+[procurement video ledger](reports/procurement-demo-video-2026-10-26.md).
+
+The owner-requested revision is 3:50.6 at 1920×1080, with both picture and
+pitch-preserving narration accelerated 1.25×. Fresh native PO0024/order31
+reaches Complete through separate reviewer41, verified record-only PDF4,
+100/100 local sample receipt stock1410 and explicit completion. The native
+form/PDF show user-requested `orders@equa.work` / `purchasing@equa.work`
+representative contacts; no email is sent and mailbox existence is not claimed.
+Purchase description and typed reason explain the electrical-stores parts,
+supplier SKU/price and quarantine inspection. Existing limitation: the approve
+backend does not retain that free-text reason. The film says enter, not saved;
+no business logic was changed or immutable history rewritten for a recording.
+
+The exact new MP4 passes full decode, same-factor speed checks, native API
+readback and complete normal-speed browser playback: 6,918decodedframes,
+8presentationdrops and no media error. All66decoded cue frames were inspected.
+Fable independently passes all three requested edits; overall UI87/100 fails95.
+Gemini's new run ended in a generic agent error without a usable final score;
+no specific cause is inferred and no dual95+ pass is claimed.
+The preceding take scored Fable86; Gemini ended in a generic agent error.
+Existing raw JSON, AI-branded human review and decimal presentation remain.
+Current video and evidence:
+`data/devscratch/procurement-demo-20261026-v3/review-candidate/procurement-demo-1.25x.mp4`.
+Package hashes pass; accepted publisher still refuses an unpassed quality gate.
+Earlier videos, source5173/8000 and Azure remain unchanged. No procurement
+production source edit, deployment, migration, commit or push occurred.
+
+## Actual application demo video — 26 October, delivered
+
+Owner requests a real8–10 minute1080p fault-to-fix video, not a mock application
+or disconnected slideshow. Use the same native code and safe test mechanisms
+in isolated local aimms_video_20261026 with dedicated5180/8007 and Mailpit8030;
+leave original5173/8000 and Azure unchanged. Native controlled-exercise gates
+and separate synthetic demo reviewer remain mandatory. Live AI is currently
+unconfigured and must not be faked. Captured incident20 / WO-003861 / RP-000038
+reaches native completion and independent verified recovery with PDF/local
+email evidence. The9:58 1080p narrated MP4 completes full decoding and actual
+normal-speed playback. Final independent bounded-card reviews pass Fable96.75
+and Gemini97.70 with zero mandatory defects.1223 frontend units and65 focused
+PostgreSQL cases pass; source changes remain uncommitted. Deliverables are in
+data/devscratch/pump-demo-20261026/deliverables/. No full-product, physical
+or Azure acceptance is claimed. AI/SAP remain unavailable and are not faked. See
+[video execution ledger](reports/pump-demo-video-2026-10-26.md).
 
 ## Real local rehearsal and Azure follow-through — in progress
 

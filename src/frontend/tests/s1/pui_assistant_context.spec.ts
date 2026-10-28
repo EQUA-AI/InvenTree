@@ -3,11 +3,13 @@ import { type Page, expect, test } from '@playwright/test';
 import { prepareDrawerFixture } from '../pages/ai_drawer_harness';
 import {
   type ObservedRequest,
+  mockFocusCandidates,
   observeRequest,
   sseBody,
   threadId
 } from '../pages/aichat_harness';
 import { nativeBaseline } from '../s0/guards';
+import { mockMachine } from '../s0/machineFixtures';
 
 nativeBaseline();
 
@@ -71,6 +73,105 @@ function acknowledgement() {
     }
   };
 }
+
+test('the native machine launcher remains usable in the production shell', async ({
+  page
+}, testInfo) => {
+  const { foundation, streamRequests } = await contextFixture(page);
+  await mockMachine(page, { canChange: false, assetType: 'pumphouse' });
+  foundation.focus.rows['machine:18'] = {
+    kind: 'machine',
+    id: 18,
+    label: 'Synthetic pump',
+    machine_id: 18,
+    work_order_id: null
+  };
+  await mockFocusCandidates(page, {
+    candidates: [foundation.focus.rows['machine:18']]
+  });
+  await page.route('**/api/notifications/?*', (route) =>
+    route.fulfill({ json: { count: 0, results: [], next: null } })
+  );
+  await page.goto(
+    '/playwright/s0-native.html?surface=machine-shell&role=viewer&entry=/machines/machine/18/details/'
+  );
+  await page.getByRole('button', { name: 'Open AI chat', exact: true }).click();
+  await page.getByTestId('new-ai-chat-thread').click();
+  await page.getByTestId('close-ai-chat').click();
+  const ask = page.getByRole('button', { name: 'Ask about this machine' });
+  await ask.focus();
+  await ask.press('Enter');
+  await expect(
+    page.getByRole('tab', { name: 'Chat', exact: true })
+  ).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByTestId('ai-chat-routing-hint')).toContainText(
+    'Synthetic pump'
+  );
+  await expect(
+    page.getByRole('textbox', { name: 'Message', exact: true })
+  ).toBeEnabled();
+  expect(foundation.scopeMutations).toHaveLength(0);
+  expect(foundation.focusMutations).toHaveLength(0);
+  expect(streamRequests).toHaveLength(0);
+  await page.screenshot({
+    path: testInfo.outputPath('native-machine-context.png'),
+    animations: 'disabled'
+  });
+  let scopeRefusals = 0;
+  await page.route('**/api/ai/threads/*/scope', async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback();
+    scopeRefusals += 1;
+    await route.fulfill({
+      status: 403,
+      json: { detail: 'scope_update_rejected' }
+    });
+  });
+  const draft = 'Keep this scoped question.';
+  await page.getByRole('textbox', { name: 'Message', exact: true }).fill(draft);
+  await page.getByTestId('send-ai-chat-message').click();
+  await expectBlocked(page, streamRequests, draft);
+  expect(scopeRefusals).toBe(1);
+  await page.getByTestId('conversation-focus-change').click();
+  await expect(page.getByTestId('conversation-focus-option')).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('native-focus-picker.png'),
+    animations: 'disabled'
+  });
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('conversation-focus-picker')).toBeHidden();
+  await expect(
+    page.getByRole('tab', { name: 'Chat', exact: true })
+  ).toBeVisible();
+  await page.getByTestId('conversation-focus-change').click();
+  await expect(page.getByTestId('conversation-focus-option')).toBeVisible();
+  expect(
+    await page
+      .getByTestId('conversation-focus-option')
+      .evaluate((element) => Boolean(element.closest('[inert]')))
+  ).toBe(false);
+  await page.getByTestId('conversation-focus-option').click();
+  await expect(page.getByTestId('conversation-focus-label')).toHaveText(
+    'Synthetic pump'
+  );
+  expect(foundation.focusMutations).toHaveLength(1);
+  expect(foundation.focusMutations[0].body?.focus).toEqual({
+    kind: 'machine',
+    id: 18
+  });
+  expect(foundation.scopeMutations).toHaveLength(0);
+  expect(streamRequests).toHaveLength(0);
+  await expect(page.getByTestId('ai-chat-routing-hint')).toHaveCount(0);
+  await expect(
+    page.getByRole('textbox', { name: 'Message', exact: true })
+  ).toHaveValue(draft);
+  await page.getByTestId('send-ai-chat-message').click();
+  await expect(
+    page.getByText('Golden typed response', { exact: true })
+  ).toBeVisible();
+  expect(streamRequests).toHaveLength(1);
+  expect(streamRequests[0].body?.message).toBe(draft);
+  expect(scopeRefusals).toBe(1);
+});
 
 test('a refused machine context sends nothing and preserves the typed draft for retry', async ({
   page
@@ -329,8 +430,10 @@ test('machine send stays busy through the focus acknowledgement and restores com
   try {
     await expect.poll(() => focusAttempts).toBe(1);
     expect(foundation.scopeMutations).toHaveLength(1);
-    await expect(composer).toBeDisabled();
-    await expect(page.getByTestId('attach-ai-chat-file')).toBeDisabled();
+    await expect(composer).toBeEnabled();
+    await expect(composer).toHaveValue('Wait for both acknowledgements.');
+    await expect(page.getByTestId('attach-ai-chat-file')).toBeEnabled();
+    await expect(page.getByTestId('send-ai-chat-message')).toBeDisabled();
     expect(streamRequests).toHaveLength(0);
   } finally {
     releaseFocus();
@@ -368,8 +471,10 @@ test('repeated activation during acknowledgement produces only one scope mutatio
         element.click();
       });
     await expect.poll(() => attempts).toBe(1);
-    await expect(composer).toBeDisabled();
-    await expect(page.getByTestId('attach-ai-chat-file')).toBeDisabled();
+    await expect(composer).toBeEnabled();
+    await expect(composer).toHaveValue('Only one send.');
+    await expect(page.getByTestId('attach-ai-chat-file')).toBeEnabled();
+    await expect(page.getByTestId('send-ai-chat-message')).toBeDisabled();
     expect(streamRequests).toHaveLength(0);
   } finally {
     releaseScope();

@@ -212,6 +212,10 @@ class ProposalAdapter:
 
     def read(self, decision, actor):
         """Read the owner-bound proposal under the actor's current scope."""
+        if (decision.executable or {}).get("adapter") == "repair_scope_draft":
+            from ai.core.decisions.adapters.repair_scope_adapter import read
+
+            return read(decision, actor)
         from aichat.services import proposals
 
         owner, (_, scope_hash) = self.owner_scope(actor)
@@ -246,6 +250,10 @@ class ProposalAdapter:
 
     def execute(self, decision, actor, phrase):
         """Re-derive scope, then atomically revalidate/execute with exact receipt."""
+        if (decision.executable or {}).get("adapter") == "repair_scope_draft":
+            from ai.core.decisions.adapters.repair_scope_adapter import execute
+
+            return execute(decision, actor)
         from aichat.services import proposals
 
         # Workflow flags may have changed after the coordinator's initial read.
@@ -263,6 +271,11 @@ class ProposalAdapter:
 
     def reject(self, decision, actor):
         """Cancel the durable source only for an explicit source-cancel command."""
+        if (decision.executable or {}).get("adapter") == "repair_scope_draft":
+            from ai.core.decisions.adapters.repair_scope_adapter import read
+
+            read(decision, actor)
+            return None
         from aichat.services import proposals
 
         owner, (_, scope_hash) = self.owner_scope(actor)

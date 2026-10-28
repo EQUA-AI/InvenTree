@@ -37,6 +37,30 @@ CANCEL = ActionSpec(
 
 def action_spec(action: str) -> ActionSpec:
     """Return an explicit unavailable entry for every unmapped action."""
+    if action == "save_proposed_repair_scope_draft":
+        return ActionSpec(
+            action=action,
+            target_type="WorkOrder",
+            command_and_authorization="save_repair_scope_draft; native work_order change/view; fresh Work, machine and source scope",
+            preview_fields=(
+                "suspected_cause",
+                "steps",
+                "tools_and_supplies",
+                "required_ppe",
+                "isolation_checks",
+                "replacement_parts",
+                "parts_decision",
+                "post_work_checks",
+                "open_questions",
+                "sources",
+                "gates",
+            ),
+            confirmation="Brief read-back; exact focused decision; explicit yes after delivery",
+            version_idempotency_receipt="Focus/version/source hashes; VoiceOperation; atomic WorkOrderCommand and WorkOrderEvent",
+            compensation_and_failure="New reviewed draft revision only; reconcile command/event receipt; never retry unknown effects",
+            available=True,
+            unavailable_reason="",
+        )
     if action in (HOLD.action, CANCEL.action):
         return HOLD if action == HOLD.action else CANCEL
     if action in {"stock.add", "stock.remove", "stock.transfer", "stock.count"}:

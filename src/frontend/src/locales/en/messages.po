@@ -21885,6 +21885,9 @@ msgstr "Layout pending plant approval"
 msgid "Schematic layout"
 msgstr "Schematic layout"
 
+msgid "Not to scale"
+msgstr "Not to scale"
+
 #: src/pages/assets/health/PumpMimic.tsx:117
 #: src/pages/assets/health/mimic/StationSchematic.tsx:136
 msgid "Schematic information"

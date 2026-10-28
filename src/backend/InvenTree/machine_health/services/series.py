@@ -56,6 +56,12 @@ from machine_health.services.display_time import (
     to_display,
     to_source,
 )
+from machine_health.services.historical import (
+    get_historical_connector,
+    historical_bindings,
+    historical_metadata,
+    historical_range,
+)
 from machine_health.services.trends import measured_interval, plottable, status_numbers
 
 logger = logging.getLogger('inventree')
@@ -98,7 +104,7 @@ class SeriesError(Exception):
             self.code = code
 
 
-def series_scope(machine):
+def series_scope(machine, *, historical_source=None):
     """Return the bindings a series for ``machine`` may read.
 
     Its own, always. A station may also read its bays', because a station page
@@ -106,6 +112,13 @@ def series_scope(machine):
     and the running count are the context a pump operates in. Neither reaches a
     sibling machine.
     """
+    if historical_source is not None:
+        return MachineSignalBinding.objects.select_related('source', 'machine').filter(
+            pk__in=[
+                binding.pk
+                for binding in historical_bindings(machine, historical_source)
+            ]
+        )
     scope = Q(machine=machine)
     if machine.asset_type == 'pumphouse':
         scope |= Q(machine__parent=machine)
@@ -126,7 +139,15 @@ def clamp_points(points) -> int:
 
 
 def read_series(
-    machine, *, binding_ids=(), keys=(), start=None, end=None, points=None, now=None
+    machine,
+    *,
+    binding_ids=(),
+    keys=(),
+    start=None,
+    end=None,
+    points=None,
+    now=None,
+    historical_source=None,
 ) -> dict:
     """Return sampled or complete history for several of a machine's signals.
 
@@ -134,7 +155,17 @@ def read_series(
     an id or key outside it is simply absent from the reply, never read.
     """
     now = now or timezone.now()
-    end = end or now
+    recorded = (
+        historical_range(machine, historical_source)
+        if historical_source is not None
+        else None
+    )
+    if historical_source is not None and recorded is None:
+        raise SeriesError(
+            'The source history range has not been recorded.',
+            'HISTORY_RANGE_UNAVAILABLE',
+        )
+    end = end or (recorded[1] if recorded else now)
     start = start or (end - timedelta(seconds=DEFAULT_SERIES_WINDOW_SECONDS))
     if end <= start:
         raise SeriesError('Series window end must come after its start.')
@@ -142,7 +173,7 @@ def read_series(
     span = (end - start).total_seconds()
     max_window = (
         LIVE_WINDOW_SECONDS
-        if recorded_telemetry_as_live()
+        if historical_source is None and recorded_telemetry_as_live()
         else MAX_SERIES_WINDOW_SECONDS
     )
     if span > max_window:
@@ -151,6 +182,11 @@ def read_series(
             'WINDOW_TOO_LONG',
         )
     points = clamp_points(points)
+    if recorded and (start < recorded[0] or end > recorded[1]):
+        raise SeriesError(
+            'The window must stay within the recorded source range.',
+            'WINDOW_OUT_OF_RANGE',
+        )
 
     wanted_ids = {int(value) for value in binding_ids}
     wanted_keys = {str(value) for value in keys}
@@ -165,7 +201,11 @@ def read_series(
     if wanted_keys:
         selection |= Q(external_key__in=wanted_keys)
     bindings = (
-        list(series_scope(machine).filter(selection).order_by('pk'))
+        list(
+            series_scope(machine, historical_source=historical_source)
+            .filter(selection)
+            .order_by('pk')
+        )
         if wanted_ids or wanted_keys
         else []
     )
@@ -174,7 +214,11 @@ def read_series(
     mode = MODE_COMPLETE if expected <= COMPLETE_READ_MAX_DOCUMENTS else MODE_SAMPLED
 
     station = machine if machine.asset_type == 'pumphouse' else machine.parent
-    shift = display_shift(station, bindings[0].source if bindings else None, now=now)
+    shift = (
+        timedelta(0)
+        if historical_source is not None
+        else display_shift(station, bindings[0].source if bindings else None, now=now)
+    )
     read_start, read_end = to_source(start, shift), to_source(end, shift)
     statuses = status_numbers()
 
@@ -191,7 +235,11 @@ def read_series(
     )
     for group in by_source.values():
         source = group[0].source
-        connector = get_connector(source, machine=machine)
+        connector = (
+            get_historical_connector(source, machine=machine)
+            if historical_source is not None
+            else get_connector(source, machine=machine)
+        )
         if connector is None:
             for binding in group:
                 results[binding.pk] = _unavailable(
@@ -283,7 +331,24 @@ def read_series(
 
     series = [results[binding.pk] for binding in bindings if binding.pk in results]
 
-    status = live_status(station, now=now) if station is not None else None
+    status = (
+        live_status(station, now=now)
+        if station is not None and historical_source is None
+        else None
+    )
+    metadata = (
+        historical_metadata(machine, historical_source)
+        if historical_source is not None
+        else presentation_metadata(shift)
+    )
+    live = _live(status)
+    if historical_source is not None:
+        live.update({
+            **metadata,
+            'enabled': False,
+            'reporting': False,
+            'read_failed': any(not entry['available'] for entry in series),
+        })
 
     return {
         'machine': machine.pk,
@@ -297,8 +362,8 @@ def read_series(
         'cadence_seconds': _measured_cadence(series) if mode == MODE_COMPLETE else None,
         'expected_documents': expected,
         'documents_read': documents_read,
-        **presentation_metadata(shift),
-        'live': _live(status),
+        **metadata,
+        'live': live,
         'limits': {
             'max_window_seconds': max_window,
             'complete_read_max_documents': COMPLETE_READ_MAX_DOCUMENTS,

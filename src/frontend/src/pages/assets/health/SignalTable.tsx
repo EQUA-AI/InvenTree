@@ -153,7 +153,7 @@ export function SignalTable({
   const visibleSignals = [...filteredSignals].sort(
     (a, b) =>
       (order === 'severity' ? rank(a) - rank(b) : 0) ||
-      a.display_name.localeCompare(b.display_name)
+      a.display_name.localeCompare(b.display_name, undefined, { numeric: true })
   );
   const components = [
     ...new Map(
