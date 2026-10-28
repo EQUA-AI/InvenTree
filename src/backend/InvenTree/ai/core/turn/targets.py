@@ -8,6 +8,12 @@ from typing import Any
 
 def machine_candidates(text: str) -> frozenset[int]:
     """Typed IDs only; a model number or the '2' in a machine name is not an ID."""
+    from ai.core.read_numbers import normalize_read_numbers
+
+    parsed = normalize_read_numbers(text)
+    if parsed.ambiguous:
+        return frozenset()
+    text = parsed.text
     values = re.findall(
         r"\bmachine(?:\s+(?:id\s*)?[:#]?\s*|[:#]\s*|(?=\d))(\d{1,7})\b(?![.-]\w)", text, re.I
     )
@@ -67,8 +73,11 @@ def resolve_target(actor: Any, text: str, focus: Any, work: Any, scope: Any) -> 
     from ai.core.focus.commands import is_bare_anaphora, selected_focus_kind
     from ai.core.focus.contract import FocusCandidate, FocusRejected, focus_from_stored
     from ai.core.focus.resolution import resolve_focus_candidate
+    from ai.core.read_numbers import normalize_read_numbers
     from django.contrib.auth import get_user_model
 
+    if re.search(r"\bmachine\s+id\b", text, re.I) and normalize_read_numbers(text).ambiguous:
+        return {"error": "The machine ID is ambiguous. Please specify one exact positive ID."}
     ids = machine_candidates(text)
     if len(ids) > 1:
         return {"error": "Several machine IDs were supplied. Select one machine for this request."}

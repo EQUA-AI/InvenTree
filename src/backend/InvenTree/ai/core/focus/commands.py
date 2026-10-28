@@ -33,6 +33,7 @@ from ai.core.focus.contract import (
     FocusValidationError,
     normalize_focus_request,
 )
+from common.spoken_numbers import integer_slot
 
 if TYPE_CHECKING:
     from ai.core.turn.state import TurnRun
@@ -54,7 +55,7 @@ _KIND_PREFIX_RES = (
     (re.compile(r"^\s*(?:the\s+|a\s+)?(?:machine|asset|equipment)\b\s*", re.I), KIND_MACHINE),
     (re.compile(r"^\s*(?:the\s+|a\s+)?(?:task|card)\b\s*", re.I), KIND_KANBAN_CARD),
     (
-        re.compile(r"^\s*(?:the\s+|a\s+)?(?:work\s*order|workorder|job|order)\b\s*", re.I),
+        re.compile(r"^\s*(?:the\s+|a\s+)?(?:work[ -]*order|job|order)\b\s*", re.I),
         KIND_WORK_ORDER,
     ),
 )
@@ -107,31 +108,11 @@ class FocusCommand:
     kind: str | None
     #: The remaining reference text (name fragment) after the kind keyword.
     query: str
-    #: A trailing/embedded number, when the phrase carried one ("machine 3").
+    #: A complete explicit ID slot, never a number embedded in a name.
     numeric_id: int | None
 
 
-_NUMBER_WORDS = {
-    "one": 1,
-    "two": 2,
-    "three": 3,
-    "four": 4,
-    "five": 5,
-    "six": 6,
-    "seven": 7,
-    "eight": 8,
-    "nine": 9,
-    "ten": 10,
-    "eleven": 11,
-    "twelve": 12,
-}
-
 _ID_RE = re.compile(r"\b(\d{1,7})\b")
-#: A WHOLE remainder that is nothing but digits is an explicit typed id
-#: ("machine 3"); an embedded number ("machine Pump 12", "WO-000123") is part
-#: of the NAME/REFERENCE and is never repaired into a PK.
-_WHOLE_NUMERIC_RE = re.compile(r"^\d{1,7}$")
-
 #: The spoken identity phrase per kind ("task 11" is the kanban_card 11).
 KIND_PHRASES: dict[str, str] = {
     KIND_MACHINE: "machine",
@@ -146,8 +127,8 @@ def parse_focus_command(text: str) -> FocusCommand | None:
     Deterministic and conservative: kind keyword first (``machine``/``asset``,
     ``task``/``card``, ``work order``/``job``/``order`` — the UI's "Task" is
     the ``kanban_card`` kind), then a number or a name fragment. Anything
-    without a kind keyword is not a switch. ONLY a whole explicit typed
-    numeric remainder is an id ("machine 3"); an embedded number is part of
+    without a kind keyword is not a switch. Only a complete numeric slot
+    (digits or number words) is an id; an embedded number is part of
     the reference/name ("machine Pump 12", "work order WO-000123") and its
     exact text is preserved — never stripped, repaired or re-tokenized.
     """
@@ -161,11 +142,9 @@ def parse_focus_command(text: str) -> FocusCommand | None:
         stripped = pattern.sub("", target, count=1)
         if stripped != target:
             remainder = stripped.strip()
-            if _WHOLE_NUMERIC_RE.match(remainder):
-                return FocusCommand(kind=kind, query="", numeric_id=int(remainder))
-            word = remainder.strip(" .,?!").lower()
-            if word in _NUMBER_WORDS:
-                return FocusCommand(kind=kind, query="", numeric_id=_NUMBER_WORDS[word])
+            numeric = integer_slot(remainder)
+            if numeric is not None and len(numeric) <= 7 and int(numeric) > 0:
+                return FocusCommand(kind=kind, query="", numeric_id=int(numeric))
             return FocusCommand(kind=kind, query=remainder.strip(" .,"), numeric_id=None)
     # No kind keyword: a NAME reference across kinds. A bare number with no
     # kind is refused outright — it must never guess between machine 3,

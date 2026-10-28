@@ -17,10 +17,12 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
+from common.spoken_numbers import canonical_equipment_name
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-QUESTION_ANSWER_POLICY_VERSION = "question-answer-v2"
+QUESTION_ANSWER_POLICY_VERSION = "question-answer-v3"
 
 _ORDINAL_WORDS = {
     "1": 0,
@@ -45,10 +47,13 @@ _LEADING_ORDINAL_RE = re.compile(
 )
 #: "the second one", "second option", "the first"
 _POSITIONAL_RE = re.compile(
-    r"\b(first|second|third|fourth)\s*(?:one|option|choice)?\b",
+    r"^\s*(?:the\s+)?(first|second|third|fourth)(?:\s+(?:one|option|choice))?"
+    r"(?:\s+please)?[\s.!,]*$",
     re.IGNORECASE,
 )
-_LAST_ONE_RE = re.compile(r"\bthe\s+last\s+(?:one|option|choice)\b", re.IGNORECASE)
+_LAST_ONE_RE = re.compile(
+    r"^\s*the\s+last\s+(?:one|option|choice)(?:\s+please)?[\s.!,]*$", re.IGNORECASE
+)
 
 _DECLINE_RE = re.compile(
     r"^\s*(?:no\s+thanks?|none\s+of\s+(?:those|these|them)|neither(?:\s+of\s+(?:those|these|them))?"
@@ -59,22 +64,19 @@ _DECLINE_RE = re.compile(
 #: must NOT decline; the anchor above plus this token bound enforces it.
 _DECLINE_MAX_TOKENS = 6
 
-#: v2 normalized label matching. Live battery 2026-08-08: technicians answer
-#: "Influent Pump Station 1" / "influent pump station one" against the label
-#: "Influent Pump Station No. 1" — exact/containment can never match those,
-#: and every near-miss re-asked the identical card. Normalization folds case,
-#: strips punctuation, maps small number words to digits and drops filler
-#: tokens, then a UNIQUE token-subset match either way selects. A long reply
-#: is a new question, not an answer — the token bound keeps a fresh sentence
-#: that merely mentions an option ("The influent pump station is tripping
-#: again...") from being hijacked as a selection.
+#: Comparison-only normalization shares equipment numbering with native search.
+#: Short labels may omit words in order; negations and extra requests are not
+#: discarded. Serial/model tokens retain punctuation and zero padding.
 _NUMBER_WORDS = {"one": "1", "two": "2", "three": "3", "four": "4"}
-_LABEL_FILLER_TOKENS = frozenset({"the", "a", "an", "no", "number", "num", "option", "please"})
+_LABEL_FILLER_TOKENS = frozenset({"the", "a", "an", "option", "please"})
 _LABEL_MATCH_MAX_TOKENS = 8
 
 
 def _normalized_tokens(text: str) -> tuple[str, ...]:
-    tokens = re.findall(r"[a-z0-9]+", text.casefold())
+    tokens = re.findall(
+        r"[a-z0-9]+(?:[._-][a-z0-9]+)*",
+        canonical_equipment_name(text).casefold(),
+    )
     return tuple(
         _NUMBER_WORDS.get(token, token) for token in tokens if token not in _LABEL_FILLER_TOKENS
     )
@@ -130,11 +132,10 @@ def interpret_question_answer(
 ) -> AnswerInterpretation:
     """Interpret one reply against the PERSISTED options, exactly once.
 
-    Precedence: ordinal → decline → unique label match → unmatched. An
-    out-of-range ordinal is unmatched (never an error); an ambiguous label
-    containment (two options hit) is unmatched — guessing selects nothing.
-    ``modality`` is reserved for future ASR-artifact tuning; the grammar is
-    identical on both rails in v1.
+    Precedence: whole ordinal → decline → unique label match → unmatched.
+    Numeric tokens and qualifiers are never discarded. Labels may be shortened
+    in order, not embedded in a new request or negated selection. Both rails
+    use the same grammar.
     """
     del modality  # reserved; grammar identical on both rails in v1
     text = (reply or "").strip()
@@ -144,6 +145,10 @@ def interpret_question_answer(
     index = _ordinal_index(text, len(options))
     if index is not None:
         return _selected(index, options, "ordinal")
+    if any(
+        pattern.fullmatch(text) for pattern in (_LEADING_ORDINAL_RE, _POSITIONAL_RE, _LAST_ONE_RE)
+    ):
+        return _unmatched()
 
     if len(text.split()) <= _DECLINE_MAX_TOKENS and _DECLINE_RE.match(text):
         return AnswerInterpretation(
@@ -154,34 +159,24 @@ def interpret_question_answer(
             policy_version=QUESTION_ANSWER_POLICY_VERSION,
         )
 
-    folded = text.casefold()
-    exact = [i for i, option in enumerate(options) if str(option["label"]).casefold() == folded]
+    answer_tokens = _normalized_tokens(text)
+    exact = [
+        index
+        for index, option in enumerate(options)
+        if answer_tokens and answer_tokens == _normalized_tokens(str(option["label"]))
+    ]
     if len(exact) == 1:
         return _selected(exact[0], options, "label")
-
-    contains = [
-        i
-        for i, option in enumerate(options)
-        if str(option["label"]).casefold() in folded or folded in str(option["label"]).casefold()
-    ]
-    if len(contains) == 1:
-        return _selected(contains[0], options, "label")
-
-    # v2: normalized token matching, short replies only. A unique option whose
-    # normalized tokens contain (or are contained by) the reply's selects;
-    # any ambiguity — "pump" hitting two pumps — stays unmatched: guessing
-    # selects nothing.
-    if len(text.split()) <= _LABEL_MATCH_MAX_TOKENS:
-        answer_tokens = set(_normalized_tokens(text))
-        if answer_tokens:
-            normalized = [
-                i
-                for i, option in enumerate(options)
-                if (label_tokens := set(_normalized_tokens(str(option["label"]))))
-                and (answer_tokens <= label_tokens or label_tokens <= answer_tokens)
-            ]
-            if len(normalized) == 1:
-                return _selected(normalized[0], options, "label")
+    if len(text.split()) <= _LABEL_MATCH_MAX_TOKENS and answer_tokens:
+        normalized = []
+        for index, option in enumerate(options):
+            label_tokens = iter(_normalized_tokens(str(option["label"])))
+            if all(
+                any(candidate == token for candidate in label_tokens) for token in answer_tokens
+            ):
+                normalized.append(index)
+        if len(normalized) == 1:
+            return _selected(normalized[0], options, "label")
 
     return _unmatched()
 

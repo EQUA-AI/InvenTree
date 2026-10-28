@@ -6,26 +6,18 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal
 
-_WORDS = (
-    "zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
-    "thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|"
-    "thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|point"
-)
+from common.spoken_numbers import NUMBER_WORDS_PATTERN, decimal_slot, integer_slot
+
+_WORDS = NUMBER_WORDS_PATTERN + "|point"
 _TOKEN = rf"(?:{_WORDS}|and(?=\s+(?:{_WORDS})\b))"
 _SLOT = re.compile(
-    r"(?P<label>\b(?:part(?:\s+id)?|work\s*order(?:\s+id)?|wo|first|"
+    r"(?P<label>\b(?:part(?:\s+id)?|work[ -]*order(?:\s+id)?|wo|"
+    r"(?:machine|category|location|stock item)\s+id|first|"
     r"at least|at most|no more than|no less than|less than|fewer than|more than|"
     r"greater than|under|below|over|above|exactly)\s*[:#]?\s*)"
-    rf"(?P<number>\d+(?:,\d{{3}})*(?:\.\d+)?|(?:{_TOKEN})\b(?:[ -]+{_TOKEN}\b)*)"
+    rf"(?P<number>[0-9]+(?:,[0-9]+)*(?:\.[0-9]+)?|(?:{_TOKEN})\b(?:[ -]+{_TOKEN}\b)*)"
     r"(?![\w-]|\.\w)",
     re.I,
-)
-_DIGITS = dict(
-    zip(
-        ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"],
-        "0123456789",
-        strict=True,
-    )
 )
 
 
@@ -38,33 +30,11 @@ class ReadNumbers:
 
 
 def _number(value: str, *, identifier: bool) -> str | None:
-    from ai.core.decisions.resolver import _reference
-
-    if re.fullmatch(r"\d+(?:\.\d+)?", value):
-        if identifier and ("." in value or int(value) <= 0):
-            return None
-        return value
-    words = value.lower().replace("-", " ").split()
-    if len(words) > 24 or words.count("point") > 1:
-        return None
-    if "point" in words:
-        if identifier:
-            return None
-        index = words.index("point")
-        whole = _reference(" ".join(words[:index]))
-        fraction = words[index + 1 :]
-        if (
-            not whole
-            or not whole.isdigit()
-            or not fraction
-            or any(w not in _DIGITS for w in fraction)
-        ):
-            return None
-        return str(Decimal(whole + "." + "".join(_DIGITS[w] for w in fraction)))
-    number = _reference(value)
-    if number is None or not number.isdigit() or (identifier and int(number) <= 0):
-        return None
-    return number
+    if identifier:
+        number = integer_slot(value)
+        return number if number is not None and int(number) > 0 else None
+    number = decimal_slot(value)
+    return str(Decimal(number)) if number is not None else None
 
 
 def normalize_read_numbers(text: str) -> ReadNumbers:
@@ -74,7 +44,13 @@ def normalize_read_numbers(text: str) -> ReadNumbers:
     def replace(match):
         nonlocal ambiguous
         label = match["label"].strip(" :#").lower()
-        identifier = bool(re.fullmatch(r"part(?:\s+id)?|work\s*order(?:\s+id)?|wo", label))
+        label = re.sub(r"work[ -]*order", "work order", label)
+        identifier = bool(
+            re.fullmatch(
+                r"part(?:\s+id)?|work order(?:\s+id)?|wo|(?:machine|category|location|stock item)\s+id",
+                label,
+            )
+        )
         parsed = _number(match["number"], identifier=identifier)
         if parsed is None:
             ambiguous = True

@@ -190,5 +190,5 @@ def test_neither_of_those_declines():
     assert interp.outcome == "declined"
 
 
-def test_policy_version_bumped_for_v2_grammar():
-    assert QUESTION_ANSWER_POLICY_VERSION == "question-answer-v2"
+def test_policy_version_bumped_for_bounded_v3_grammar():
+    assert QUESTION_ANSWER_POLICY_VERSION == "question-answer-v3"

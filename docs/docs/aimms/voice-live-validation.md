@@ -74,6 +74,48 @@ WS2-T9 (batch Speech validation) is descoped by the 2026-07-15 no-audio
 decision: capture uses the realtime transcription path, so no batch job,
 stored audio object, or provider result copy exists to validate.
 
+## Numbered equipment names
+
+Machine-name lookup accepts spoken numbers and equivalent zero padding:
+`Pump eight`, `Pump zero eight`, `Pump 8`, and `Pump No. 08` can find a
+recorded `Pump 08`, including a station-qualified name. The canonical recorded
+name and record ID are retained; the original transcript is not rewritten.
+This applies to both machine read tools and spoken focus selection.
+
+Matching remains inside the actor's current access and the enforced analysis
+scope. If multiple stations have a matching pump, the existing target-selection
+flow must ask which one; a truncated result is never a unique match.
+Number-token boundaries keep `Pump 8` distinct from `Pump 18`, `Pump 80`,
+`Pump 8A`, and numeric ranges. Serial/model codes, database IDs, arbitrary
+homophones and action-confirmation phrases are not normalized by this rule.
+Read-back, confirmation, revision binding and execution permissions are unchanged.
+
+## Semantic regression coverage
+
+The shared read/voice regression runner includes
+`ai/core/tests/test_semantic_equivalence.py`. It checks natural number spelling
+across typed read fields, focus IDs, equipment search/clarification, inventory
+quantities and estimated minutes. Cardinal quantities are distinguished from
+digit-by-digit identifiers; malformed numbers and ranges are not silently
+repaired. A number in an equipment name is never used as its database ID.
+
+Clarification policy `question-answer-v3` accepts equivalent equipment numbers
+but selects only a unique option. Numeric token boundaries and ordered names
+prevent `Pump 8` selecting `Pump 80` or station/pump numbers being swapped.
+Ordinal replies must be whole selections: `the second one` is valid;
+`not the second one` and `the second one is broken, what happened?` are not.
+Matching a name only selects the reviewed candidate; it never confirms an action.
+
+Explicitly strict boundaries remain intentional: part/IPN/revision/serial codes,
+assigned staff identities, stock-location write targets, units, approximate
+quantities, date interpretation and irreversible confirmations do not acquire
+generic fuzzy matching. Unsupported wording must continue through clarification
+or the existing bounded planner, never an invented value or broadened scope.
+Native machine search, typed field parsers and provider-free fixtures do not
+qualify transcription accuracy, accents, noise, other languages, every planner
+paraphrase, live action execution or human/physical audio routes. Those require
+separate end-to-end campaigns.
+
 ## Sign-off
 
 | Gate input | Owner | Accepted (date) |

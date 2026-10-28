@@ -98,11 +98,13 @@ def search_machines(user: Any, query: str, limit: int = SEARCH_LIMIT, *, _model=
         from assets.models import AssetMachine
 
         _model = AssetMachine
+    from assets.ai_read import machine_name_query
+
     try:
         rows = (
             _model.objects
             .filter(_machine_scope_filter(user))
-            .filter(_match_query(MACHINE_MATCH_FIELDS, query))
+            .filter(machine_name_query(query) | _match_query(("serial__icontains",), query))
             .order_by("pk")[:limit]
         )
     except Exception:

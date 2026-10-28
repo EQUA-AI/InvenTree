@@ -50,6 +50,7 @@ from assets.health_models import (
     MachineAnomaly,
 )
 from assets.models import AssetMachine, AssetMaintenanceRecord, MachinePart
+from common.spoken_numbers import equipment_number_references
 
 #: Bounds on every list projection. A prompt gets a readable page, not a table
 #: dump, and no single call can pull the database into the context window.
@@ -62,50 +63,28 @@ MAX_SIGNALS = 50
 MAX_TEXT_CHARS = 2000
 
 
-def _numbered_name_variants(term: str) -> tuple[str, ...]:
-    """Normalize only explicit machine-number markers, never serials or IDs."""
-    words = [
-        'zero',
-        'one',
-        'two',
-        'three',
-        'four',
-        'five',
-        'six',
-        'seven',
-        'eight',
-        'nine',
-        'ten',
-        'eleven',
-        'twelve',
-        'thirteen',
-        'fourteen',
-        'fifteen',
-        'sixteen',
-        'seventeen',
-        'eighteen',
-        'nineteen',
-        'twenty',
-    ]
-    match = re.search(
-        r'\b(?:no\.?|number)\s*(\d{1,4}|' + '|'.join(words) + r')\b', term, re.I
-    )
-    if match is None:
-        return ()
-    token = match[1].lower()
-    number = str(words.index(token)) if token in words else token
-    # Full-name candidates only. These do not turn an unmatched name into a
-    # broad search for a common number across someone else's equipment.
-    return tuple(
-        term[: match.start()] + replacement + term[match.end() :]
-        for replacement in (
-            f'No. {number}',
-            f'No {number}',
-            f'No.{number}',
-            f'number {number}',
-            number,
-        )
-    )
+def machine_name_query(term: str):
+    """Match numbered names without changing serials, model codes or record IDs."""
+    from django.db.models import Q
+
+    references = equipment_number_references(term)
+    if not references:
+        return Q(name__icontains=term)
+    # Keep the name and numeric-token boundaries: Pump 8 is not Pump 80 or 8A.
+    pieces, cursor = [r'(?<!\w)'], 0
+    for start, end, number in references:
+        pieces.extend((
+            re.escape(term[cursor:start].rstrip()),
+            r'\s*',
+            r'(?:No\.?\s*|number\s*|#\s*)?0*',
+            str(int(number)),
+            r'(?![\w.-])',
+        ))
+        cursor = end
+    pieces.extend((re.escape(term[cursor:]), r'(?![\w.-])'))
+    pattern = ''.join(pieces)
+    literal = r'(?<!\w)' + re.escape(term) + r'(?![\w.-])'
+    return Q(name__iregex=pattern) | Q(name__iregex=literal)
 
 
 #: Fields deliberately withheld from every projection, with the reason. Pinned
@@ -273,14 +252,12 @@ def machines_page(
         term = str(query).strip()[:100]
         if term:
             query_filter = (
-                Q(name__icontains=term)
+                machine_name_query(term)
                 | Q(serial__icontains=term)
                 | Q(model__icontains=term)
                 | Q(manufacturer__icontains=term)
                 | Q(location__icontains=term)
             )
-            for candidate in _numbered_name_variants(term):
-                query_filter |= Q(name__iexact=candidate)
             rows = rows.filter(query_filter)
             applied_filters['query_applied'] = True
     scope_ids = (

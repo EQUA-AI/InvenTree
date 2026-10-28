@@ -26,6 +26,7 @@ core/tests/test_question_store.py
 core/tests/test_question_turn_binding.py
 core/tests/test_capability_invocation_guard.py
 core/tests/test_read_numbers.py
+core/tests/test_semantic_equivalence.py
 core/tests/test_analysis_validator.py
 core/tests/test_analysis_renderer.py
 core/tests/test_focus_commands.py
