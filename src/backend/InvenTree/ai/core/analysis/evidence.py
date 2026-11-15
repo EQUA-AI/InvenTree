@@ -19,6 +19,7 @@ adapters pass them through verbatim and never unfence.
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
@@ -490,6 +491,87 @@ def fact_from_manual_citation(
     )
 
 
+def fact_from_retrieved_citation(
+    store: EvidenceStore,
+    citation: Mapping[str, Any],
+    *,
+    source_class: str,
+    retrieval_id: str,
+    as_of: str,
+) -> str:
+    """Preserve the native retrieval class without promoting an upload.
+
+    This adapts an already admitted observation, not remote JSON,
+    authentication, historical attribution or a complete snapshot.
+    An upload's digest is its content revision, not a metadata revision.
+    The direct controlled constructor remains literal-compatible.
+    """
+    if type(source_class) is not str or source_class not in (
+        "controlled_document",
+        "asset_attachment",
+    ):
+        raise ValueError("Retrieved document source class is unavailable")
+    if type(citation) is not dict:
+        raise ValueError("Retrieved document citation is unavailable")
+    if source_class == "controlled_document":
+        if "attachment_id" in citation or any(
+            type(citation.get(name)) is not str or not citation[name].strip()
+            for name in ("document_id", "revision", "chunk_id")
+        ):
+            raise ValueError("Controlled document identity or revision is unavailable")
+        return fact_from_manual_citation(store, citation, retrieval_id=retrieval_id, as_of=as_of)
+
+    attachment_id = citation.get("attachment_id")
+    owner_id = citation.get("model_id")
+    owner_type = citation.get("model_type")
+    digest = citation.get("source_sha256")
+    excerpt_hash = citation.get("excerpt_hash")
+    if (
+        type(attachment_id) is not int
+        or attachment_id < 1
+        or type(owner_id) is not int
+        or owner_id < 1
+        or type(owner_type) is not str
+        or owner_type not in ("part", "assetmachine")
+        or type(digest) is not str
+        or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+        or type(excerpt_hash) is not str
+        or re.fullmatch(r"[0-9a-f]{64}", excerpt_hash) is None
+        or type(citation.get("chunk_id")) is not str
+        or not citation["chunk_id"].strip()
+        or type(citation.get("access_class")) is not str
+        or citation["access_class"] != "attachment_uploaded"
+    ):
+        raise ValueError("Uploaded document identity or content revision is unavailable")
+    return store.add_fact(
+        kind="manual_passage",
+        source_class="asset_attachment",
+        source_id=str(attachment_id),
+        source_revision=digest,
+        locator={
+            "chunk": citation["chunk_id"],
+            "section": citation.get("section_path"),
+            "page": citation.get("page_number"),
+            "attachment_id": attachment_id,
+            "model_type": owner_type,
+            "model_id": owner_id,
+            "asset_id": citation.get("asset_id"),
+            "source_sha256": digest,
+            "excerpt_hash": excerpt_hash,
+            "access_class": citation["access_class"],
+        },
+        retrieval_id=retrieval_id,
+        as_of=as_of,
+        authorization_class="maintenance_authorized",
+        values={
+            "document": _value("text", citation.get("document") or ""),
+            "attachment_id": _value("identifier", str(attachment_id)),
+            "revision": _value("identifier", digest),
+        },
+        controlled=False,
+    )
+
+
 def facts_from_inventory_rows(
     store: EvidenceStore,
     rows: Iterable[Mapping[str, Any]],
@@ -768,6 +850,7 @@ __all__ = [
     "fact_from_dataset_profile",
     "fact_from_manual_citation",
     "fact_from_procedure_application",
+    "fact_from_retrieved_citation",
     "facts_from_group_rows",
     "facts_from_inventory_rows",
     "facts_from_maintenance_record_row",

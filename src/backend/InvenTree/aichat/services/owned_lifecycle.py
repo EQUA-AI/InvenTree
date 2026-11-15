@@ -224,18 +224,31 @@ def transcript_records(repository, *, chunk_size=200):
                 )
                 if not messages:
                     break
-                for message in messages:
-                    yield {
-                        'type': 'message',
-                        'thread_id': thread.pk,
-                        'message_id': message.pk,
-                        'sequence': message.sequence,
-                        'role': message.role,
-                        'content': message.content,
-                        'modality': message.modality,
-                        'created_at': message.created_at.isoformat(),
-                    }
-                    message_count += 1
+                from ai.core.integrations.source_transcripts import projection_batches
+
+                for batch in projection_batches(messages):
+                    for message in repository._source_project_messages(batch):
+                        yield {
+                            'type': 'message',
+                            'thread_id': thread.pk,
+                            'message_id': message.pk,
+                            'sequence': message.sequence,
+                            'role': message.role,
+                            'content': message.content,
+                            **(
+                                {
+                                    'source_observation': message.metadata[
+                                        'source_observation'
+                                    ]
+                                }
+                                if isinstance(message.metadata, dict)
+                                and 'source_observation' in message.metadata
+                                else {}
+                            ),
+                            'modality': message.modality,
+                            'created_at': message.created_at.isoformat(),
+                        }
+                        message_count += 1
                 sequence = messages[-1].sequence
         after = rows[-1].pk
     yield {

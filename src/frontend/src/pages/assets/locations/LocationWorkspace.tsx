@@ -57,6 +57,7 @@ import { machineOpenWorkHref } from '../maintenance/machineWorkViews';
 import { LocationBrowser, locationKindLabel } from './LocationBrowser';
 import { LocationEditDialog, MachineMoveDialog } from './LocationDialogs';
 import { MachineMetricsPanel } from './MachineMetricsPanel';
+import { PlacementPendingBadge } from './PlacementPendingBadge';
 import {
   type MachineSourceView,
   countSummary,
@@ -483,6 +484,7 @@ export function ScopedMachineList({
                               <Table.Td>
                                 <MachineIdentity
                                   machine={machine}
+                                  checkingPlacement={query.isFetching}
                                   compactPlacement={
                                     source === 'sites' && location == null
                                   }
@@ -561,6 +563,7 @@ export function ScopedMachineList({
                     >
                       <MachineIdentity
                         machine={machine}
+                        checkingPlacement={query.isFetching}
                         compactPlacement={
                           source === 'sites' && location == null
                         }
@@ -764,6 +767,7 @@ function MachineSelection(props: Readonly<CheckboxProps>) {
 
 function MachineIdentity({
   machine,
+  checkingPlacement,
   href,
   showPlacement,
   scopeLocation,
@@ -773,6 +777,7 @@ function MachineIdentity({
   onChecked
 }: Readonly<{
   machine: LocatedMachine;
+  checkingPlacement: boolean;
   href: string;
   showPlacement: boolean;
   scopeLocation?: number | null;
@@ -878,6 +883,7 @@ function MachineIdentity({
         {showPlacement && !machine.physical_location && (
           <MissingValue reason={t`Physical location not assigned`} />
         )}
+        <PlacementPendingBadge machine={machine} checking={checkingPlacement} />
         {!machine.active && (
           <Badge
             color='gray'

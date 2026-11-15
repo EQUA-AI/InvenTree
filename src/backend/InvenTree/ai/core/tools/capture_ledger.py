@@ -16,11 +16,15 @@ capped — the ledger observes the turn, it must never be able to kill it.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +60,25 @@ _MAX_RETRIEVAL_METAS = 64
 _MAX_SELECTED_PACKS = 12
 
 
+@dataclass(repr=False)
+class _MediaRevisionObservation:
+    """One server-created citation, held strongly so its identity cannot be reused."""
+
+    citation: dict[str, Any]
+    fingerprint: str
+    digest: str | None
+
+    def current_revision(self) -> str | None:
+        """A contradictory or observably changed result stays unqualified."""
+        if self.digest is not None:
+            try:
+                if _media_revision_key(self.citation) != self.fingerprint:
+                    self.digest = None
+            except (TypeError, ValueError):
+                self.digest = None
+        return self.digest
+
+
 @dataclass
 class ToolCaptureLedger:
     """Bounded per-turn record of tool results."""
@@ -71,6 +94,53 @@ class ToolCaptureLedger:
     retrieval_meta: list[dict[str, Any]] = field(default_factory=list)
     selected_packs: tuple[str, ...] = ()
     server_source_reads: list[dict[str, Any]] = field(default_factory=list)
+    # Bind revisions to exact producer observations, not reusable locator values.
+    # These bounded, turn-local records confer no authorization or snapshot proof.
+    private_media_revisions: dict[int, _MediaRevisionObservation] = field(
+        default_factory=dict, repr=False
+    )
+    _captured_media_revisions: dict[int, _MediaRevisionObservation] = field(
+        default_factory=dict, repr=False
+    )
+    _private_media_bytes: int = field(default=0, repr=False)
+
+    def record_media_revision(self, citation: dict[str, Any], digest: str) -> None:
+        """Bind a validated source revision without adding it to model output."""
+        if (
+            not isinstance(citation, dict)
+            or citation.get("access_class") != "evidence_recording"
+            or type(digest) is not str
+            or len(digest) != 64
+            or any(char not in "0123456789abcdef" for char in digest)
+        ):
+            return
+        key = id(citation)
+        observed = self.private_media_revisions.get(key)
+        if observed is not None:
+            if observed.current_revision() != digest:
+                # Conflicts within this observation cannot revoke other reads,
+                # overwrite history, or be restored by registering the old value.
+                observed.digest = None
+            return
+        if len(self.private_media_revisions) >= MAX_CAPTURES:
+            return
+        try:
+            encoded = _media_revision_bytes(citation)
+        except (TypeError, ValueError):
+            return
+        if self._private_media_bytes + len(encoded) > MAX_TOTAL_BYTES:
+            return
+        self._private_media_bytes += len(encoded)
+        self.private_media_revisions[key] = _MediaRevisionObservation(
+            citation, hashlib.sha256(encoded).hexdigest(), digest
+        )
+
+    def _bind_media_revision(self, original: dict[str, Any], captured: dict[str, Any]) -> None:
+        """Join before stringification; equal or copied public values confer nothing."""
+        observed = self.private_media_revisions.get(id(original))
+        if observed is not None and observed.citation is original:
+            captured["source_sha256"] = observed.current_revision() or ""
+            self._captured_media_revisions[id(captured)] = observed
 
     def record(self, tool_id: str, result: Any) -> None:
         """Record one tool result; oversized or excess results are dropped."""
@@ -86,7 +156,7 @@ class ToolCaptureLedger:
         self.total_bytes += size
         payload = result if isinstance(result, dict) else {"value": result}
         capture: dict[str, Any] = {"tool_id": str(tool_id)}
-        citations = _manuals_citations(payload)
+        citations = _manuals_citations(payload, bind_media_revision=self._bind_media_revision)
         if citations:
             capture["citations"] = citations
         machine_candidates = _manuals_machine_candidates(payload)
@@ -111,10 +181,18 @@ class ToolCaptureLedger:
         _harvest_entity_refs(payload, self.entity_refs, depth=0)
 
     def manuals_citations(self) -> list[dict[str, Any]]:
-        """Every captured manuals citation dict, in call order."""
+        """Project citations in call order, excluding contradicted observations.
+
+        Raw captures remain historical records. This does not retract a prior
+        projection or already emitted content and makes no turn-wide snapshot claim.
+        """
         found: list[dict[str, Any]] = []
         for capture in self.captures:
-            found.extend(capture.get("citations", ()))
+            for citation in capture.get("citations", ()):
+                observed = self._captured_media_revisions.get(id(citation))
+                if observed is not None and observed.current_revision() is None:
+                    continue
+                found.append(citation)
         return found
 
     def observed_values(self) -> frozenset[str]:
@@ -176,7 +254,21 @@ def _stringify(value: Any) -> str:
     return "" if value is None else str(value)
 
 
-def _manuals_citations(payload: dict[str, Any]) -> list[dict[str, Any]]:
+def _media_revision_bytes(citation: dict[str, Any]) -> bytes:
+    """Use the full public citation without coercing or normalizing its fields."""
+    return json.dumps(citation, sort_keys=True, allow_nan=False).encode("utf-8")
+
+
+def _media_revision_key(citation: dict[str, Any]) -> str:
+    """Fingerprint the exact registered observation, including non-locator fields."""
+    return hashlib.sha256(_media_revision_bytes(citation)).hexdigest()
+
+
+def _manuals_citations(
+    payload: dict[str, Any],
+    *,
+    bind_media_revision: Callable[[dict[str, Any], dict[str, Any]], None] | None = None,
+) -> list[dict[str, Any]]:
     """Extract the search_manuals citation dicts, shape-checked."""
     chunks = payload.get("chunks")
     if not isinstance(chunks, list):
@@ -187,7 +279,7 @@ def _manuals_citations(payload: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         citation = chunk.get("citation")
         if isinstance(citation, dict) and citation.get("chunk_id"):
-            citations.append({
+            captured = {
                 "document": str(citation.get("document") or ""),
                 "document_id": str(citation.get("document_id") or ""),
                 "revision": str(citation.get("revision") or ""),
@@ -219,7 +311,13 @@ def _manuals_citations(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 # or validation here).
                 "source_sha256": str(citation.get("source_sha256") or ""),
                 "page_number": _stringify(citation.get("page_number")),
-            })
+            }
+            if (
+                bind_media_revision is not None
+                and citation.get("access_class") == "evidence_recording"
+            ):
+                bind_media_revision(citation, captured)
+            citations.append(captured)
     return citations
 
 
@@ -347,6 +445,16 @@ def current_tool_captures() -> ToolCaptureLedger | None:
         return tool_capture_ledger.get()
     except Exception:  # pragma: no cover
         return None
+
+
+def record_media_revision(citation: dict[str, Any], digest: str) -> None:
+    """Keep authorized media provenance in the bound server ledger only."""
+    try:
+        ledger = current_tool_captures()
+        if ledger is not None:
+            ledger.record_media_revision(citation, digest)
+    except Exception:  # pragma: no cover - observation cannot fail a turn
+        logger.debug("media revision recording skipped", exc_info=False)
 
 
 def record_server_source_read(source: dict[str, Any]) -> dict[str, Any] | None:

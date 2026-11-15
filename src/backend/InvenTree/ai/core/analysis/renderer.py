@@ -15,9 +15,12 @@ coordinates (never Markdown character offsets).
 from __future__ import annotations
 
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
+from ai.core.grounding import ungrounded_identifiers
 from ai.core.i18n_templates import (
     ANALYSIS_ABSTAIN,
     ANALYSIS_DOWNGRADE,
@@ -495,6 +498,164 @@ RENDER_TEMPLATES: dict[str, RenderTemplate] = {
 }
 
 
+def _t_recorded_history_window(slots, paraphrase, marker, locale):
+    return (
+        f"Recorded history window {slots['window_start_ms']} to "
+        f"{slots['window_end_ms']} epoch milliseconds returned "
+        f"{slots['returned_count']} observations. Source window complete: "
+        f"{slots['window_complete']}; global population complete: "
+        f"{slots['population_complete']}. This is synthetic recorded "
+        f"history, not live status.{marker}"
+    )
+
+
+def _t_recorded_history_sample(slots, paraphrase, marker, locale):
+    return (
+        f"Recorded {slots['value_kind']} value {slots['value']} at "
+        f"{slots['observed_at']} (time origin {slots['time_origin']}); "
+        f"AIMMS receipt {slots['ingested_at']} (receipt origin "
+        f"{slots['ingest_time_origin']}); unit {slots['unit']} "
+        f"(unit origin {slots['unit_origin']}); quality {slots['quality']} "
+        f"(quality origin {slots['quality_origin']}); value origin "
+        f"{slots['value_origin']}.{marker}"
+    )
+
+
+def _t_recorded_history_count(slots, paraphrase, marker, locale):
+    return (
+        f"Within this recorded source window, the exact returned observation "
+        f"count is {slots['count']}. It does not establish a global population "
+        f"or revision count.{marker}"
+    )
+
+
+_RECORDED_HISTORY_TEMPLATES = {
+    "analysis.recorded_history_count": RenderTemplate(
+        key="analysis.recorded_history_count",
+        required_slots=("count",),
+        build=_t_recorded_history_count,
+    ),
+    "analysis.recorded_history_window": RenderTemplate(
+        key="analysis.recorded_history_window",
+        required_slots=(
+            "window_start_ms",
+            "window_end_ms",
+            "returned_count",
+            "window_complete",
+            "population_complete",
+        ),
+        build=_t_recorded_history_window,
+    ),
+    "analysis.recorded_history_sample": RenderTemplate(
+        key="analysis.recorded_history_sample",
+        required_slots=(
+            "value",
+            "value_kind",
+            "observed_at",
+            "time_origin",
+            "ingested_at",
+            "ingest_time_origin",
+            "unit",
+            "unit_origin",
+            "quality",
+            "quality_origin",
+            "value_origin",
+        ),
+        build=_t_recorded_history_sample,
+    ),
+}
+_recorded_history_enabled: ContextVar[bool] = ContextVar(
+    "aimms_recorded_history_templates", default=False
+)
+
+
+def _t_source_record_field(slots, paraphrase, marker, locale):
+    return (
+        f"Source field {slots['field_name']} ({slots['field_type']}) is "
+        f"{slots['field_value']}.{marker}"
+    )
+
+
+_SOURCE_RECORD_TEMPLATES = {
+    "analysis.source_record_field": RenderTemplate(
+        key="analysis.source_record_field",
+        required_slots=("field_name", "field_type", "field_value"),
+        build=_t_source_record_field,
+    )
+}
+_source_record_enabled: ContextVar[bool] = ContextVar(
+    "aimms_source_record_templates", default=False
+)
+
+
+class _TemplateCatalog(dict):
+    """Keep ordinary templates unchanged; fixed history keys are opt-in local.
+
+    Native synthesis, renderer and validator share this mapping. No global
+    update/restore window may expose history-only templates to another turn.
+    Existing ordinary dictionary registrations and removals remain supported.
+    """
+
+    def _visible(self):
+        # dict.copy on a subclass can call our keys(), reentering this view.
+        result = dict(dict.items(self))
+        if _recorded_history_enabled.get():
+            result.update(_RECORDED_HISTORY_TEMPLATES)
+        if _source_record_enabled.get():
+            result.update(_SOURCE_RECORD_TEMPLATES)
+        return result
+
+    def __getitem__(self, key):
+        return self._visible()[key]
+
+    def __contains__(self, key):
+        return key in self._visible()
+
+    def __iter__(self):
+        return iter(self._visible())
+
+    def __len__(self):
+        return len(self._visible())
+
+    def get(self, key, default=None):
+        return self._visible().get(key, default)
+
+    def keys(self):
+        return self._visible().keys()
+
+    def values(self):
+        return self._visible().values()
+
+    def items(self):
+        return self._visible().items()
+
+    def copy(self):
+        return self._visible()
+
+
+RENDER_TEMPLATES = _TemplateCatalog(RENDER_TEMPLATES)
+
+
+@contextmanager
+def recorded_history_templates():
+    """Opt one native render/validation scope into the fixed history templates."""
+    token = _recorded_history_enabled.set(True)
+    try:
+        yield
+    finally:
+        _recorded_history_enabled.reset(token)
+
+
+@contextmanager
+def source_record_templates():
+    """Opt only this render/validation scope into direct-source field templates."""
+    token = _source_record_enabled.set(True)
+    try:
+        yield
+    finally:
+        _source_record_enabled.reset(token)
+
+
 @dataclass(frozen=True, slots=True)
 class CitationEntry:
     """One ordinal in the manifest, with the claims that cite it."""
@@ -777,6 +938,21 @@ def render_answer(
             text = template.build(slots, paraphrase, marker, locale or "en")
         segments.append(RenderedSegment(claim_id=claim.claim_id, text=text))
         inserted.update(slots.values())
+        if (
+            claim.render_template in _RECORDED_HISTORY_TEMPLATES
+            or claim.render_template in _SOURCE_RECORD_TEMPLATES
+        ):
+            # History text is already bounded/fenced by its source consumer.
+            # Index the actual server-inserted codes too, including fence
+            # markers; never index rendered prose or relax the native gate.
+            # The extractor reports a bounded batch, not necessarily all codes.
+            for value in slots.values():
+                # C05 scans whitespace-delimited digit-bearing runs; a fenced
+                # multiline source value is not a single such run. Index only
+                # pieces of the server-resolved slot, never the rendered prose.
+                inserted.update(value.split())
+                while codes := ungrounded_identifiers(value, frozenset(inserted)):
+                    inserted.update(codes)
         for ordinal in ordinals.by_claim.get(claim.claim_id, ()):
             inserted.add(f"[{ordinal}]")
 
@@ -824,5 +1000,7 @@ __all__ = [
     "RenderedAnswer",
     "RenderedSegment",
     "assign_ordinals",
+    "recorded_history_templates",
     "render_answer",
+    "source_record_templates",
 ]

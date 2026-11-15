@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ai.core.tests.settings")
 
@@ -121,17 +122,32 @@ class FastPathFormatTests(SimpleTestCase):
 class FastPathGroupStockTests(SimpleTestCase):
     """Plural stock questions aggregate every complete fuzzy-search hit."""
 
+    def setUp(self):
+        self.enterContext(
+            patch("ai.core.auth.get_current_principal", return_value=SimpleNamespace(user_pk="1"))
+        )
+        self.enterContext(
+            patch(
+                "ai.core.tools.invocation_guard.fresh_permission_profile",
+                new=AsyncMock(return_value=frozenset({("part", "view"), ("stock", "view")})),
+            )
+        )
+
     def test_resistor_question_sums_all_matching_parts(self):
         router = FastPathRouter()
         router._data_provider = type(
             "Provider",
             (),
             {
-                "search_parts": AsyncMock(
-                    return_value=[
-                        {"pk": 1, "in_stock": 100000},
-                        {"pk": 2, "in_stock": 141291},
-                    ]
+                "search_parts_page": AsyncMock(
+                    return_value={
+                        "results": [
+                            {"pk": 1, "in_stock": 100000},
+                            {"pk": 2, "in_stock": 141291},
+                        ],
+                        "population_count": 2,
+                        "has_more": False,
+                    }
                 )
             },
         )()
@@ -152,8 +168,12 @@ class FastPathGroupStockTests(SimpleTestCase):
             "Provider",
             (),
             {
-                "search_parts": AsyncMock(
-                    return_value=[{"pk": index, "in_stock": 1} for index in range(100)]
+                "search_parts_page": AsyncMock(
+                    return_value={
+                        "results": [{"pk": index + 1, "in_stock": 1} for index in range(100)],
+                        "population_count": 101,
+                        "has_more": True,
+                    }
                 )
             },
         )()

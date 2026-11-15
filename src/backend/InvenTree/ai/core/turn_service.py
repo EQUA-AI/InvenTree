@@ -111,7 +111,7 @@ class _LiveQuestionProjectionHandler:
             logger.error(f"Event handler error: {e}")
 
 
-class _LiveQuestionProjectionEmitter:
+class _LiveQuestionProjectionEmitter(EventEmitter):
     """Per-turn emitter splitting ORIGINAL storage from PROJECTED outward.
 
     Subscribers (the durable side) observe each ORIGINAL event exactly once;
@@ -183,6 +183,7 @@ class NormalizedTurnResult:
     response_state: str = TurnState.COMPLETE
     replayed: bool = False
     canonical_response: dict[str, Any] | None = None
+    source_observation: dict[str, Any] | None = None
     spoken_summary: str = ""
     reasoning_provenance: dict[str, Any] | None = None
     route: dict[str, Any] | None = None
@@ -773,7 +774,24 @@ class NormalizedTurnService:
         """
         if emitter is None:
             return
+        from ai.core.integrations.source_transcripts import (
+            REF_KEY,
+            ProjectionBudget,
+            project_canonical,
+        )
+
+        source_budget = ProjectionBudget(remaining=64)
         for record in canonical_result.get("events", []):
+            if REF_KEY in canonical_result:
+                fresh = await self._call_sync(
+                    project_canonical,
+                    canonical_result,
+                    getattr(actor, "user_pk", None),
+                    budget=source_budget,
+                )
+                if fresh is not canonical_result:
+                    await self._emit_replay(emitter, fresh, actor=actor)
+                    return
             if isinstance(record, dict):
                 event = _event_from_record(record)
                 if str(record.get("type")) == str(EventType.QUESTION.value):
@@ -1932,7 +1950,15 @@ class NormalizedTurnService:
             work_focus_receipt=work_focus_receipt,
         )
         if run.replayed_canonical is not None:
+            from ai.core.integrations.source_transcripts import project_canonical
+
+            run.replayed_canonical = await self._call_sync(
+                project_canonical, run.replayed_canonical, actor.user_pk
+            )
             await self._emit_replay(emitter, run.replayed_canonical, actor=actor)
+            run.replayed_canonical = await self._call_sync(
+                project_canonical, run.replayed_canonical, actor.user_pk
+            )
             result = self._result_from_canonical(
                 run.thread.pk,
                 run.turn.pk,
@@ -2031,6 +2057,14 @@ class NormalizedTurnService:
                 )
             except Exception:  # pragma: no cover - telemetry must never raise
                 logger.debug("slo recording failed", exc_info=False)
+            from ai.core.integrations.source_transcripts import live_canonical
+
+            current = await live_canonical(run, canonical)
+            if current is not canonical:
+                from ai.core.integrations.source_transcripts import reconcile_unavailable
+
+                await reconcile_unavailable(run)
+            canonical = current
             result = self._result_from_canonical(
                 thread.pk,
                 finalized.pk,
@@ -2043,6 +2077,9 @@ class NormalizedTurnService:
             result = await self._reauthorize_result_question(actor, result)
             return result
         except asyncio.CancelledError:
+            from ai.core.integrations.source_transcripts import reconcile_unavailable
+
+            await reconcile_unavailable(run)
             await isolated_emitter.emit(
                 AGUIEvent(
                     event_type=EventType.RUN_CANCELLED,
@@ -2066,6 +2103,9 @@ class NormalizedTurnService:
             )
             raise
         except TurnIncomplete:
+            from ai.core.integrations.source_transcripts import reconcile_unavailable
+
+            await reconcile_unavailable(run)
             await isolated_emitter.emit(
                 AGUIEvent(
                     event_type=EventType.RUN_ERROR,
@@ -2090,6 +2130,9 @@ class NormalizedTurnService:
                 state=TurnState.INCOMPLETE,
                 output_content=str(canonical["message"]),
             )
+            from ai.core.integrations.source_transcripts import live_canonical
+
+            canonical = await live_canonical(run, canonical)
             result = self._result_from_canonical(
                 thread.pk,
                 finalized.pk,
@@ -2110,6 +2153,9 @@ class NormalizedTurnService:
             # event and the persisted user message.
             from ai.core import i18n_templates as i18n_failures
             from ai.core.failure_taxonomy import FailureClass, classify_turn_failure
+            from ai.core.integrations.source_transcripts import reconcile_unavailable
+
+            await reconcile_unavailable(run)
 
             failure_class = classify_turn_failure(exc)
             typed_failures = False
@@ -2199,6 +2245,7 @@ class NormalizedTurnService:
             canonical_response=(
                 dict(canonical_response) if isinstance(canonical_response, dict) else None
             ),
+            source_observation=canonical.get("source_observation"),
             spoken_summary=str(canonical.get("spoken_summary") or ""),
             reasoning_provenance=(
                 dict(reasoning_provenance) if isinstance(reasoning_provenance, dict) else None

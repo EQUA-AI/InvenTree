@@ -171,3 +171,6 @@ _tests*.txt
 
 # Accidental sqlite artifact from a ':memory:' DSN treated as a filename
 file:memorydb_default*
+
+# Keep local documentation and review evidence out of feature commits
+/docs/

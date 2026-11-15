@@ -970,6 +970,13 @@ def retrieve_manual_fact(
     # Step 6 — thread uploads are already in model context; never orchestrated.
     attempts.append({"step": "thread_uploads", "outcome": "not_attempted"})
 
+    if any(attempt.get("outcome") in {"search_failed", "unavailable"} for attempt in attempts):
+        return {
+            "chunks": [],
+            "attempts": attempts,
+            "unavailable": True,
+            "warnings": ["retrieval_unavailable"],
+        }
     return {
         "chunks": [],
         "attempts": attempts,

@@ -4,6 +4,7 @@ import copy
 import json
 import logging
 import re
+from typing import Any, TypedDict
 
 # M2 PR 3: the summary body module is pure (stdlib + the vocabulary), so the
 # module-level import is safe in the worker and in the web app alike.
@@ -89,10 +90,20 @@ COMPACTION_INACTIVE_CAP = 20
 COMPACTION_MAX_MESSAGES = 120
 COMPACTION_MAX_CHARS = 100_000
 
+
 #: Structured summary contract. Protected fields merge forward (union with
 #: caps); ``label`` becomes the summary's first line; ``narrative`` is the
 #: free-text remainder.
-COMPACTION_SCHEMA = {
+class _CompactionSchema(TypedDict):
+    """Type the heterogeneous JSON schema without changing its wire values."""
+
+    type: str
+    additionalProperties: bool
+    required: list[str]
+    properties: dict[str, dict[str, Any]]
+
+
+COMPACTION_SCHEMA: _CompactionSchema = {
     'type': 'object',
     'additionalProperties': False,
     'required': [
@@ -996,6 +1007,12 @@ def _compact_locked(thread_id) -> None:
     total_chars = 0
     batch_high = expected
     for row in rows:
+        if any(
+            key in (row.get('metadata') or {})
+            for key in ('_aimms_source_ref', 'source_observation')
+        ):
+            batch_high = int(row['sequence'])
+            continue
         if source_is_blocked(row.get('metadata'), memory_guard):
             batch_high = int(row['sequence'])
             continue

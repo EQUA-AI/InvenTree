@@ -7,34 +7,18 @@
  * rendered prose.
  */
 
-import type {
-  CitationManifestEntry,
-  RetrievalCoveragePayload
-} from '@lib/types/AimmsWire.generated';
+import type { RetrievalCoveragePayload } from '@lib/types/AimmsWire.generated';
 import { t } from '@lingui/core/macro';
-import { type CitationDisplayEntry, formatLocator } from './CitationList';
 import type { EvidenceAnalysisAttachment } from './evidenceAnalysis';
 
-/** Manifest entry → display row (the ONE mapping every surface uses). */
-export function citationDisplayFromManifest(
-  entry: CitationManifestEntry
-): CitationDisplayEntry {
-  return {
-    ordinal: entry.ordinal,
-    sourceType: entry.source_type,
-    available: entry.available,
-    asOf: entry.as_of,
-    sourceId: entry.source_id ?? undefined,
-    sourceTitle: entry.source_title ?? undefined,
-    sourceRevision: entry.source_revision ?? undefined,
-    controlled: entry.controlled,
-    sourceClass: entry.source_class ?? undefined,
-    locator: entry.locator ?? undefined,
-    applicability: entry.applicability ?? undefined,
-    evidenceSetId: entry.evidence_set_id ?? undefined,
-    calculation: entry.calculation ?? undefined
-  };
-}
+export {
+  citationDisplayFromManifest,
+  formatCitationLine
+} from './citationFormat';
+import {
+  citationDisplayFromManifest,
+  formatCitationLine
+} from './citationFormat';
 
 /**
  * The coverage sentence. Display truncation and incomplete evaluation use
@@ -68,30 +52,6 @@ export function formatCoverageWarning(
 export function excludedLabel(count: number, dateField: string | null): string {
   const field = dateField ?? t`date`;
   return t`${count} records excluded (missing ${field})`;
-}
-
-/** One plain-text source line for copy/export; mirrors the display row. */
-export function formatCitationLine(entry: CitationDisplayEntry): string {
-  if (!entry.available) {
-    return `[${entry.ordinal}] ${t`Source unavailable`}`;
-  }
-  const parts: string[] = [];
-  const label = entry.sourceTitle || entry.sourceId || entry.sourceType;
-  parts.push(label);
-  if (
-    entry.sourceTitle &&
-    entry.sourceId &&
-    entry.sourceTitle !== entry.sourceId
-  ) {
-    parts.push(entry.sourceId);
-  }
-  if (entry.sourceRevision) parts.push(t`rev ${entry.sourceRevision}`);
-  const locator = formatLocator(entry.locator);
-  if (locator) parts.push(locator);
-  if (entry.controlled === false) parts.push(t`uncontrolled attachment`);
-  if (entry.calculation) parts.push(entry.calculation);
-  const stamp = entry.asOf ? ` — ${t`as of`} ${entry.asOf}` : '';
-  return `[${entry.ordinal}] ${parts.join(' · ')}${stamp}`;
 }
 
 /**

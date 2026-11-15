@@ -30,6 +30,7 @@ from ai.core.analysis.evidence import (
     coverage_fact,
     fact_from_dataset_profile,
     fact_from_manual_citation,
+    fact_from_retrieved_citation,
     facts_from_group_rows,
     facts_from_inventory_rows,
     facts_from_work_order_row,
@@ -797,7 +798,7 @@ def _retrieve_comparison(
 
 
 def _retrieve_manual(user: Any, store: EvidenceStore, *, query: str) -> dict[str, Any]:
-    """manual_fact: the §8.4 fallback orchestrator → controlled facts."""
+    """Adapt document fallback without changing source identity or control class."""
     from ai.core.analysis.source_gateway import retrieve_manual_fact
     from django.utils import timezone
 
@@ -812,10 +813,22 @@ def _retrieve_manual(user: Any, store: EvidenceStore, *, query: str) -> dict[str
 
     as_of = timezone.now().isoformat()
     result = retrieve_manual_fact(user, query=query, attachment_search=_attachment_search)
+    if result.get("unavailable") is True:
+        raise AnalysisRetrievalIncomplete(
+            "capability_boundary",
+            "Document retrieval is unavailable",
+            facets=("passage_fact", "applicability"),
+        )
     retrieval_id = str((result.get("retrieval") or {}).get("retrieval_id") or "ret_manual")
     for chunk in result.get("chunks") or ():
         citation = chunk.get("citation") or {}
-        fact_from_manual_citation(store, citation, retrieval_id=retrieval_id, as_of=as_of)
+        fact_from_retrieved_citation(
+            store,
+            citation,
+            source_class=result.get("source_class"),
+            retrieval_id=retrieval_id,
+            as_of=as_of,
+        )
     if result.get("retrieval"):
         store.record_envelope(result["retrieval"])
     store.set_primary_coverage({
@@ -834,6 +847,59 @@ def _retrieve_manual(user: Any, store: EvidenceStore, *, query: str) -> dict[str
     return result
 
 
+def _qualified_inventory_section(result: Any) -> Mapping[str, Any]:
+    """Require the native registry's complete count contract before storing facts."""
+    unavailable = AnalysisRetrievalIncomplete(
+        "capability_boundary",
+        "Source inventory is unavailable or incomplete",
+        facets=("availability", "coverage"),
+    )
+    if not isinstance(result, Mapping) or result.get("unavailable"):
+        raise unavailable
+    sections = result.get("sections")
+    if not isinstance(sections, Mapping):
+        raise unavailable
+    section = sections.get("controlled_documents")
+    if not isinstance(section, Mapping) or section.get("unavailable"):
+        raise unavailable
+    documents = section.get("documents")
+    population = section.get("population_count")
+    returned = section.get("returned_count")
+    truncated = section.get("display_truncated")
+    if (
+        not isinstance(documents, list)
+        or any(not isinstance(row, Mapping) for row in documents)
+        or type(population) is not int
+        or population < 0
+        or type(returned) is not int
+        or returned < 0
+        or returned != len(documents)
+        or returned > population
+        or type(truncated) is not bool
+        or truncated != (population > returned)
+    ):
+        raise unavailable
+    envelope = section.get("retrieval")
+    if not isinstance(envelope, Mapping):
+        raise unavailable
+    coverage = envelope.get("coverage")
+    if (
+        envelope.get("source_class") != "controlled_document"
+        or envelope.get("population_type") != "registry"
+        or envelope.get("operation") != "source_inventory"
+        or not isinstance(coverage, Mapping)
+        or coverage.get("complete_population") is not True
+        or type(coverage.get("population_count")) is not int
+        or coverage["population_count"] != population
+        or type(coverage.get("returned_count")) is not int
+        or coverage["returned_count"] != returned
+        or type(coverage.get("display_truncated")) is not bool
+        or coverage["display_truncated"] != truncated
+    ):
+        raise unavailable
+    return section
+
+
 def _retrieve_inventory(user: Any, store: EvidenceStore) -> dict[str, Any]:
     """source_inventory: the registry gateway → inventory facts."""
     from ai.core.analysis.source_gateway import inventory
@@ -841,7 +907,7 @@ def _retrieve_inventory(user: Any, store: EvidenceStore) -> dict[str, Any]:
 
     as_of = timezone.now().isoformat()
     result = inventory(user)
-    section = (result.get("sections") or {}).get("controlled_documents") or {}
+    section = _qualified_inventory_section(result)
     rows = []
     for entry in section.get("documents") or ():
         current = entry.get("current") or {}

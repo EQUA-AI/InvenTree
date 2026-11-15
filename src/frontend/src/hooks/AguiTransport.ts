@@ -65,6 +65,7 @@ export interface AguiTurnCallbacks {
   onProvenance(evidence: unknown[], confidence: string): void;
   /** S11: the consolidated evidence attachment (normalized hook-side). */
   onEvidenceAnalysis(value: unknown): void;
+  onSourceObservation?(value: unknown): void;
   /** S11: one content-free buffered-execution stage (closed enum). */
   onAnalysisProgress(stage: unknown): void;
   /**
@@ -186,6 +187,9 @@ function dispatchCustom(
       // Raw pass-through: normalization happens hook-side, exactly like
       // onEntities filtering — one normalizer for every envelope.
       callbacks.onEvidenceAnalysis(value ?? {});
+      break;
+    case 'aimms.sourceObservation':
+      callbacks.onSourceObservation?.(value);
       break;
     case 'aimms.analysisProgress': {
       const detail = (value ?? {}) as { stage?: unknown };

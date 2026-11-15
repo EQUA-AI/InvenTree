@@ -33,10 +33,15 @@ import { EntityChips } from './EntityChips';
 import { EvidenceChips } from './EvidenceChips';
 import { MarkdownMessage } from './MarkdownMessage';
 import { RetrievalCoverage } from './RetrievalCoverage';
+import { SourceObservation } from './SourceObservation';
 import { WorkFocusChip } from './WorkFocusChip';
 import type { EvidenceAnalysisAttachment } from './evidenceAnalysis';
 import { composeAnswerMarkdown } from './evidenceFormat';
 import { RichMessage } from './genui/RichMessage';
+import {
+  type SourceObservation as SourceObservationData,
+  composeSourceAnswerMarkdown
+} from './sourceObservation';
 
 function formatToolDuration(durationMs?: number): string | null {
   if (durationMs === undefined || !Number.isFinite(durationMs)) return null;
@@ -64,12 +69,14 @@ function MessageActions({
   messageId,
   threadId,
   evidenceAnalysis,
+  sourceObservation,
   onRegenerate
 }: Readonly<{
   content: string;
   messageId: string;
   threadId: string | null;
   evidenceAnalysis?: EvidenceAnalysisAttachment;
+  sourceObservation?: SourceObservationData;
   onRegenerate?: () => void;
 }>) {
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
@@ -77,9 +84,11 @@ function MessageActions({
   // composed from the persisted manifest ONLY — live copy, reload copy and
   // export are one function over one payload. The feedback SHA-256 below
   // deliberately keeps hashing the RAW content (content-addressed ledger).
-  const exportable = evidenceAnalysis
-    ? composeAnswerMarkdown(content, evidenceAnalysis)
-    : content;
+  const exportable = sourceObservation
+    ? composeSourceAnswerMarkdown(content, sourceObservation)
+    : evidenceAnalysis
+      ? composeAnswerMarkdown(content, evidenceAnalysis)
+      : content;
 
   const download = () => {
     const blob = new Blob([exportable], { type: 'text/markdown' });
@@ -174,13 +183,13 @@ function MessageActions({
           <IconThumbDown size={14} />
         </ActionIcon>
       </Tooltip>
-      {evidenceAnalysis && (
+      {(evidenceAnalysis || sourceObservation) && (
         <Tooltip label={t`Export as Markdown`} withArrow>
           <ActionIcon
             className={workspaceStyles.control}
             data-testid='export-ai-chat-message'
             aria-label={t`Export answer as Markdown`}
-            size='xs'
+            size={32}
             variant='subtle'
             color='gray'
             onClick={download}
@@ -331,6 +340,12 @@ export function AssistantMessageRenderer({
             />
           )}
         </Stack>
+      )}
+      {!isUser && message.sourceObservation && (
+        <SourceObservation
+          observation={message.sourceObservation}
+          messageId={message.id}
+        />
       )}
       {/* Diagnosis-rail provenance (S10): a cited answer shows its
                 sources; an uncited one is visibly flagged, never implied.
@@ -519,6 +534,7 @@ export function AssistantMessageRenderer({
                 messageId={message.id}
                 threadId={threadId}
                 evidenceAnalysis={message.evidenceAnalysis}
+                sourceObservation={message.sourceObservation}
                 onRegenerate={onRegenerate}
               />
             </Box>

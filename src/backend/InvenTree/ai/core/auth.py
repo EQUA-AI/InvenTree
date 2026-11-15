@@ -136,9 +136,70 @@ class AIBoundaryPolicy:
 principal_context: ContextVar[AIPrincipal | None] = ContextVar("aimms_ai_principal", default=None)
 
 
+class _AuthenticatedRead:
+    """Private, unrepresentable credentials tied to one middleware invocation.
+
+    The mutable lifetime flag also invalidates a copied child-task context when
+    the original request finishes. Nothing stores this object in ASGI scope,
+    public principal fields, evidence, caches or a serializable carrier.
+    """
+
+    __slots__ = ("_active", "_headers", "_policy", "_principal")
+
+    def __init__(self, principal, headers, policy):
+        self._principal = principal
+        self._headers = tuple(
+            (name, tuple(values))
+            for name, values in headers.items()
+            if name in (b"cookie", b"authorization")
+        )
+        self._policy = policy
+        self._active = True
+
+
+_authenticated_read: ContextVar[_AuthenticatedRead | None] = ContextVar(
+    "aimms_ai_authenticated_read", default=None
+)
+
+
 def get_current_principal() -> AIPrincipal | None:
     """Return the principal for the current ASGI task, if the boundary set one."""
     return principal_context.get()
+
+
+async def revalidate_current_ai_principal() -> AIPrincipal | None:
+    """Reauthenticate only the currently live, real middleware invocation.
+
+    A principal label, copied context after request exit, or an in-process
+    principal is not credential evidence. Callers cannot supply an actor,
+    headers, policy, callback or prior successful result to this intake.
+    """
+    captured = _authenticated_read.get()
+    original = get_current_principal()
+    if (
+        type(captured) is not _AuthenticatedRead
+        or not captured._active
+        or type(original) is not AIPrincipal
+        or original is not captured._principal
+    ):
+        return None
+    try:
+        fresh = await _authenticate(
+            {name: list(values) for name, values in captured._headers}, captured._policy
+        )
+    except MemoryError:
+        raise
+    except Exception:
+        return None
+    if (
+        not captured._active
+        or _authenticated_read.get() is not captured
+        or get_current_principal() is not original
+        or type(fresh) is not AIPrincipal
+        or fresh != original
+    ):
+        return None
+    return original
 
 
 def record_identity_anomaly(kind: str) -> None:
@@ -491,11 +552,15 @@ class AIBoundaryAuthMiddleware:
                     await _http_error(send, 403, "csrf_rejected", "CSRF validation failed")
                     return
 
+        authenticated_read = _AuthenticatedRead(principal, headers, self.policy)
         scope[AI_PRINCIPAL_SCOPE_KEY] = principal
         token = principal_context.set(principal)
+        read_token = _authenticated_read.set(authenticated_read)
         try:
             await self.app(scope, receive, send)
         finally:
+            authenticated_read._active = False
+            _authenticated_read.reset(read_token)
             principal_context.reset(token)
 
 
@@ -511,5 +576,6 @@ __all__ = [
     "record_identity_anomaly",
     "require_ai_principal",
     "reset_identity_anomaly_counts",
+    "revalidate_current_ai_principal",
     "sign_interactive_subject",
 ]

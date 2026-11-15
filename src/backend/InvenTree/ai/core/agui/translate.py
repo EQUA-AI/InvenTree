@@ -35,6 +35,7 @@ CUSTOM_CHANNELS = (
     "aimms.proposalsRefresh",
     "aimms.custom",
     "aimms.evidenceAnalysis",
+    "aimms.sourceObservation",
     "aimms.analysisProgress",
     # M1 PR G (§9.11 / GR-16): the bounded, content-free Context used record.
     "aimms.contextUsed",
@@ -302,6 +303,14 @@ class SpecTranslator:
                         },
                         record,
                     )
+                ]
+            if kind in (
+                "source_record_analysis",
+                "recorded_history_analysis",
+                "source_observation",
+            ) and isinstance(payload.get("source_observation"), dict):
+                return [
+                    self._custom("aimms.sourceObservation", payload["source_observation"], record)
                 ]
             if kind == "evidence_analysis":
                 # S10/S11: the consolidated attachment rides ONE object shape

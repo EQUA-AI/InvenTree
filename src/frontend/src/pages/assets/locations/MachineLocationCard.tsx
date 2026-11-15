@@ -6,6 +6,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useApi } from '../../../contexts/ApiContext';
 import { useUserState } from '../../../states/UserState';
 import { MachineMoveDialog } from './LocationDialogs';
+import { PlacementPendingBadge } from './PlacementPendingBadge';
 import classes from './locations.module.css';
 
 import {
@@ -107,6 +108,9 @@ export function MachineLocationCard({ machineId }: { machineId: number }) {
               ? t`Loading location…`
               : t`Location is unavailable for your current scope.`}
           </Text>
+        )}
+        {row && (
+          <PlacementPendingBadge machine={row} checking={machine.isFetching} />
         )}
         {moving && row && (
           <MachineMoveDialog

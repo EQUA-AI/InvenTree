@@ -551,7 +551,13 @@ def _assemble_workflow_context(
     """Build the trusted workflow context; the pin-override rules live here."""
 
     workflow_context: WorkflowContext = dict(run.trusted)
-    workflow_context["modality"] = run.modality
+    # Native HTTP/AG-UI routes use Django's TextChoices member; the source
+    # selector's literal-string contract must receive the same value as
+    # normalized callers. Keep other objects unchanged so invalid inputs
+    # cannot gain admission through string coercion.
+    workflow_context["modality"] = (
+        run.modality.value if isinstance(run.modality, TurnModality) else run.modality
+    )
     workflow_context["thread_id"] = run.thread.pk
     if run.extras.get("record_target"):
         workflow_context["record_target"] = run.extras["record_target"]
@@ -670,13 +676,19 @@ async def _run_legacy_workflow(service: NormalizedTurnService, run: TurnRun) -> 
         # question this reply just failed to answer.
         workflow_context["question_resolution"] = run.question_resolution.unmatched_payload()
 
+    from ai.core.integrations.source_transcripts import SourceCapture, bind_source_capture
     from ai.core.tracing import turn_span as _turn_span
 
+    source_capture = SourceCapture()
+    run.extras["source_capture"] = source_capture
     chunks: list[str] = []
-    with _turn_span(
-        "aimms.workflow.execute",
-        workflow_id=workflow_context.get("pinned_workflow_id"),
-        correlation_id=run.correlation_id,
+    with (
+        bind_source_capture(source_capture),
+        _turn_span(
+            "aimms.workflow.execute",
+            workflow_id=workflow_context.get("pinned_workflow_id"),
+            correlation_id=run.correlation_id,
+        ),
     ):
         # S46: bind the content-free tool-event sink for this
         # turn (flag-gated). The invocation-guard middleware
@@ -703,6 +715,27 @@ async def _run_legacy_workflow(service: NormalizedTurnService, run: TurnRun) -> 
                 chunks.append(str(chunk))
 
     streamed_text = "".join(chunks)
+    if source_capture.packet is not None:
+        from ai.core.integrations.source_transcripts import PUBLIC_KEY, REF_KEY, observation
+
+        packet = source_capture.packet
+        response = packet["canonical_response"]
+        if streamed_text != response["detailed_response"]:
+            raise ValueError("Source answer continuity is unavailable")
+        return {
+            "thread_id": run.thread.pk,
+            "turn_id": run.turn.pk,
+            "message": streamed_text,
+            "agent": "source_read",
+            "workflow_used": "source_read",
+            "response_state": response["response_state"],
+            "canonical_response": response,
+            "spoken_summary": "",
+            "reasoning_provenance": None,
+            "route": run.route.to_dict() if run.route is not None else None,
+            REF_KEY: source_capture.reference,
+            PUBLIC_KEY: observation(packet),
+        }
     # S5: the per-turn retrieval snapshot — the scope identity plus every
     # internal envelope meta the tools recorded. Server-only (feeds evidence
     # records and telemetry, A15); it never enters the canonical payload.

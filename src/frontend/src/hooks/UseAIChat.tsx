@@ -242,6 +242,10 @@ import {
   normalizeEvidenceAnalysis,
   normalizeProgressStage
 } from '../components/aichat/evidenceAnalysis';
+import {
+  type SourceObservation,
+  normalizeSourceObservation
+} from '../components/aichat/sourceObservation';
 
 /**
  * AG-UI Protocol Event interfaces
@@ -428,6 +432,7 @@ export interface ChatMessage {
    * projection overwrites the local copy on every sync.
    */
   evidenceAnalysis?: EvidenceAnalysisAttachment;
+  sourceObservation?: SourceObservation;
   /** S11: live buffered-execution stage (closed enum; never persisted). */
   progressStage?: AnalysisProgressStage;
   /**
@@ -587,6 +592,7 @@ interface ServerMessage {
   media_evidence?: MediaEvidenceItem[] | null;
   /** S11: the SAME object shape the live wires delivered (no re-nesting). */
   evidence_analysis?: unknown;
+  source_observation?: unknown;
   /** M2 PR 9: the persisted Context used record (owner-only keys stripped). */
   context_used?: unknown;
   /** P02/P33: the verified Work ids an answer was about (owner-only). */
@@ -744,6 +750,8 @@ async function fetchServerThread(
         // through the SAME normalizer every live wire uses (Q83).
         evidenceAnalysis:
           normalizeEvidenceAnalysis(m.evidence_analysis) ?? undefined,
+        sourceObservation:
+          normalizeSourceObservation(m.source_observation) ?? undefined,
         // M2 PR 9: the Context used record reloads through the same
         // allow-list normalizer every live wire uses.
         contextUsed: normalizeContextUsed(m.context_used) ?? undefined,
@@ -2430,6 +2438,25 @@ export function useAIChat(config: AIChatConfig = {}) {
   );
 
   /** S11: show one content-free buffered-execution stage (closed enum). */
+  const attachSourceObservation = useCallback(
+    (messageId: string, value: unknown) => {
+      const observation = normalizeSourceObservation(value);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId
+            ? {
+                ...msg,
+                sourceObservation: observation ?? undefined,
+                evidenceAnalysis: undefined,
+                progressStage: undefined
+              }
+            : msg
+        )
+      );
+    },
+    [setMessages]
+  );
+
   const attachProgressStage = useCallback(
     (messageId: string, stage: AnalysisProgressStage) => {
       setMessages((prev) =>
@@ -2931,6 +2958,9 @@ export function useAIChat(config: AIChatConfig = {}) {
                           );
                         }
                       },
+                      onSourceObservation: (value) => {
+                        attachSourceObservation(assistantMessage.id, value);
+                      },
                       onAnalysisProgress: (stage) => {
                         const normalized = normalizeProgressStage(stage);
                         if (normalized) {
@@ -3337,6 +3367,21 @@ export function useAIChat(config: AIChatConfig = {}) {
                           }
 
                           case AGUIEventType.STATE_DELTA: {
+                            const sourceEvent = event as unknown as {
+                              kind?: string;
+                              source_observation?: unknown;
+                            };
+                            if (
+                              sourceEvent.kind === 'source_record_analysis' ||
+                              sourceEvent.kind ===
+                                'recorded_history_analysis' ||
+                              sourceEvent.kind === 'source_observation'
+                            ) {
+                              attachSourceObservation(
+                                assistantMessage.id,
+                                sourceEvent.source_observation
+                              );
+                            }
                             // Belt and braces: a legacy delta may carry the
                             // strict refresh flag; only `=== true` counts and
                             // nothing else in the delta can move the chip.
@@ -3663,7 +3708,14 @@ export function useAIChat(config: AIChatConfig = {}) {
           setMessages((prev) => {
             const updated = prev.map((msg) =>
               msg.id === assistantMessage.id
-                ? { ...msg, content, isStreaming: false }
+                ? {
+                    ...msg,
+                    content,
+                    isStreaming: false,
+                    sourceObservation:
+                      normalizeSourceObservation(data.source_observation) ??
+                      undefined
+                  }
                 : msg
             );
             saveCurrentThread(updated, undefined, true);

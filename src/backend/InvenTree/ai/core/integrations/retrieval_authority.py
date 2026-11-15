@@ -5,6 +5,47 @@ or earlier successful scope resolution is never the final authority.
 """
 
 
+def current_ai_actor():
+    """Resolve a fresh native actor, never strict integration request authority.
+
+    Role/resource/client authorization still belongs to the native reader.
+    A principal accepted earlier cannot outlive its account or server policy.
+    These sequential checks do not establish atomic revocation.
+    """
+    from ai.core.auth import AIPrincipal, get_current_principal
+    from ai.core.config import get_settings
+    from django.contrib.auth import get_user_model
+
+    principal = get_current_principal()
+    if not isinstance(principal, AIPrincipal) or type(principal.user_pk) is not str:
+        return None
+    try:
+        actor_pk = int(principal.user_pk)
+    except ValueError:
+        return None
+    if actor_pk < 1 or str(actor_pk) != principal.user_pk:
+        return None
+
+    def policy_matches():
+        configured = get_settings()
+        return (
+            type(principal.scope) is str
+            and type(configured.single_site_policy_key) is str
+            and bool(configured.single_site_policy_key)
+            and principal.scope == configured.single_site_policy_key
+            and type(principal.policy_version) is str
+            and type(configured.policy_version) is str
+            and principal.policy_version == configured.policy_version
+        )
+
+    if not policy_matches():
+        return None
+    actor = get_user_model().objects.filter(pk=actor_pk, is_active=True).first()
+    if get_current_principal() is not principal or not policy_matches():
+        return None
+    return actor
+
+
 def fresh_actor(user):
     """Discard cached permission/scope attributes and reject erased accounts."""
     from django.contrib.auth import get_user_model

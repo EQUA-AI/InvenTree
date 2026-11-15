@@ -9,6 +9,7 @@ the document tool), excerpts assemble caption+OCR+transcript behind the
 fence, and the payload never leaks a client code or storage coordinate.
 """
 
+import asyncio
 import json
 import os
 import sys
@@ -773,6 +774,237 @@ def test_payload_never_leaks_client_codes_or_storage(retrieval_on):
     assert SCOPE_KEY not in serialized
 
 
+def test_private_digest_reaches_authority_before_public_projection(retrieval_on, monkeypatch):
+    """Restoring the citation shape must preserve source-revision checks."""
+    from ai.core.integrations import retrieval_authority
+
+    checked = []
+
+    def authorize(rows, *, user, corpus):
+        assert corpus == "media"
+        checked.extend(row["source_sha256"] for row in rows)
+        return rows
+
+    monkeypatch.setattr(retrieval_authority, "attachment_rows", authorize)
+    _search, _embed, result = _run()
+    assert checked == [_row()["source_sha256"]]
+    assert "source_sha256" not in result["chunks"][0]["citation"]
+    assert result["chunks"][0]["citation"]["excerpt_hash"]
+
+
+def test_media_revision_survives_server_capture_without_public_disclosure(retrieval_on):
+    """The real retrieval → capture → evidence path retains original revision."""
+    from ai.core.media_evidence import build_media_evidence
+    from ai.core.tools.capture_ledger import (
+        ToolCaptureLedger,
+        record_tool_result,
+        tool_capture_ledger,
+    )
+
+    digest = "a" * 64
+    ledger = ToolCaptureLedger()
+    token = tool_capture_ledger.set(ledger)
+    try:
+        _search, _embed, result = _run(search_client=_SearchClient([_row(source_sha256=digest)]))
+        assert "source_sha256" not in json.dumps(result)
+        assert digest not in json.dumps(result)
+        record_tool_result("evidence.read:search_evidence_media", result)
+        entries = build_media_evidence(ledger.manuals_citations())
+        assert entries[0]["source_revision"] == digest
+        assert entries[0]["attachment_id"] == 9
+
+        # The same public result in another turn cannot inherit private metadata.
+        fresh = ToolCaptureLedger()
+        fresh.record("evidence.read:search_evidence_media", result)
+        assert build_media_evidence(fresh.manuals_citations())[0]["source_revision"] is None
+    finally:
+        tool_capture_ledger.reset(token)
+
+
+def test_conflicting_private_media_revisions_are_not_guessed(retrieval_on):
+    """Contradictory registrations of one observation are withheld."""
+    from ai.core.tools.capture_ledger import ToolCaptureLedger
+
+    _search, _embed, result = _run()
+    citation = result["chunks"][0]["citation"]
+    ledger = ToolCaptureLedger()
+    ledger.record_media_revision(citation, "a" * 64)
+    ledger.record_media_revision(citation, "b" * 64)
+    ledger.record("evidence.read:search_evidence_media", result)
+    assert ledger.manuals_citations() == []
+
+
+@pytest.mark.parametrize("capture_order", ["sequential", "after-both", "reversed"])
+def test_separate_media_observations_keep_their_own_revisions(retrieval_on, capture_order):
+    """One locator can have distinct, independently observed revisions."""
+    from ai.core.media_evidence import build_media_evidence
+    from ai.core.tools.capture_ledger import ToolCaptureLedger, tool_capture_ledger
+
+    ledger = ToolCaptureLedger()
+    token = tool_capture_ledger.set(ledger)
+    try:
+        first = _run(search_client=_SearchClient([_row(source_sha256="a" * 64)]))[2]
+        if capture_order == "sequential":
+            ledger.record("search_evidence_media", first)
+        second = _run(search_client=_SearchClient([_row(source_sha256="b" * 64)]))[2]
+        ordered = [second, first] if capture_order == "reversed" else [first, second]
+        for result in ordered:
+            if capture_order != "sequential" or result is second:
+                ledger.record("search_evidence_media", result)
+            assert "source_sha256" not in json.dumps(result)
+            assert "a" * 64 not in json.dumps(result)
+            assert "b" * 64 not in json.dumps(result)
+        expected = ["b" * 64, "a" * 64] if capture_order == "reversed" else ["a" * 64, "b" * 64]
+        assert [
+            entry["source_revision"] for entry in build_media_evidence(ledger.manuals_citations())
+        ] == expected
+    finally:
+        tool_capture_ledger.reset(token)
+
+
+def test_same_observation_conflict_filters_previously_captured_citations(retrieval_on):
+    """Later projections withhold a contradiction without rewriting prior output."""
+    from ai.core.media_evidence import build_media_evidence
+    from ai.core.tools.capture_ledger import ToolCaptureLedger
+
+    result = _run()[2]
+    citation = result["chunks"][0]["citation"]
+    ledger = ToolCaptureLedger()
+    ledger.record_media_revision(citation, "a" * 64)
+    ledger.record("search_evidence_media", result)
+    previous_projection = build_media_evidence(ledger.manuals_citations())
+    ledger.record_media_revision(citation, "b" * 64)
+    ledger.record("search_evidence_media", result)
+    assert ledger.manuals_citations() == []
+    assert build_media_evidence(ledger.manuals_citations()) == []
+    assert previous_projection[0]["source_revision"] == "a" * 64
+    ledger.record_media_revision(citation, "a" * 64)
+    assert ledger.manuals_citations() == []
+
+
+def test_copied_public_media_citation_cannot_borrow_private_revision(retrieval_on):
+    """Matching coordinates are not proof of the original observation."""
+    from ai.core.media_evidence import build_media_evidence
+    from ai.core.tools.capture_ledger import ToolCaptureLedger
+
+    result = _run()[2]
+    ledger = ToolCaptureLedger()
+    ledger.record_media_revision(result["chunks"][0]["citation"], "a" * 64)
+    ledger.record("search_evidence_media", json.loads(json.dumps(result)))
+    assert build_media_evidence(ledger.manuals_citations())[0]["source_revision"] is None
+
+
+@pytest.mark.parametrize("field", ["asset_id", "chunk_id"])
+def test_changed_media_observation_is_not_rebound_to_original_revision(retrieval_on, field):
+    """Check the complete public citation, not only a subset of locator keys."""
+    from ai.core.tools.capture_ledger import ToolCaptureLedger
+
+    result = _run()[2]
+    citation = result["chunks"][0]["citation"]
+    ledger = ToolCaptureLedger()
+    ledger.record_media_revision(citation, "a" * 64)
+    ledger.record("search_evidence_media", result)
+    citation[field] = "changed-observation"
+    assert ledger.manuals_citations() == []
+
+
+def test_repeated_equal_observations_keep_a_single_evidence_entry(retrieval_on):
+    """Dedupe remains by attachment/revision/locator, not Python object identity."""
+    from ai.core.media_evidence import build_media_evidence
+    from ai.core.tools.capture_ledger import ToolCaptureLedger, tool_capture_ledger
+
+    ledger = ToolCaptureLedger()
+    token = tool_capture_ledger.set(ledger)
+    try:
+        for _ in range(2):
+            result = _run(search_client=_SearchClient([_row(source_sha256="a" * 64)]))[2]
+            ledger.record("search_evidence_media", result)
+        assert len(build_media_evidence(ledger.manuals_citations())) == 1
+        assert len(ledger.manuals_citations()) == 2
+    finally:
+        tool_capture_ledger.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_actual_sdk_middleware_preserves_media_observation_binding(retrieval_on, monkeypatch):
+    """Real thread hop and installed SDK capture path; source authority is scripted."""
+    from agent_framework import FunctionInvocationContext
+    from agent_framework._middleware import FunctionMiddlewarePipeline
+    from ai.core.media_evidence import build_media_evidence
+    from ai.core.tools import invocation_guard
+    from ai.core.tools.capture_ledger import ToolCaptureLedger, tool_capture_ledger
+    from asgiref.sync import sync_to_async
+    from pydantic import BaseModel
+
+    async def authorize(*_args):
+        await asyncio.sleep(0)
+
+    monkeypatch.setattr(invocation_guard, "authorize_invocation", authorize)
+    function = SimpleNamespace(name="search_evidence_media")
+
+    class Arguments(BaseModel):
+        """No model-provided arguments are needed for this transport control."""
+
+    arguments = Arguments()
+    context = FunctionInvocationContext(function=function, arguments=arguments)
+    ledger = ToolCaptureLedger()
+    token = tool_capture_ledger.set(ledger)
+
+    async def handler(_context):
+        return (
+            await sync_to_async(_run)(search_client=_SearchClient([_row(source_sha256="a" * 64)]))
+        )[2]
+
+    try:
+        pipeline = FunctionMiddlewarePipeline([invocation_guard.CapabilityInvocationMiddleware()])
+        result = await pipeline.execute(function, arguments, context, handler)
+        assert context.result is result
+        assert "source_sha256" not in json.dumps(result)
+        assert "a" * 64 not in json.dumps(result)
+        assert build_media_evidence(ledger.manuals_citations())[0]["source_revision"] == "a" * 64
+    finally:
+        tool_capture_ledger.reset(token)
+
+
+def test_denied_media_rows_do_not_register_private_observations(retrieval_on, monkeypatch):
+    """The source authorization seam rejects the row before revision capture."""
+    from ai.core.integrations import retrieval_authority
+    from ai.core.tools.capture_ledger import ToolCaptureLedger, tool_capture_ledger
+
+    monkeypatch.setattr(retrieval_authority, "attachment_rows", lambda _rows, **_kwargs: [])
+    ledger = ToolCaptureLedger()
+    token = tool_capture_ledger.set(ledger)
+    try:
+        result = _run(search_client=_SearchClient([_row(source_sha256="a" * 64)]))[2]
+        ledger.record("search_evidence_media", result)
+        assert result["chunks"] == []
+        assert not ledger.private_media_revisions
+        assert ledger.manuals_citations() == []
+    finally:
+        tool_capture_ledger.reset(token)
+
+
+@pytest.mark.parametrize("budget", ["count", "bytes"])
+def test_media_observation_budget_does_not_infer_unregistered_revision(retrieval_on, budget):
+    """Private observation capacity remains bounded independently of capture."""
+    from ai.core.media_evidence import build_media_evidence
+    from ai.core.tools.capture_ledger import MAX_CAPTURES, MAX_TOTAL_BYTES, ToolCaptureLedger
+
+    citation = _run()[2]["chunks"][0]["citation"]
+    ledger = ToolCaptureLedger()
+    if budget == "count":
+        for number in range(MAX_CAPTURES):
+            ledger.record_media_revision({**citation, "chunk_id": f"chunk-{number}"}, "a" * 64)
+        assert len(ledger.private_media_revisions) == MAX_CAPTURES
+        ledger.record_media_revision(citation, "b" * 64)
+        assert len(ledger.private_media_revisions) == MAX_CAPTURES
+    else:
+        ledger.record_media_revision({**citation, "document": "x" * MAX_TOTAL_BYTES}, "a" * 64)
+        assert not ledger.private_media_revisions
+    ledger.record("search_evidence_media", {"chunks": [{"citation": citation}]})
+    assert build_media_evidence(ledger.manuals_citations())[0]["source_revision"] is None
+
+
 def test_search_failure_maps_to_stable_code(retrieval_on):
     class _Boom(_SearchClient):
         def search(self, **kwargs):
@@ -902,14 +1134,13 @@ class _AdjacencySearchClient(_SearchClient):
 
 
 @pytest.fixture
-def adjacency_on(monkeypatch):
+def adjacency_on(monkeypatch, retrieval_on):
     """Retrieval on with the WP-F knobs present (they are AI-plane config)."""
     monkeypatch.setattr(
         config,
         "get_settings",
         lambda: _settings(rag_media_adjacent_segments=1, rag_video_segment_s=60),
     )
-    _stub_scope(monkeypatch)
 
 
 def test_filter_appends_adjacency_clauses_last():

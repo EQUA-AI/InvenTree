@@ -13,7 +13,7 @@ import json
 import logging
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from django.db import IntegrityError, models, transaction
 from django.db.models import F, QuerySet
@@ -53,6 +53,10 @@ def _pack_ids(value: object) -> tuple[str, ...]:
 
 class ThreadRepositoryError(Exception):
     """Base class for safe repository errors."""
+
+
+class SourceProjectionUnavailable(ThreadRepositoryError):  # noqa: N818
+    """Source-linked search cannot be completed within its bounded capability."""
 
 
 class AnonymousActorRejected(ThreadRepositoryError):  # noqa: N818
@@ -188,7 +192,7 @@ class ThreadRepository:
         self.scope_hash = scope_fingerprint(scope_key)
         self.namespace = namespace
 
-    def _threads(self) -> QuerySet[ChatThread]:
+    def _threads(self) -> QuerySet:
         """Return the non-negotiable authorization boundary queryset."""
         return ChatThread.objects.filter(
             owner_id=self.actor_id,
@@ -323,16 +327,49 @@ class ThreadRepository:
         term = str(query or '').strip()[:200]
         if not term:
             return self.list()[: max(1, min(int(limit), 100))]
-        rows = (
+        return list(self._search_rows(term)[: max(1, min(int(limit), 100))])
+
+    def _search_rows(self, term):
+        """Apply one current-source predicate for search and paged native search."""
+        source_rows = list(
+            ChatMessage.objects
+            .filter(thread__in=self._threads())
+            .filter(
+                models.Q(metadata__has_key='_aimms_source_ref')
+                | models.Q(metadata__has_key='source_observation')
+            )
+            .order_by('-created_at')[:9]
+        )
+        if len(source_rows) > 8:
+            raise SourceProjectionUnavailable(
+                'Source-linked search exceeds its supported budget'
+            )
+        projected = self._source_project_messages(source_rows)
+        source_ids = [
+            row.thread_id
+            for row in projected
+            if '_aimms_source_ref' in (row.metadata or {})
+            and term.casefold() in row.content.casefold()
+        ]
+        plain_ids = (
+            ChatMessage.objects
+            .filter(thread__in=self._threads(), content__icontains=term)
+            .exclude(
+                models.Q(metadata__has_key='_aimms_source_ref')
+                | models.Q(metadata__has_key='source_observation')
+            )
+            .values('thread_id')
+        )
+        return (
             self
             ._threads()
             .filter(
                 models.Q(title__icontains=term)
-                | models.Q(messages__content__icontains=term)
+                | models.Q(pk__in=plain_ids)
+                | models.Q(pk__in=source_ids)
             )
             .distinct()
         )
-        return list(rows[: max(1, min(int(limit), 100))])
 
     def get(self, thread_id: str) -> ChatThread:
         """Return one thread within the complete boundary."""
@@ -355,10 +392,7 @@ class ThreadRepository:
         boundary = [str(self.actor_id), self.scope_hash, self.namespace, term]
         rows = self._threads()
         if term:
-            rows = rows.filter(
-                models.Q(title__icontains=term)
-                | models.Q(messages__content__icontains=term)
-            ).distinct()
+            rows = self._search_rows(term)
         if cursor:
             try:
                 payload = signing.loads(
@@ -479,7 +513,7 @@ class ThreadRepository:
             metadata=dict(metadata or {}),
             correlation_id=correlation_id,
         )
-        thread.next_sequence += 1
+        thread.next_sequence = cast(int, thread.next_sequence) + 1
         thread.save(update_fields=['next_sequence', 'updated_at'])
         return message
 
@@ -1065,7 +1099,9 @@ class ThreadRepository:
     def messages(self, thread_id: str) -> builtins.list[ChatMessage]:
         """Return a materialized, ordered transcript inside the boundary."""
         thread = self._get_thread(thread_id)
-        return list(ChatMessage.objects.filter(thread=thread))
+        return self._source_project_messages(
+            list(ChatMessage.objects.filter(thread=thread))
+        )
 
     # ---- S1: server-owned active analysis scope --------------------------
     #
@@ -1074,6 +1110,22 @@ class ThreadRepository:
     # writes stay owner-only because they ride ``_lock_thread``, exactly
     # like rename/delete. Shape validation lives in
     # ``ai.core.analysis.scope`` (stdlib-only, both planes import it).
+
+    def _source_project_messages(self, rows):
+        """Current source access is independent of an owned/shared transcript."""
+        if not any(
+            '_aimms_source_ref' in (row.metadata or {})
+            or 'source_observation' in (row.metadata or {})
+            for row in rows
+        ):
+            return rows
+        from ai.core.integrations.source_transcripts import (
+            ProjectionBudget,
+            project_message,
+        )
+
+        budget = ProjectionBudget()
+        return [project_message(row, self.actor_id, budget=budget) for row in rows]
 
     def _actor_user(self):
         """The acting Django user, for per-record authorization checks."""
@@ -1175,7 +1227,7 @@ class ThreadRepository:
                 # idempotency.
                 return self._scope_payload(thread, editable=True)
             thread.analysis_scope = payload
-            thread.analysis_scope_version += 1
+            thread.analysis_scope_version = cast(int, thread.analysis_scope_version) + 1
             thread.analysis_scope_hash = digest
             thread.save(
                 update_fields=[
@@ -1334,7 +1386,7 @@ class ThreadRepository:
 
             set_aside_pending_decision_sync(thread.pk)
             thread.conversation_focus = stored_payload
-            thread.focus_version += 1
+            thread.focus_version = cast(int, thread.focus_version) + 1
             thread.save(
                 update_fields=['conversation_focus', 'focus_version', 'updated_at']
             )
@@ -1414,7 +1466,9 @@ class ThreadRepository:
     def readable_messages(self, thread_id: str) -> builtins.list[ChatMessage]:
         """Return the transcript of one readable (owned or granted) thread."""
         thread, _ = self.get_readable(thread_id)
-        return list(ChatMessage.objects.filter(thread=thread))
+        return self._source_project_messages(
+            list(ChatMessage.objects.filter(thread=thread))
+        )
 
     def readable_message_page(
         self, thread_id: str, *, limit: int = 50, before_sequence: int | None = None
@@ -1428,7 +1482,26 @@ class ThreadRepository:
             rows = rows.filter(sequence__lt=before_sequence)
         limit = max(1, min(int(limit), 200))
         selected = list(rows.order_by('-sequence')[: limit + 1])
-        return list(reversed(selected[:limit])), len(selected) > limit
+        page = selected[:limit]
+        from ai.core.integrations.source_transcripts import (
+            ProjectionBudget,
+            project_message,
+            source_message,
+        )
+
+        if not any(source_message(message) for message in page):
+            return list(reversed(page)), len(selected) > len(page)
+        budget = ProjectionBudget()
+        projected = []
+        for message in page:
+            protected = source_message(message)
+            if protected and projected and (budget.remaining == 0 or budget.expired):
+                break
+            current = project_message(message, self.actor_id, budget=budget)
+            if protected and projected and budget.expired:
+                break
+            projected.append(current)
+        return list(reversed(projected)), len(selected) > len(projected)
 
     def evidence_set(self, thread_id: str, set_id: str):
         """Resolve one evidence set inside the readable-thread boundary (S10).
@@ -1656,6 +1729,10 @@ class ThreadRepository:
         rows = list(
             ChatMessage.objects
             .filter(thread__in=self._threads().filter(pk=thread_id))
+            .exclude(
+                models.Q(metadata__has_key='_aimms_source_ref')
+                | models.Q(metadata__has_key='source_observation')
+            )
             .annotate(
                 **annotations,
                 thread_summary=F('thread__summary'),
@@ -1718,9 +1795,13 @@ class ThreadRepository:
             return []
         thread = self._get_thread(thread_id)
         window = list(
-            ChatMessage.objects.filter(thread=thread).order_by('-sequence')[
-                exclude_latest : exclude_latest + limit
-            ]
+            ChatMessage.objects
+            .filter(thread=thread)
+            .exclude(
+                models.Q(metadata__has_key='_aimms_source_ref')
+                | models.Q(metadata__has_key='source_observation')
+            )
+            .order_by('-sequence')[exclude_latest : exclude_latest + limit]
         )
         window.reverse()
         return window

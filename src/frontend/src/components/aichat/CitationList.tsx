@@ -10,57 +10,34 @@
  * supplies `ordinal: index + 1` explicitly, keeping v1 output identical.
  */
 
-import type { EvidenceClassification } from '@lib/types/AimmsWire.generated';
 import { t } from '@lingui/core/macro';
 import { Badge, Button, Group, Stack, Text } from '@mantine/core';
 import { IconLink, IconLock } from '@tabler/icons-react';
 import { useEvidenceViewerState } from '../../states/EvidenceViewerState';
+import { type CitationDisplayEntry, formatLocator } from './citationFormat';
 import {
   localManualCitation,
   nativeDocumentCitation
 } from './documentCitation';
 
-/** One displayable citation row (v1-adapted or v2 manifest-derived). */
-export interface CitationDisplayEntry {
-  ordinal: number;
-  sourceType: string;
-  available: boolean;
-  asOf: string;
-  sourceId?: string;
-  sourceTitle?: string;
-  sourceRevision?: string;
-  /** true => Controlled badge; false => Uncontrolled-attachment badge;
-   *  undefined (v1) => no control-class badge. */
-  controlled?: boolean;
-  sourceClass?: string;
-  locator?: {
-    page?: number | null;
-    section?: string | null;
-    field?: string | null;
-  };
-  applicability?: string;
-  classification?: EvidenceClassification;
-  evidenceSetId?: string;
-  calculation?: string;
-}
-
-/** Human locator string; segments only when present. */
-export function formatLocator(
-  locator: CitationDisplayEntry['locator']
-): string | null {
-  if (!locator) return null;
-  const parts: string[] = [];
-  if (locator.page != null) parts.push(t`p. ${locator.page}`);
-  if (locator.section) parts.push(`§${locator.section}`);
-  if (locator.field) parts.push(t`field: ${locator.field}`);
-  return parts.length ? parts.join(' · ') : null;
-}
+export { formatLocator } from './citationFormat';
+export type { CitationDisplayEntry } from './citationFormat';
 
 export function CitationRow({
   entry,
-  anchorPrefix
-}: Readonly<{ entry: CitationDisplayEntry; anchorPrefix?: string }>) {
-  const stamp = entry.asOf ? new Date(entry.asOf).toLocaleString() : '';
+  anchorPrefix,
+  timeZone
+}: Readonly<{
+  entry: CitationDisplayEntry;
+  anchorPrefix?: string;
+  timeZone?: 'UTC';
+}>) {
+  const stamp = entry.asOf
+    ? new Date(entry.asOf).toLocaleString(
+        undefined,
+        timeZone ? { timeZone, timeZoneName: 'short' } : undefined
+      )
+    : '';
   const anchorId = anchorPrefix
     ? `${anchorPrefix}-cite-${entry.ordinal}`
     : undefined;

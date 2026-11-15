@@ -59,6 +59,33 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it('delivers source observation and unavailable projections through the installed SDK', async () => {
+  const values = [
+    { schema_version: 'aimms.source-observation.v1', population_count: null },
+    { schema_version: 'aimms.source-observation.v1', state: 'unavailable' }
+  ];
+  vi.stubGlobal('fetch', async () =>
+    sseResponse([
+      { type: 'RUN_STARTED', threadId: 'thread-1', runId: 'run-1' },
+      ...values.map((value) => ({
+        type: 'CUSTOM',
+        name: 'aimms.sourceObservation',
+        value
+      })),
+      {
+        type: 'MESSAGES_SNAPSHOT',
+        messages: [{ id: 'm1', role: 'assistant', content: 'Unavailable' }]
+      },
+      { type: 'RUN_FINISHED', threadId: 'thread-1', runId: 'run-1' }
+    ])
+  );
+  const cb = callbacks({ onSourceObservation: vi.fn() });
+  await runAguiTurn(turn({ callbacks: cb }));
+  expect(cb.onSourceObservation).toHaveBeenNthCalledWith(1, values[0]);
+  expect(cb.onSourceObservation).toHaveBeenNthCalledWith(2, values[1]);
+  expect(cb.onMessagesSnapshot).toHaveBeenCalledWith('Unavailable');
+});
+
 it('dispatches aimms.threadFocus to the optional callback and stays backward compatible', async () => {
   const echo = { focus: null, focus_version: 5, focus_refresh_required: true };
   vi.stubGlobal('fetch', async () =>

@@ -3,6 +3,7 @@ import type { AssetMachine } from '@lib/types/Assets';
 import type { MachineConditionWire } from './machineCondition';
 import type { MachineCriticality } from './machineListState';
 import type { MachineOpenWork } from './machineWork';
+import type { PlacementSyncWire } from './placementPending';
 
 export const locationApi = '/api/assets/locations/';
 
@@ -29,6 +30,8 @@ export interface LocationNode {
 }
 
 export interface LocatedMachine extends AssetMachine {
+  /** Optional current-reader placement proof; absence is native/default off. */
+  placement_sync?: PlacementSyncWire | null;
   open_warning_alarms?: number | null;
   physical_location: LocationNode | null;
   placement_version: number;

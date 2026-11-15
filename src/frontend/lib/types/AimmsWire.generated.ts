@@ -64,6 +64,7 @@ export type AimmsCustomChannel =
   | 'aimms.proposalsRefresh'
   | 'aimms.custom'
   | 'aimms.evidenceAnalysis'
+  | 'aimms.sourceObservation'
   | 'aimms.analysisProgress'
   | 'aimms.contextUsed'
   | 'aimms.threadFocus'
@@ -682,6 +683,32 @@ export interface RetrievalCoveragePayload {
   incomplete_reason: string | null;
 }
 
+export interface SourceObservationGap {
+  window: number[];
+  reason: string;
+}
+
+export interface SourceObservationPayload {
+  schema_version: 'aimms.source-observation.v1';
+  kind: 'record' | 'recorded_history';
+  population_count: null;
+  complete_population: false;
+  revision_complete: false;
+  returned_count: number;
+  captured_at: string;
+  recorded_only: boolean;
+  window: number[] | null;
+  window_complete: boolean | null;
+  gaps: SourceObservationGap[];
+  source_evidence_kind: 'synthetic_fixture' | null;
+  citations: CitationManifestEntry[];
+}
+
+export interface SourceObservationUnavailable {
+  schema_version: 'aimms.source-observation.v1';
+  state: 'unavailable';
+}
+
 export interface CitationLocator {
   page: number | null;
   section: string | null;
@@ -812,6 +839,7 @@ export interface ChatResponse {
   message: string;
   agent: string;
   workflow_used: string | null;
+  source_observation?: SourceObservationPayload | SourceObservationUnavailable | null;
   focus: ConversationFocusPayload | null;
   focus_version: number;
   focus_refresh_required: boolean;

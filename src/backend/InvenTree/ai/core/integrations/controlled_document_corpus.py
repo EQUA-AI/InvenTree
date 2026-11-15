@@ -767,14 +767,10 @@ def _default_embedding_client() -> EmbeddingClient:
 
 
 def _current_user():
-    """Resolve the acting Django user from the authenticated ASGI boundary."""
-    from ai.core.auth import get_current_principal
-    from django.contrib.auth import get_user_model
+    """Resolve a fresh active actor under the current authenticated AI policy."""
+    from ai.core.integrations.retrieval_authority import current_ai_actor
 
-    principal = get_current_principal()
-    if principal is None:
-        return None
-    return get_user_model().objects.filter(pk=principal.user_pk).first()
+    return current_ai_actor()
 
 
 @ai_function

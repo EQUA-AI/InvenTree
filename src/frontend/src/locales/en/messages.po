@@ -32920,3 +32920,56 @@ msgstr "Percentage"
 #: src/components/aichat/genui/ChartSnapshot.tsx:245
 msgid "Complete population"
 msgstr "Complete population"
+
+#. placeholder {0}: observation.captured_at
+#: src/components/aichat/sourceObservation.ts:191
+msgid "Captured: {0}"
+msgstr "Captured: {0}"
+
+#: src/components/aichat/sourceObservation.ts:190
+msgid "Full population unknown · revision completeness unknown"
+msgstr "Full population unknown · revision completeness unknown"
+
+#: src/components/aichat/sourceObservation.ts:189
+msgid "One source record observed"
+msgstr "One source record observed"
+
+#. placeholder {0}: gap.reason
+#: src/components/aichat/sourceObservation.ts:208
+msgid "Recorded gap: {start} to {end} · {0}"
+msgstr "Recorded gap: {start} to {end} · {0}"
+
+#. placeholder {0}: observation.returned_count
+#: src/components/aichat/sourceObservation.ts:188
+msgid "Recorded history · {0} samples returned"
+msgstr "Recorded history · {0} samples returned"
+
+#: src/components/aichat/sourceObservation.ts:187
+msgid "Recorded history · 1 sample returned"
+msgstr "Recorded history · 1 sample returned"
+
+#: src/components/aichat/sourceObservation.ts:198
+msgid "Recorded window (UTC): {start} to {end} (end excluded)"
+msgstr "Recorded window (UTC): {start} to {end} (end excluded)"
+
+#: src/components/aichat/sourceObservation.ts:201
+msgid "Selected window complete"
+msgstr "Selected window complete"
+
+#: src/components/aichat/sourceObservation.ts:202
+msgid "Selected window incomplete"
+msgstr "Selected window incomplete"
+
+#: src/components/aichat/SourceObservation.tsx:21
+#: src/components/aichat/SourceObservation.tsx:30
+msgid "Source observation"
+msgstr "Source observation"
+
+#: src/components/aichat/sourceObservation.ts:183
+msgid "Source unavailable under current access or source state."
+msgstr "Source unavailable under current access or source state."
+
+#: src/components/aichat/sourceObservation.ts:194
+msgid "Synthetic fixture"
+msgstr "Synthetic fixture"
+

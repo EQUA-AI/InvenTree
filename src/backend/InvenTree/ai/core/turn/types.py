@@ -25,6 +25,15 @@ class CanonicalTurn(TypedDict):
     spoken_summary: str
     reasoning_provenance: dict[str, Any] | None
     server_source_reads: NotRequired[list[dict[str, Any]]]
+    _aimms_source_ref: NotRequired[dict[str, Any]]
+    _source_events_sha256: NotRequired[str]
+    source_observation: NotRequired[dict[str, Any]]
+    work_focus: NotRequired[dict[str, Any]]
+    pre_speech_status: NotRequired[str]
+    context_used: NotRequired[dict[str, Any]]
+    media_evidence: NotRequired[dict[str, Any]]
+    evidence_analysis: NotRequired[dict[str, Any]]
+    evidence_gate: NotRequired[dict[str, Any]]
     route: dict[str, Any] | None
     events: NotRequired[list[dict[str, Any]]]
     grounding: NotRequired[dict[str, Any]]

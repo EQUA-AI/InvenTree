@@ -10,15 +10,17 @@ voice rail. Round-trip tests (``test_scope_wire.py``,
 ``aichat/tests/test_thread_analysis_scope.py``) pin the mirrors to the
 live payloads — hand drift fails CI via the byte-exact ``--check``.
 
-These models validate nothing on the serving path; the serving authority
-stays in ``scope.py``/``threads.py``.
+The scope/focus mirrors leave serving authority in ``scope.py``/``threads.py``.
+The source-observation models also validate real capture/response shapes;
+schema validation never confers source authority.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class AnalysisScopeDateWindow(BaseModel):
@@ -357,6 +359,97 @@ __all__ = [
     "EvidenceSetMember",
     "EvidenceSetPage",
     "RetrievalCoveragePayload",
+    "SourceObservationGap",
+    "SourceObservationPayload",
+    "SourceObservationUnavailable",
     "ThreadScopePayload",
     "ThreadScopeUpdateRequest",
 ]
+
+
+class SourceObservationUnavailable(BaseModel):
+    """An intentionally content-free current-source projection."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    schema_version: Literal["aimms.source-observation.v1"]
+    state: Literal["unavailable"]
+
+
+class SourceObservationGap(BaseModel):
+    """One explicitly reported recorded-window gap, never invented empty data."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    window: list[int] = Field(min_length=2, max_length=2)
+    reason: str
+
+    @model_validator(mode="after")
+    def ordered_window(self):
+        """An explicit gap is a nonempty half-open interval with a reason."""
+        if self.window[0] >= self.window[1] or not self.reason.strip():
+            raise ValueError("Invalid recorded gap")
+        return self
+
+
+class SourceObservationPayload(BaseModel):
+    """Source observation vocabulary; unknown population is literal null."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    schema_version: Literal["aimms.source-observation.v1"]
+    kind: Literal["record", "recorded_history"]
+    population_count: None
+    complete_population: Literal[False]
+    revision_complete: Literal[False]
+    returned_count: int = Field(ge=0, strict=True)
+    captured_at: str
+    recorded_only: bool
+    window: list[int] | None
+    window_complete: bool | None
+    gaps: list[SourceObservationGap]
+    source_evidence_kind: Literal["synthetic_fixture"] | None
+    citations: list[CitationManifestEntry]
+
+    @field_validator("complete_population", "revision_complete", mode="before")
+    @classmethod
+    def unknown_completeness(cls, value):
+        """Integer zero is not a completeness assertion."""
+        if value is not False:
+            raise ValueError("Source completeness must remain unknown")
+        return value
+
+    @field_validator("captured_at")
+    @classmethod
+    def aware_capture(cls, value):
+        """Do not display a guessed zone for a source observation."""
+        stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if stamp.utcoffset() is None:
+            raise ValueError("Source capture needs an explicit timezone")
+        return value
+
+    @model_validator(mode="after")
+    def coherent_scope(self):
+        """Recorded coverage describes only its actual selected interval."""
+        if self.kind == "record":
+            if (
+                self.recorded_only
+                or self.window is not None
+                or self.window_complete is not None
+                or self.gaps
+                or self.returned_count != 1
+                or self.source_evidence_kind is not None
+            ):
+                raise ValueError("Invalid record observation scope")
+        elif (
+            not self.recorded_only
+            or self.window is None
+            or len(self.window) != 2
+            or self.window[0] >= self.window[1]
+            or self.window_complete is None
+            or any(g.window[0] < self.window[0] or g.window[1] > self.window[1] for g in self.gaps)
+            or (self.window_complete and self.gaps)
+        ):
+            raise ValueError("Invalid recorded history scope")
+        if len({c.ordinal for c in self.citations}) != len(self.citations) or any(
+            c.ordinal < 1 for c in self.citations
+        ):
+            raise ValueError("Invalid source citation ordinals")
+        return self

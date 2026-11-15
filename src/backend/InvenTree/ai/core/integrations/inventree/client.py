@@ -235,8 +235,8 @@ class InvenTreeClient:
 
         self._client: httpx.AsyncClient | None = None
         self._circuit_breaker = CircuitBreaker(name="inventree")
-        # Short-TTL GET cache: {key: (stored_monotonic, value)}. Opt-in via
-        # read_cache_ttl_s; any write clears it.
+        # Unbound short-TTL GET cache: {key: (stored_monotonic, value)}.
+        # Authenticated AI reads bypass it; any write clears it.
         self._read_cache: dict[str, tuple[float, Any]] = {}
 
         logger.info("InvenTreeClient initialized", base_url=self.base_url)
@@ -358,10 +358,13 @@ class InvenTreeClient:
 
         endpoint = endpoint.lstrip("/")
 
-        # Short-TTL read cache (opt-in): serve fresh GETs without a round-trip,
-        # even when the circuit breaker is open.
+        # This legacy cache has no actor/grant/policy/source-revision binding.
+        # Bound AI reads must neither consume nor populate it. A TTL or an
+        # actor-only key cannot qualify reuse after an authorization change.
+        from ai.core.auth import get_current_principal
+
         cache_key: str | None = None
-        if method_upper == "GET" and self.read_cache_ttl_s > 0:
+        if method_upper == "GET" and self.read_cache_ttl_s > 0 and get_current_principal() is None:
             cache_key = self._read_cache_key(endpoint, params)
             hit = self._read_cache.get(cache_key)
             if hit is not None and (time.monotonic() - hit[0]) < self.read_cache_ttl_s:
@@ -409,7 +412,7 @@ class InvenTreeClient:
                     result_count=len(result) if isinstance(result, list) else 1,
                 )
 
-                if cache_key is not None:
+                if cache_key is not None and get_current_principal() is None:
                     self._read_cache[cache_key] = (time.monotonic(), result)
 
                 return result
@@ -447,10 +450,16 @@ class InvenTreeClient:
         if isinstance(result, dict) and isinstance(result.get("results"), list):
             count = result.get("count")
             count = count if type(count) is int and count >= 0 else None
+            next_page = result.get("next")
+            has_more = None
+            if "next" in result and next_page is None:
+                has_more = False
+            elif type(next_page) is str and next_page:
+                has_more = True
             return {
                 "results": result["results"],
                 "population_count": count,
-                "has_more": bool(result.get("next")),
+                "has_more": has_more,
             }
         rows = result if isinstance(result, list) else [result]
         return {"results": rows, "population_count": None, "has_more": None}
@@ -595,6 +604,48 @@ class InvenTreeClient:
     # Stock Operations
     # -------------------------------------------------------------------------
 
+    async def get_stock_page(
+        self,
+        *,
+        part_id: int,
+        limit: int = 100,
+        offset: int = 0,
+        in_stock: bool | None = None,
+        include_variants: bool | None = None,
+    ) -> dict[str, Any]:
+        """Retain paging facts for one bounded stock page without changing list reads."""
+        params: dict[str, Any] = {
+            "part": part_id,
+            "limit": limit,
+            "offset": offset,
+            "location_detail": "true",
+        }
+        if in_stock is not None:
+            params["in_stock"] = str(in_stock).lower()
+        if include_variants is not None:
+            params["include_variants"] = str(include_variants).lower()
+        result = await self._request(
+            "GET",
+            "/stock/",
+            params=params,
+        )
+        if isinstance(result, dict) and isinstance(result.get("results"), list):
+            count = result.get("count")
+            count = count if type(count) is int and count >= 0 else None
+            next_page = result.get("next")
+            has_more = None
+            if "next" in result and next_page is None:
+                has_more = False
+            elif type(next_page) is str and next_page:
+                has_more = True
+            return {
+                "results": result["results"],
+                "population_count": count,
+                "has_more": has_more,
+            }
+        rows = result if isinstance(result, list) else [result]
+        return {"results": rows, "population_count": None, "has_more": None}
+
     async def get_stock(
         self,
         part_id: int | None = None,
@@ -725,6 +776,38 @@ class InvenTreeClient:
     # -------------------------------------------------------------------------
     # BOM Operations
     # -------------------------------------------------------------------------
+
+    async def get_bom_page(
+        self, *, part_id: int, limit: int = 100, offset: int = 0
+    ) -> dict[str, Any]:
+        """Retain native paging facts for one bounded BOM page."""
+        result = await self._request(
+            "GET",
+            "/bom/",
+            params={
+                "part": part_id,
+                "part_detail": "true",
+                "sub_part_detail": "true",
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+        if isinstance(result, dict) and isinstance(result.get("results"), list):
+            count = result.get("count")
+            count = count if type(count) is int and count >= 0 else None
+            next_page = result.get("next")
+            has_more = None
+            if "next" in result and next_page is None:
+                has_more = False
+            elif type(next_page) is str and next_page:
+                has_more = True
+            return {
+                "results": result["results"],
+                "population_count": count,
+                "has_more": has_more,
+            }
+        rows = result if isinstance(result, list) else [result]
+        return {"results": rows, "population_count": None, "has_more": None}
 
     async def get_bom(
         self,

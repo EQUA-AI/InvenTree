@@ -65,11 +65,16 @@ def _ts_type(annotation) -> str:
         joined = ' | '.join(dict.fromkeys(rest))
         return f'{joined} | null' if has_none else joined
     if origin is typing.Literal:
-        return ' | '.join(f"'{arg}'" for arg in typing.get_args(annotation))
+        return ' | '.join(
+            str(arg).lower() if isinstance(arg, bool) else f"'{arg}'"
+            for arg in typing.get_args(annotation)
+        )
     if origin in (list, tuple):
         args = typing.get_args(annotation)
         inner = _ts_type(args[0]) if args else 'unknown'
         return f'{inner}[]'
+    if annotation is type(None):
+        return 'null'
     if annotation is str:
         return 'string'
     if annotation is bool:
@@ -90,8 +95,8 @@ def _emit_model_interface(
 
     The wire name is the field's alias when one is declared (``from`` is a
     Python keyword, so its model field is ``from_`` with ``alias='from'``).
-    ``optional_fields`` marks REQUEST-model fields as ``?`` — response
-    models keep every field required because the server always emits them.
+    ``optional_fields`` marks omitted request fields and conditionally emitted
+    response fields as ``?``; nullable fields alone remain required.
     """
     rows = []
     for field_name, field in model_cls.model_fields.items():
@@ -471,6 +476,9 @@ class Command(BaseCommand):
             EvidenceSetMember,
             EvidenceSetPage,
             RetrievalCoveragePayload,
+            SourceObservationGap,
+            SourceObservationPayload,
+            SourceObservationUnavailable,
         )
 
         classification_values = [str(choice.value) for choice in EvidenceClassification]
@@ -487,6 +495,9 @@ class Command(BaseCommand):
             f'  | {_ts_string_union(list(ANALYSIS_NO_DATA_REASONS))};\n'
         )
         sections.append(_emit_model_interface(RetrievalCoveragePayload))
+        sections.append(_emit_model_interface(SourceObservationGap))
+        sections.append(_emit_model_interface(SourceObservationPayload))
+        sections.append(_emit_model_interface(SourceObservationUnavailable))
         sections.append(_emit_model_interface(CitationLocator))
         sections.append(_emit_model_interface(CitationManifestEntry))
         sections.append(
@@ -542,7 +553,9 @@ class Command(BaseCommand):
         )
         sections.append(
             _emit_model_interface(
-                ChatResponse, overrides={'focus': 'ConversationFocusPayload | null'}
+                ChatResponse,
+                overrides={'focus': 'ConversationFocusPayload | null'},
+                optional_fields=('source_observation',),
             )
         )
 

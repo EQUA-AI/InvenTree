@@ -259,11 +259,18 @@ async def complete(
 ) -> tuple[Any, str, str]:
     """Freeze the events and persist the COMPLETE terminal state."""
 
+    from ai.core.integrations.source_transcripts import live_canonical
+
+    canonical = await live_canonical(run, canonical, required=True)
     message = str(canonical.get("message") or "")
     response_state = str(canonical.get("response_state") or TurnState.COMPLETE)
     # S45: final freeze — every seam has run; collapse streamed
     # deltas for durable storage (replay byte-compatibility).
     canonical["events"] = coalesce_text_deltas(run.capture.events)
+    from ai.core.integrations.source_transcripts import REF_KEY, _hash
+
+    if REF_KEY in canonical:
+        canonical["_source_events_sha256"] = _hash(canonical["events"])
     finalized = await persist_terminal(
         service, run, canonical, state=response_state, output_content=message
     )
@@ -285,7 +292,14 @@ def failure_canonical(run: TurnRun, *, state: Any, message: str) -> CanonicalTur
         "spoken_summary": "",
         "reasoning_provenance": None,
         "route": None,
-        "events": coalesce_text_deltas(run.capture.events if run.capture else []),
+        "events": coalesce_text_deltas(
+            []
+            if getattr(run, "extras", {}).get("source_capture") is not None
+            and getattr(run.extras["source_capture"], "_expected", None) is not None
+            else run.capture.events
+            if run.capture
+            else []
+        ),
     }
 
 
@@ -362,6 +376,14 @@ async def persist_terminal(
             **(
                 {"media_evidence": canonical["media_evidence"]}
                 if canonical.get("media_evidence")
+                else {}
+            ),
+            **(
+                {
+                    "_aimms_source_ref": canonical["_aimms_source_ref"],
+                    "source_observation": canonical["source_observation"],
+                }
+                if canonical.get("_aimms_source_ref")
                 else {}
             ),
             # S10: the consolidated evidence attachment reloads byte-faithfully

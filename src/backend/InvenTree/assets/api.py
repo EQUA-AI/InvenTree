@@ -15,6 +15,8 @@ import InvenTree.permissions
 from InvenTree.filters import SEARCH_ORDER_FILTER, InvenTreeDateFilter
 from InvenTree.mixins import ListCreateAPI, RetrieveUpdateDestroyAPI
 
+from .integration_authority_api import authority_urls
+from .integration_content_api import IntegrationOriginalDownload
 from .location_api import location_api_urls
 from .models import AssetMachine, AssetMaintenanceRecord, Client, MachinePart
 from .registry_api import authorized_client_ids, registry_urls
@@ -472,6 +474,12 @@ class AssetMaintenanceRecordDetail(RetrieveUpdateDestroyAPI):
 
 
 assets_api_urls = [
+    path('integration-authority/', include(authority_urls)),
+    path(
+        'integration-content/<int:pk>/',
+        IntegrationOriginalDownload.as_view(),
+        name='integration-original-download',
+    ),
     path('locations/', include(location_api_urls)),
     path('registry/', include(registry_urls)),
     path(

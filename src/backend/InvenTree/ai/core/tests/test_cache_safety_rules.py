@@ -24,6 +24,16 @@ django.setup()
 import pytest
 
 
+def _module_spec(module: str):
+    """A missing parent proves absence; unrelated import faults remain errors."""
+    try:
+        return importlib.util.find_spec(module)
+    except ModuleNotFoundError as exc:
+        if exc.name and (module == exc.name or module.startswith(exc.name + ".")):
+            return None
+        raise
+
+
 def test_semantic_cache_module_is_gone() -> None:
     """The module cannot be imported; absence beats any runtime fence."""
     assert importlib.util.find_spec("ai.core.memory.semantic_cache") is None
@@ -38,7 +48,18 @@ def test_quarantined_persistence_plane_is_gone() -> None:
         "ai.core.infrastructure.checkpoints",
         "ai.core.integrations.search.azure_ai_search",
     ):
-        assert importlib.util.find_spec(module) is None, module
+        assert _module_spec(module) is None, module
+
+
+def test_absence_check_does_not_hide_a_broken_dependency(monkeypatch) -> None:
+    """An unrelated failed import must not masquerade as a deleted module."""
+
+    def broken_import(_module):
+        raise ModuleNotFoundError(name="unrelated_dependency")
+
+    monkeypatch.setattr(importlib.util, "find_spec", broken_import)
+    with pytest.raises(ModuleNotFoundError):
+        _module_spec("ai.core.integrations.search.azure_ai_search")
 
 
 def test_memory_package_exports_no_cache() -> None:

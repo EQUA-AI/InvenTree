@@ -697,14 +697,10 @@ def _default_search_client():
 
 
 def _current_user():
-    """Resolve the acting Django user from the authenticated ASGI boundary."""
-    from ai.core.auth import get_current_principal
-    from django.contrib.auth import get_user_model
+    """Resolve a fresh active actor under the current authenticated AI policy."""
+    from ai.core.integrations.retrieval_authority import current_ai_actor
 
-    principal = get_current_principal()
-    if principal is None:
-        return None
-    return get_user_model().objects.filter(pk=principal.user_pk).first()
+    return current_ai_actor()
 
 
 def _row_chunk(row: dict[str, Any]) -> dict[str, Any]:
@@ -715,7 +711,7 @@ def _row_chunk(row: dict[str, Any]) -> dict[str, Any]:
     """
     parts = [str(row.get(field) or "").strip() for field in ("caption", "ocr_text", "transcript")]
     text = "\n".join(part for part in parts if part)[:_EXCERPT_MAX_CHARS]
-    return {
+    chunk = {
         # Hash over the raw truncation (pre-fence) so the grounding
         # auditor's excerpt identity is independent of fence markers.
         "excerpt": fence_untrusted_content(text),
@@ -735,7 +731,9 @@ def _row_chunk(row: dict[str, Any]) -> dict[str, Any]:
                 str(row.get("source_file_name") or "")[:255]
             ),
             "attachment_id": int(row.get("attachment_id") or 0),
-            "source_sha256": str(row.get("source_sha256") or ""),
+            # The source digest is a private projection-authority input, checked
+            # by attachment_rows before this projection. Keep the pinned media
+            # citation public shape; chunk_id and excerpt_hash retain grounding.
             "model_type": str(row.get("model_type") or ""),
             "model_id": int(row.get("model_id") or 0),
             "media_type": str(row.get("media_type") or ""),
@@ -759,6 +757,12 @@ def _row_chunk(row: dict[str, Any]) -> dict[str, Any]:
             "excerpt_hash": hashlib.sha256(text.encode("utf-8")).hexdigest(),
         },
     }
+    # Preserve source revision for evidence chips without changing the public
+    # 17-field citation or disclosing projection-only fields to the model.
+    from ai.core.tools.capture_ledger import record_media_revision
+
+    record_media_revision(chunk["citation"], row.get("source_sha256"))
+    return chunk
 
 
 @ai_function

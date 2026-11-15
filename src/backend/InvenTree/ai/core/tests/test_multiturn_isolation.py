@@ -14,8 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import sys
-import types
 import uuid
 from types import SimpleNamespace
 from typing import Any
@@ -27,15 +25,10 @@ import django
 django.setup()
 
 import pytest  # noqa: E402
-from django.core.management import call_command  # noqa: E402
 
-# The island has no assets app; ThreadRepository.set_scope's explicit-mode
-# authorizer imports assets.ai_read.authorized_machine lazily. Install a
-# stub whose allow-set each test controls — the SEAM is real, the rows are
-# not needed.
+# These scope tests control authorized machine identities without replacing
+# the assets package for other tests collected in the same interpreter.
 _AUTHORIZED_MACHINE_IDS: set[int] = set()
-_assets_pkg = types.ModuleType("assets")
-_assets_ai_read = types.ModuleType("assets.ai_read")
 
 
 def _authorized_machine(user, machine_id):
@@ -43,11 +36,6 @@ def _authorized_machine(user, machine_id):
         return SimpleNamespace(pk=int(machine_id), name=f"Machine {machine_id}")
     return None
 
-
-_assets_ai_read.authorized_machine = _authorized_machine
-_assets_pkg.ai_read = _assets_ai_read
-sys.modules.setdefault("assets", _assets_pkg)
-sys.modules.setdefault("assets.ai_read", _assets_ai_read)
 
 from ai.core.auth import AIPrincipal  # noqa: E402
 from ai.core.streaming import AGUIEvent, EventType  # noqa: E402
@@ -59,15 +47,16 @@ from aichat.services.threads import (  # noqa: E402
     ThreadRepository,
 )
 
-
-@pytest.fixture(scope="module", autouse=True)
-def _database():
-    call_command("migrate", verbosity=0, interactive=False)
-    yield
+# Let pytest-django own database setup and per-test cleanup. Transactional
+# access is needed because the real service persists through async thread hops.
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 @pytest.fixture(autouse=True)
-def _authorized():
+def _authorized(monkeypatch):
+    from assets import ai_read
+
+    monkeypatch.setattr(ai_read, "authorized_machine", _authorized_machine)
     _AUTHORIZED_MACHINE_IDS.clear()
     _AUTHORIZED_MACHINE_IDS.update({11, 12, 21, 22})
     yield

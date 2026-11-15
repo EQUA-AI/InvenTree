@@ -15,14 +15,10 @@ from asgiref.sync import sync_to_async
 
 
 def _current_user():
-    """Resolve the acting Django user from the authenticated ASGI boundary."""
-    from ai.core.auth import get_current_principal
-    from django.contrib.auth import get_user_model
+    """Resolve a fresh active actor under the current authenticated AI policy."""
+    from ai.core.integrations.retrieval_authority import current_ai_actor
 
-    principal = get_current_principal()
-    if principal is None:
-        return None
-    return get_user_model().objects.filter(pk=principal.user_pk).first()
+    return current_ai_actor()
 
 
 @ai_function
@@ -65,12 +61,21 @@ async def list_document_sources(
     @sync_to_async
     def _run():
         from ai.core.analysis.source_gateway import SOURCE_CLASSES, inventory
+        from ai.core.integrations.retrieval_authority import fresh_role
+        from InvenTree.restore_hold import restore_hold_enabled
 
         user = _current_user()
         if user is None:
             return {
                 "success": False,
                 "error": "No authenticated user is available for this listing.",
+            }
+        if not fresh_role(user, "work_order") or restore_hold_enabled():
+            return {
+                "success": False,
+                "unavailable": True,
+                "code": "source_authority_unavailable",
+                "error": "Source inventory is unavailable.",
             }
         machine_ids = None
         if machine:

@@ -7,16 +7,30 @@ import pytest
 from ai.core.integrations.data_provider import LiveDataProviderAsync
 
 
+def _client_with_known_pages(pages, population_count):
+    """Retain old list-call assertions and explicit native-page fixture truth."""
+    get_stock = AsyncMock(side_effect=pages)
+
+    async def get_stock_page(**kwargs):
+        rows = await get_stock(**kwargs)
+        offset = kwargs["offset"]
+        return {
+            "results": [
+                {"pk": offset + index + 1, "part": kwargs["part_id"], **row}
+                for index, row in enumerate(rows)
+            ],
+            "population_count": population_count,
+            "has_more": offset + len(rows) < population_count,
+        }
+
+    return SimpleNamespace(get_stock=get_stock, get_stock_page=get_stock_page)
+
+
 @pytest.mark.asyncio
 async def test_total_stock_includes_later_pages():
     provider = object.__new__(LiveDataProviderAsync)
-    provider._client = SimpleNamespace(
-        get_stock=AsyncMock(
-            side_effect=[
-                [{"quantity": 1}] * 100,
-                [{"quantity": 15}] * 7,
-            ]
-        )
+    provider._client = _client_with_known_pages(
+        [[{"quantity": 1}] * 100, [{"quantity": 15}] * 7], 107
     )
     assert await provider.get_stock_quantity(42) == 205
     assert provider._client.get_stock.call_args_list == [
@@ -28,13 +42,8 @@ async def test_total_stock_includes_later_pages():
 @pytest.mark.asyncio
 async def test_total_stock_propagates_later_page_failure():
     provider = object.__new__(LiveDataProviderAsync)
-    provider._client = SimpleNamespace(
-        get_stock=AsyncMock(
-            side_effect=[
-                [{"quantity": 1}] * 100,
-                RuntimeError("stock page unavailable"),
-            ]
-        )
+    provider._client = _client_with_known_pages(
+        [[{"quantity": 1}] * 100, RuntimeError("stock page unavailable")], 107
     )
     with pytest.raises(RuntimeError, match="stock page unavailable"):
         await provider.get_stock_quantity(42)
@@ -43,7 +52,7 @@ async def test_total_stock_propagates_later_page_failure():
 @pytest.mark.asyncio
 async def test_total_stock_empty_inventory():
     provider = object.__new__(LiveDataProviderAsync)
-    provider._client = SimpleNamespace(get_stock=AsyncMock(return_value=[]))
+    provider._client = _client_with_known_pages([[]], 0)
     assert await provider.get_stock_quantity(42) == 0
 
 

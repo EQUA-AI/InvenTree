@@ -25,6 +25,11 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
+# Pydantic resolves the response annotation at runtime.
+from ai.core.analysis.wire import (  # noqa: TC002
+    SourceObservationPayload,
+    SourceObservationUnavailable,
+)
 from ai.core.api import get_devui
 from ai.core.auth import (
     AIPrincipal,
@@ -59,7 +64,11 @@ from aichat.services import (
     ThreadNotFound,
     ThreadRepository,
 )
-from aichat.services.threads import InvalidBoundary, ThreadRepositoryError
+from aichat.services.threads import (
+    InvalidBoundary,
+    SourceProjectionUnavailable,
+    ThreadRepositoryError,
+)
 from aichat.services.transcript_export import (
     ExportAccessError,
     ExportTooLargeError,
@@ -141,6 +150,10 @@ class ChatResponse(BaseModel):
     message: str
     agent: str
     workflow_used: str | None = None
+    # Only source-backed turns add this envelope; default-off bytes stay stable.
+    source_observation: SourceObservationPayload | SourceObservationUnavailable | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
     # The turn's RECORDED conversation-focus binding (the ORIGINAL snapshot
     # on replay) and its version — never a claim about current thread state.
     # ``focus_refresh_required`` marks a turn that CHANGED the focus: refresh
@@ -794,6 +807,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         message=result.message,
         agent=result.agent,
         workflow_used=result.workflow_used,
+        source_observation=result.source_observation,
         focus=result.focus,
         focus_version=result.focus_version,
         focus_refresh_required=result.focus_refresh_required,
@@ -1089,6 +1103,8 @@ async def list_threads(
         )()
     except InvalidBoundary:
         raise HTTPException(status_code=400, detail="Invalid thread cursor") from None
+    except SourceProjectionUnavailable:
+        raise HTTPException(status_code=503, detail="Source-linked search unavailable") from None
     return ThreadSyncResponse(
         threads=threads,
         sync_token=None,
@@ -1328,6 +1344,12 @@ async def get_thread(
                     # S10/S11: the consolidated evidence attachment reloads
                     # with the SAME object shape the live wires delivered.
                     "evidence_analysis": message.metadata.get("evidence_analysis"),
+                    **(
+                        {"source_observation": message.metadata["source_observation"]}
+                        if isinstance(message.metadata, dict)
+                        and "source_observation" in message.metadata
+                        else {}
+                    ),
                     # S14: the resolved model identities stamped on the
                     # turn — the battery runner verifies pins from the wire.
                     "model_versions": message.metadata.get("model_versions"),

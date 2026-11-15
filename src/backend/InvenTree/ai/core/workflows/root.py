@@ -17,6 +17,7 @@ import asyncio
 import contextlib
 import logging
 import uuid
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -100,9 +101,12 @@ class RootWorkflow:
         if principal is None or getattr(principal, "user_pk", None) is None:
             return None
         profile = await fresh_permission_profile(principal.user_pk)
-        if not fast_path_permitted(result_type, profile):
+        if get_current_principal() is not principal or not fast_path_permitted(
+            result_type, profile
+        ):
             return None
-        return format_fast_path_answer(result)
+        answer = format_fast_path_answer(result)
+        return answer if get_current_principal() is principal else None
 
     @staticmethod
     async def _bounded_stream(chunks, remaining) -> AsyncIterator[str]:
@@ -141,6 +145,12 @@ class RootWorkflow:
         Yields:
             Response text chunks
         """
+        from ai.core.auth import get_current_principal
+
+        # A replacement principal, even with the same user key, is a different
+        # authenticated invocation context and cannot inherit this answer.
+        turn_principal = get_current_principal()
+
         # Generate IDs
         thread_id = thread_id or str(uuid.uuid4())
         run_id = str(uuid.uuid4())
@@ -215,6 +225,30 @@ class RootWorkflow:
             if context:
                 aggregated_context.update(context)
 
+            # An optional server-selected source read uses the existing guarded
+            # native evidence consumers. No model/context field enables it.
+            # Unsupported shapes continue to normal routing before dispatch;
+            # a selected source failure follows the honest failed-turn path.
+            from ai.core.integrations.source_reads import select_source_read
+
+            stage = "source_read_selection"
+            source_read = await asyncio.wait_for(
+                select_source_read(
+                    message=message,
+                    thread_id=thread_id,
+                    context=aggregated_context,
+                ),
+                timeout=remaining(),
+            )
+            if source_read is not None:
+                stage = "source_read_delivery"
+                await _step("source_read")
+                async for chunk in self._bounded_stream(source_read.run_stream(run_ctx), remaining):
+                    yield chunk
+                await _step(None)
+                await run_ctx.emit_run_finished()
+                return
+
             # Step 2: Route
             stage = "routing"
             await _step("routing")
@@ -257,18 +291,34 @@ class RootWorkflow:
                     global_enabled=get_settings().feature_voice_fast_path,
                 )
             ):
-                bypass = await self._maybe_fast_path_answer(decision.fast_path_result)
+                bypass = None
+                if get_current_principal() is turn_principal:
+                    bypass = await self._maybe_fast_path_answer(decision.fast_path_result)
                 if bypass is not None:
                     await run_ctx.emit_workflow_started(
                         workflow_id="wf8-fastpath",
                         workflow_name=decision.workflow_type.name,
                     )
                     await run_ctx.emit_text_start()
-                    await run_ctx.emit_text_delta(bypass)
+                    # Noncontent event hooks are awaited work too. Refresh the
+                    # same principal and its permissions before text delivery.
+                    bypass = None
+                    if get_current_principal() is turn_principal:
+                        bypass = await self._maybe_fast_path_answer(decision.fast_path_result)
+                    if bypass is not None:
+                        await run_ctx.emit_text_delta(bypass)
+                        await run_ctx.emit_text_end()
+                        # The generator is a second delivery channel after an
+                        # awaited event. Do not replay the old answer there if
+                        # authority changed, and never rerun already sent work.
+                        bypass = None
+                        if get_current_principal() is turn_principal:
+                            bypass = await self._maybe_fast_path_answer(decision.fast_path_result)
+                        if bypass is not None:
+                            yield bypass
+                        await run_ctx.emit_run_finished()
+                        return
                     await run_ctx.emit_text_end()
-                    yield bypass
-                    await run_ctx.emit_run_finished()
-                    return
 
             # Step 3: Execute Workflow
             stage = "workflow_execution"
@@ -351,6 +401,10 @@ class RootWorkflow:
                     await run_ctx.emit_text_end()
             elif hasattr(workflow, "run_stream"):
                 # Agent Framework style
+                # The fallback must not receive a service-provider result that
+                # was not emitted by the independently permission-gated path.
+                if isinstance(decision, RoutingDecision) and decision.fast_path_result is not None:
+                    decision = replace(decision, fast_path_result=None, use_fast_path=False)
                 chunks = workflow.run_stream(
                     message=message, thread_id=thread_id, run_id=run_id, decision=decision
                 )

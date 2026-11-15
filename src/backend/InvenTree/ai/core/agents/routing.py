@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 from dataclasses import dataclass, field
 from enum import Enum
@@ -176,6 +177,14 @@ class FastPathRouter:
         r"(?:which (?:bin|shelf|location))\s+(?:has|contains)\s+(.+?)(?:\?|$)",
     ]
 
+    _CATEGORY_RESULT_TYPES: ClassVar[dict[str, str]] = {
+        "stock_group": "stock_group",
+        "stock": "stock_check",
+        "part": "part_details",
+        "bom": "bom",
+        "location": "location",
+    }
+
     @classmethod
     def compile_patterns(cls) -> dict[str, list[re.Pattern]]:
         """Compile all patterns for efficient matching."""
@@ -197,6 +206,38 @@ class FastPathRouter:
             self._data_provider = get_data_provider()
         return self._data_provider
 
+    @staticmethod
+    def _valid_part_identity(part):
+        """Require an actual positive integer native part identity."""
+        return isinstance(part, dict) and type(part.get("pk")) is int and part["pk"] > 0
+
+    async def _complete_stock_page(self, client, part_id, *, in_stock=None):
+        """Return one complete first stock page, or None if not established."""
+        if in_stock is None:
+            page = await client.get_stock_page(part_id=part_id, limit=100, offset=0)
+        else:
+            page = await client.get_stock_page(
+                part_id=part_id, limit=100, offset=0, in_stock=in_stock
+            )
+        items = page.get("results")
+        count = page.get("population_count")
+        if (
+            not isinstance(items, list)
+            or len(items) > 100
+            or type(count) is not int
+            or count != len(items)
+            or page.get("has_more") is not False
+        ):
+            return None
+        ids = [item.get("pk") for item in items if isinstance(item, dict)]
+        if (
+            len(ids) != len(items)
+            or any(type(pk) is not int or pk < 1 for pk in ids)
+            or len(set(ids)) != len(ids)
+        ):
+            return None
+        return items
+
     async def try_fast_path(
         self,
         query: str,
@@ -208,6 +249,10 @@ class FastPathRouter:
         Returns RoutingDecision with result if fast-path succeeds,
         None if query requires LLM processing.
         """
+        from ai.core.auth import get_current_principal
+        from ai.core.tools.invocation_guard import fresh_permission_profile
+        from ai.core.workflows.fast_path import fast_path_permitted
+
         query_lower = query.lower().strip()
 
         # Try each pattern category
@@ -215,6 +260,28 @@ class FastPathRouter:
             for pattern in patterns:
                 match = pattern.search(query_lower)
                 if match:
+                    if category in {"stock_group", "stock"} and re.search(
+                        r"\b(?:available|availability|unallocated|allocated|allocations?|reserved|reservations?)\b",
+                        query_lower,
+                    ):
+                        # Native in-stock totals are not allocation-aware availability.
+                        return None
+                    result_type = self._CATEGORY_RESULT_TYPES.get(category)
+                    principal = get_current_principal()
+                    actor_pk = getattr(principal, "user_pk", None)
+                    if not result_type or actor_pk is None:
+                        return None
+                    try:
+                        profile = await fresh_permission_profile(actor_pk)
+                    except Exception:
+                        return None
+                    current = get_current_principal()
+                    if (
+                        current is None
+                        or getattr(current, "user_pk", None) != actor_pk
+                        or not fast_path_permitted(result_type, profile)
+                    ):
+                        return None
                     entity = match.group(1).strip()
                     logger.info(
                         "Fast-path match",
@@ -225,8 +292,40 @@ class FastPathRouter:
                         },
                     )
 
-                    result = await self._execute_fast_path(category, entity)
+                    async def authorize_next_read(actor_pk=actor_pk, result_type=result_type):
+                        """Recheck the same actor before a dependent provider read."""
+                        current = get_current_principal()
+                        if current is None or getattr(current, "user_pk", None) != actor_pk:
+                            return False
+                        try:
+                            current_profile = await fresh_permission_profile(actor_pk)
+                        except Exception:
+                            return False
+                        current = get_current_principal()
+                        return (
+                            current is not None
+                            and getattr(current, "user_pk", None) == actor_pk
+                            and fast_path_permitted(result_type, current_profile)
+                        )
+
+                    result = await self._execute_fast_path(
+                        category, entity, authorize_next_read=authorize_next_read
+                    )
                     if result:
+                        current = get_current_principal()
+                        if current is None or getattr(current, "user_pk", None) != actor_pk:
+                            return None
+                        try:
+                            profile = await fresh_permission_profile(actor_pk)
+                        except Exception:
+                            return None
+                        current = get_current_principal()
+                        if (
+                            current is None
+                            or getattr(current, "user_pk", None) != actor_pk
+                            or not fast_path_permitted(result_type, profile)
+                        ):
+                            return None
                         return RoutingDecision(
                             workflow_type=WorkflowType.T1_LOOKUP,
                             confidence=0.95,
@@ -242,6 +341,8 @@ class FastPathRouter:
         self,
         category: str,
         entity: str,
+        *,
+        authorize_next_read,
     ) -> dict[str, Any] | None:
         """Execute the appropriate InvenTree query."""
         try:
@@ -251,22 +352,44 @@ class FastPathRouter:
                 # This wording asks for the total across every matching part,
                 # not the stock of the first fuzzy-search hit. Search results
                 # carry InvenTree's authoritative per-part `in_stock` figure.
-                parts = await client.search_parts(entity, limit=100)
-                if not parts or len(parts) >= 100:
-                    # At the provider cap we cannot prove the set is complete;
-                    # fall through to the normal aggregate-capable workflow.
+                page = await client.search_parts_page(
+                    query=entity, active=True, limit=100, offset=0
+                )
+                parts = page.get("results")
+                count = page.get("population_count")
+                if (
+                    not isinstance(parts, list)
+                    or not parts
+                    or len(parts) > 100
+                    or type(count) is not int
+                    or count != len(parts)
+                    or page.get("has_more") is not False
+                ):
+                    # Unknown or inconsistent paging cannot support a total.
+                    return None
+                part_ids = [part.get("pk") for part in parts if isinstance(part, dict)]
+                if (
+                    len(part_ids) != len(parts)
+                    or any(type(pk) is not int or pk < 1 for pk in part_ids)
+                    or len(set(part_ids)) != len(part_ids)
+                ):
                     return None
                 quantities = [part.get("in_stock") for part in parts]
                 if any(
-                    not isinstance(quantity, (int, float)) or isinstance(quantity, bool)
+                    not isinstance(quantity, (int, float))
+                    or isinstance(quantity, bool)
+                    or not math.isfinite(quantity)
                     for quantity in quantities
                 ):
+                    return None
+                total_quantity = sum(float(quantity) for quantity in quantities)
+                if not math.isfinite(total_quantity):
                     return None
                 return {
                     "type": "stock_group",
                     "label": entity,
                     "part_count": len(parts),
-                    "total_quantity": sum(float(quantity) for quantity in quantities),
+                    "total_quantity": total_quantity,
                 }
 
             if category == "stock":
@@ -274,12 +397,29 @@ class FastPathRouter:
                 parts = await client.search_parts(entity, limit=5)
                 if parts:
                     part = parts[0]
-                    stock = await client.get_stock_items(part_id=part["pk"])
+                    if not self._valid_part_identity(part):
+                        return None
+                    if not await authorize_next_read():
+                        return None
+                    stock = await self._complete_stock_page(client, part["pk"], in_stock=True)
+                    if stock is None:
+                        return None
+                    quantities = [item.get("quantity") for item in stock]
+                    if any(
+                        not isinstance(quantity, (int, float))
+                        or isinstance(quantity, bool)
+                        or not math.isfinite(quantity)
+                        for quantity in quantities
+                    ):
+                        return None
+                    total_quantity = sum(quantities)
+                    if not math.isfinite(total_quantity):
+                        return None
                     return {
                         "type": "stock_check",
                         "part": part,
                         "stock_items": stock,
-                        "total_quantity": sum(s.get("quantity", 0) for s in stock),
+                        "total_quantity": total_quantity,
                     }
 
             elif category == "part":
@@ -287,7 +427,13 @@ class FastPathRouter:
                 parts = await client.search_parts(entity, limit=1)
                 if parts:
                     part = parts[0]
+                    if not self._valid_part_identity(part):
+                        return None
+                    if not await authorize_next_read():
+                        return None
                     details = await client.get_part(part["pk"])
+                    if not self._valid_part_identity(details) or details["pk"] != part["pk"]:
+                        return None
                     return {
                         "type": "part_details",
                         "part": details,
@@ -298,7 +444,28 @@ class FastPathRouter:
                 parts = await client.search_parts(entity, limit=1)
                 if parts:
                     part = parts[0]
-                    bom = await client.get_bom_items(part["pk"])
+                    if not self._valid_part_identity(part):
+                        return None
+                    if not await authorize_next_read():
+                        return None
+                    page = await client.get_bom_page(part_id=part["pk"], limit=100, offset=0)
+                    bom = page.get("results")
+                    count = page.get("population_count")
+                    if (
+                        not isinstance(bom, list)
+                        or len(bom) > 100
+                        or type(count) is not int
+                        or count != len(bom)
+                        or page.get("has_more") is not False
+                    ):
+                        return None
+                    ids = [item.get("pk") for item in bom if isinstance(item, dict)]
+                    if (
+                        len(ids) != len(bom)
+                        or any(type(pk) is not int or pk < 1 for pk in ids)
+                        or len(set(ids)) != len(ids)
+                    ):
+                        return None
                     return {
                         "type": "bom",
                         "part": part,
@@ -310,18 +477,43 @@ class FastPathRouter:
                 parts = await client.search_parts(entity, limit=1)
                 if parts:
                     part = parts[0]
-                    stock = await client.get_stock_items(part_id=part["pk"])
-                    locations = [
-                        {
-                            "location": s.get("location_detail", {}).get("name", "Unknown"),
-                            "quantity": s.get("quantity", 0),
-                        }
-                        for s in stock
-                    ]
+                    if not self._valid_part_identity(part):
+                        return None
+                    if not await authorize_next_read():
+                        return None
+                    stock = await self._complete_stock_page(client, part["pk"])
+                    if stock is None:
+                        return None
+                    by_location = {}
+                    for item in stock:
+                        location_id = item.get("location")
+                        detail = item.get("location_detail")
+                        quantity = item.get("quantity")
+                        if (
+                            type(location_id) is not int
+                            or location_id < 1
+                            or not isinstance(detail, dict)
+                            or type(detail.get("pk")) is not int
+                            or detail["pk"] != location_id
+                            or not isinstance(detail.get("name"), str)
+                            or not detail["name"].strip()
+                            or not isinstance(quantity, (int, float))
+                            or isinstance(quantity, bool)
+                            or not math.isfinite(quantity)
+                        ):
+                            return None
+                        entry = by_location.setdefault(
+                            location_id, {"location": detail["name"], "quantity": 0}
+                        )
+                        if entry["location"] != detail["name"]:
+                            return None
+                        entry["quantity"] += quantity
+                        if not math.isfinite(entry["quantity"]):
+                            return None
                     return {
                         "type": "location",
                         "part": part,
-                        "locations": locations,
+                        "locations": list(by_location.values()),
                     }
 
         except Exception as e:

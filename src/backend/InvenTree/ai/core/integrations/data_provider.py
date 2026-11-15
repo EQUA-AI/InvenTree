@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -46,12 +47,24 @@ class InventoryProvider(Protocol):
         """Get stock items, optionally filtered by part."""
         ...
 
+    async def get_stock_page(
+        self, *, part_id: int, limit: int = 100, offset: int = 0, in_stock: bool | None = None
+    ) -> dict[str, Any]:
+        """Get a bounded stock page with its native completeness metadata."""
+        ...
+
     async def get_stock_quantity(self, part_id: int) -> float:
         """Get total stock quantity for a part."""
         ...
 
     async def get_bom_items(self, part_id: int) -> list[dict[str, Any]]:
         """Get BOM items for a part."""
+        ...
+
+    async def get_bom_page(
+        self, *, part_id: int, limit: int = 100, offset: int = 0
+    ) -> dict[str, Any]:
+        """Get one BOM page with its native completeness metadata."""
         ...
 
     async def get_categories(self) -> list[dict[str, Any]]:
@@ -203,27 +216,81 @@ class LiveDataProviderAsync:
             return await self._client.get_stock(part_id=part_id, limit=limit)
         return await self._client.get_stock(part_id=part_id)
 
+    async def get_stock_page(
+        self, *, part_id: int, limit: int = 100, offset: int = 0, in_stock: bool | None = None
+    ) -> dict[str, Any]:
+        """Return the bounded native stock page and its paging facts."""
+        if in_stock is None:
+            return await self._client.get_stock_page(part_id=part_id, limit=limit, offset=offset)
+        return await self._client.get_stock_page(
+            part_id=part_id, limit=limit, offset=offset, in_stock=in_stock
+        )
+
     async def get_stock_quantity(self, part_id: int) -> float:
-        """Sum every stock page so large inventories are not undercounted."""
+        """Sum a complete, consistent native in-stock traversal, not availability."""
         total = 0.0
         offset = 0
         page_size = 100
+        population_count = None
+        seen: set[int] = set()
         while True:
-            stock = await self._client.get_stock(
+            page = await self._client.get_stock_page(
                 part_id=part_id,
                 limit=page_size,
                 offset=offset,
                 in_stock=True,
                 include_variants=False,
             )
-            total += sum(item.get("quantity", 0) for item in stock)
-            if len(stock) < page_size:
-                return total
+            stock = page.get("results")
+            count = page.get("population_count")
+            has_more = page.get("has_more")
+            if (
+                not isinstance(stock, list)
+                or len(stock) > page_size
+                or type(count) is not int
+                or count < 0
+                or type(has_more) is not bool
+                or (population_count is not None and population_count != count)
+                or offset + len(stock) > count
+                or has_more != (offset + len(stock) < count)
+                or (has_more and not stock)
+            ):
+                raise ValueError("Stock quantity is unavailable: incomplete native paging")
+            population_count = count
+            for item in stock:
+                if (
+                    not isinstance(item, dict)
+                    or type(item.get("pk")) is not int
+                    or item["pk"] <= 0
+                    or item["pk"] in seen
+                    or type(item.get("part")) is not int
+                    or item["part"] != part_id
+                ):
+                    raise ValueError("Stock quantity is unavailable: invalid row identity")
+                seen.add(item["pk"])
+                quantity = item.get("quantity")
+                if quantity is None or type(quantity) not in (int, float) or quantity < 0:
+                    raise ValueError("Stock quantity is unavailable: invalid quantity")
+                try:
+                    quantity = float(quantity)
+                except OverflowError:
+                    raise ValueError("Stock quantity is unavailable: invalid quantity") from None
+                if not math.isfinite(quantity) or not math.isfinite(total + quantity):
+                    raise ValueError("Stock quantity is unavailable: invalid quantity")
+                total += quantity
             offset += len(stock)
+            if not has_more:
+                return total
 
     async def get_bom_items(self, part_id: int) -> list[dict[str, Any]]:
         """Get BOM items for a part."""
         return await self._client.get_bom(part_id)
+
+    async def get_bom_page(
+        self, *, part_id: int, limit: int = 100, offset: int = 0
+    ) -> dict[str, Any]:
+        """Return a bounded native BOM page and its paging facts."""
+        return await self._client.get_bom_page(part_id=part_id, limit=limit, offset=offset)
 
     async def get_categories(self) -> list[dict[str, Any]]:
         """Get all categories via API."""

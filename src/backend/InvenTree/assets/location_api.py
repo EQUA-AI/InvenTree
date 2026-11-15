@@ -15,7 +15,7 @@ from tasks.dashboard_metrics import OPEN
 from tasks.models import WorkOrder
 from tasks.scope import ScopeError, machine_scope_filter, work_order_scope_filter
 
-from InvenTree.permissions import IsAuthenticatedOrReadScope, RolePermission
+from InvenTree.permissions import IsAuthenticatedOrReadScope, RolePermission, map_scope
 from machine_health.services.summary import health_conditions
 from users.permissions import check_user_role
 
@@ -79,11 +79,22 @@ class LocationPagination(LimitOffsetPagination):
     max_limit = 100
 
 
+class _LocationTokenScope(IsAuthenticatedOrReadScope):
+    """An OAuth scope refusal cannot become ordinary session authentication."""
+
+    def has_permission(self, request, view):
+        """Preserve non-OAuth behavior; require declared scopes for OAuth."""
+        if self.is_oauth2ed(request):
+            return self.check_oauth2_authentication(request, view)
+        return super().has_permission(request, view)
+
+
 class LocationView(APIView):
     """Keep the existing asset role and independently enforce client scope."""
 
-    permission_classes = [IsAuthenticatedOrReadScope, RolePermission]
+    permission_classes = [_LocationTokenScope, RolePermission]
     role_required = 'work_order'
+    required_alternate_scopes = map_scope(roles=['work_order'])
 
     def finalize_response(self, request, response, *args, **kwargs):
         """Do not share a user's authorized tree or machine counts in caches."""
@@ -142,6 +153,14 @@ class LocationList(LocationView):
 
     @extend_schema(responses={200: dict})
     def get(self, request):
+        """Select the native read by default, before optional data execution."""
+        from .integration_s2_native import serve_native_read
+
+        return serve_native_read(
+            self, request, domain='locations', native=lambda: self._get_native(request)
+        )
+
+    def _get_native(self, request):
         """Return locations with authorized breadcrumbs and child hints."""
         graph = locations.graph_for(request.user)
         rows = list(graph.values())
@@ -343,6 +362,36 @@ class LocationMachines(LocationView):
 
     @extend_schema(responses={200: dict})
     def get(self, request):
+        """Select the native read by default, before optional data execution."""
+        from .integration_s2_native import serve_native_read
+
+        factory = getattr(settings, 'AIMMS_PLACEMENT_STATE_ADAPTER', None)
+        if factory is not None:
+            from django.db import DatabaseError
+
+            from integration_state.services import PlacementStateError
+
+            from .integration_s5_pending import (
+                append_placement_metadata,
+                placement_read_failure,
+                select_placement_adapter,
+            )
+
+            try:
+                adapter = select_placement_adapter(request, factory=factory)
+                if adapter is not None:
+                    # Combined provider/placement metadata is not qualified.
+                    # Select native before execution, never retry a reader.
+                    return append_placement_metadata(
+                        request, self._get_native(request), adapter=adapter
+                    )
+            except (PlacementStateError, DatabaseError):
+                return placement_read_failure(request)
+        return serve_native_read(
+            self, request, domain='machines', native=lambda: self._get_native(request)
+        )
+
+    def _get_native(self, request):
         """Filter before pagination; never compute totals from displayed rows."""
         graph = locations.graph_for(request.user)
         rows = AssetMachine.objects.filter(
@@ -449,6 +498,10 @@ class LocationTransfer(LocationView):
     """Moving an asset exercises change authority, not add-work-order authority."""
 
     rolemap = {'POST': 'change'}
+    required_alternate_scopes = {
+        **LocationView.required_alternate_scopes,
+        'POST': map_scope(roles=['work_order'], override_all_actions='change')['POST'],
+    }
 
     @extend_schema(request=TransferInput, responses={200: dict, 409: dict})
     def post(self, request):

@@ -189,7 +189,7 @@ async def get_sales_order_lines(
 
     Args:
         order_id: The sales order ID
-        include_stock: Include current stock availability for each line
+        include_stock: Include current in-stock on-hand quantity for each line
                       (default True)
 
     Returns:
@@ -211,8 +211,13 @@ async def get_sales_order_lines(
         - is_complete: True if fully shipped
 
         If include_stock=True, also includes:
-        - in_stock: Current stock quantity
-        - can_fulfill: True if sufficient stock available
+        - in_stock: Current in-stock on-hand quantity, not unallocated availability
+        - on_hand_covers_outstanding: On-hand-only arithmetic comparison
+        - can_fulfill: None; fulfillment readiness is not established by this read
+        - stock_comparison_basis: Explicit limit of the on-hand comparison
+
+        Native availability/allocation fields are preserved, not recomputed.
+        They do not make the on-hand comparison a fulfillment or reservation.
 
     Example:
         lines = await get_sales_order_lines(order_id=100)
@@ -253,7 +258,10 @@ async def get_sales_order_lines(
                 line["in_stock"] = stock_qty
                 outstanding = line.get("quantity", 0) - line.get("shipped", 0)
                 line["outstanding"] = outstanding
-                line["can_fulfill"] = stock_qty >= outstanding
+                line["on_hand_covers_outstanding"] = stock_qty >= outstanding
+                # A native on-hand total is not allocation-aware readiness.
+                line["can_fulfill"] = None
+                line["stock_comparison_basis"] = "in_stock_not_allocation_availability"
                 line["is_complete"] = outstanding <= 0
 
     logger.info(f"Found {len(lines)} line items for order {order_id}")
@@ -491,8 +499,13 @@ async def get_build_order_lines(
         - optional: Whether component is optional
 
         If include_stock=True:
-        - in_stock: Current available stock
-        - can_allocate: True if enough stock to fully allocate
+        - in_stock: Current in-stock on-hand quantity, not unallocated availability
+        - on_hand_covers_unallocated: On-hand-only arithmetic comparison
+        - can_allocate: None; allocation readiness is not established by this read
+        - stock_comparison_basis: Explicit limit of the on-hand comparison
+
+        Native availability/allocation fields are preserved, not recomputed.
+        Neither the comparison nor a reported quantity grants an allocation.
 
         If include_allocated=True:
         - allocations: List of stock allocations for this line
@@ -543,7 +556,9 @@ async def get_build_order_lines(
         line["is_fully_allocated"] = allocated >= required
 
         if include_stock and "in_stock" in line:
-            line["can_allocate"] = line["in_stock"] >= line["unallocated"]
+            line["on_hand_covers_unallocated"] = line["in_stock"] >= line["unallocated"]
+            line["can_allocate"] = None
+            line["stock_comparison_basis"] = "in_stock_not_allocation_availability"
 
         if include_allocated:
             # Get allocations for this line
