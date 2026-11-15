@@ -38,6 +38,11 @@ authorization, deployment or C/K acceptance is implied by those tests.
 
 ## Configure the staging pilot
 
+The supplied staging origin is `https://equaai.palantirfoundry.com`. The
+ontology, generated SDK distribution/module/version, object/property mappings
+and credential-store reference are still required. Recording this origin does
+not enable the transport or verify an authenticated Foundry read.
+
 Create a restricted backend application in Foundry Developer Console. Generate
 the Python SDK for the selected ontology and machine/location types. Grant its
 service user only the required staging resources and request the
@@ -74,7 +79,7 @@ from integration_state.palantir_transport import ObjectMapping, TransportConfig
 
 # All values and functions below come from your reviewed deployment module.
 AIMMS_PALANTIR_TRANSPORT = TransportConfig(
-    origin=reviewed_foundry_origin,
+    origin='https://equaai.palantirfoundry.com',
     environment=reviewed_export_namespace,
     distribution=generated_distribution,
     sdk_module=generated_import_name,
