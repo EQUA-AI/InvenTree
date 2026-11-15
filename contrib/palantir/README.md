@@ -72,16 +72,30 @@ application; it is not the missing ontology RID.
 
 The MCP connection has been registered in repository-local Claude Code user
 settings using the supplied public client ID and callback port 8080. OAuth
-sign-in is pending user interaction. Its loopback redirect is
+sign-in is complete and Claude Code reports **Connected**. A separate MCP
+Python client initialized a live session, listed 12 tools and successfully
+read the ontology RID, accessible object-type catalog and telemetry schema.
+No entity data was retrieved. No SQL, anomaly, semantic-search or action tools
+were invoked. Detailed receipts are retained in ignored local review evidence.
+Its loopback redirect is
 `http://localhost:8080/callback`, separate from the hosted browser app's
 `/auth/callback`. Resume authentication from this repository with
 `claude mcp login --no-browser aimms-demo-code-app`. Keep login links, codes,
 tokens, client secrets and user MCP configuration outside Git. A Claude Code
 registration does not attach tools to this Codex chat or configure the Python
-OSDK backend. After authorization, inspect the MCP tool catalog and use only
-the resource/metadata reads required for SDK discovery; actions and writes
-remain outside this staging task. Authenticated MCP access and the generated
-Python SDK/service-user read must each be verified separately.
+OSDK backend. Direct MCP metadata inspection is now verified separately from
+the generated Python SDK/service-user read, which remains unqualified.
+
+The accessible catalog does not expose a machine or location type meeting the
+native pilot contract. The available raw telemetry type has four string
+properties, an experimental release status and a source-record primary key;
+its metadata describes the timestamp as unnormalized text. It lacks the six
+distinct mapped properties and native client/lifecycle bindings required below.
+This observation is scoped to this connection's accessible catalog, not the
+entire ontology. Create or expose the reviewed machine/location types and
+bindings, generate/pin their Python SDK and configure service credentials
+before enabling the pilot. A telemetry consumer needs its own reviewed
+normalization and native association contract.
 
 From a machine/network where Foundry opens, use Developer Console to open the
 AIMMS application and select the Python SDK setup/documentation. Supply its
