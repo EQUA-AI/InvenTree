@@ -20,6 +20,8 @@ source change on `aimms-pltr`.
    staging synthetic source object and native actor/grant. Lock the generated
    wheel and its transitive runtime in the deployment environment. There is no
    universal generated OSDK package to add to the shared requirements file.
+   Run staging checks from an enrollment-approved network; confirm the backend
+   runtime's egress is covered by the enrollment ingress allowlist.
 4. **Staging qualification:** run the offline command, then use actual native
    authentication against the pilot endpoint. Exercise authorized/foreign,
    missing grant, revoked role/token/grant, expired/rotated application secret,
@@ -42,6 +44,29 @@ The supplied staging origin is `https://equaai.palantirfoundry.com`. The
 ontology, generated SDK distribution/module/version, object/property mappings
 and credential-store reference are still required. Recording this origin does
 not enable the transport or verify an authenticated Foundry read.
+
+The supplied hosted application is
+`https://aimms-demo-code.equaai.palantirfoundry.com/`, with browser callback
+`https://aimms-demo-code.equaai.palantirfoundry.com/auth/callback`. These are
+browser application coordinates; the backend transport origin remains the
+Foundry origin above. They do not identify the generated Python SDK package or
+its selected ontology.
+
+Current connectivity blocker: unauthenticated HTTPS GET checks from the agent
+environment returned HTTP 403 and Palantir's **Network Blocked** page for both
+origins. The page states that this connection is outside the enrollment's
+ingress allowlist. TLS verification passed. This blocks access before SDK
+authentication and does not establish credential validity or resource access.
+An enrollment administrator can confirm an existing approved staging runtime,
+network or VPN. Repeat connectivity and authenticated SDK checks from that
+approved runtime; this agent's current network has not been qualified.
+
+From a machine/network where Foundry opens, use Developer Console to open the
+AIMMS application and select the Python SDK setup/documentation. Supply its
+package/module/version and initialization instructions without tokens or
+secrets, together with the reviewed object/property mappings and credential
+store reference. The hosted app and callback URLs cannot supply these details
+from this blocked connection.
 
 Create a restricted backend application in Foundry Developer Console. Generate
 the Python SDK for the selected ontology and machine/location types. Grant its
