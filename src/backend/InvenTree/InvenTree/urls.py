@@ -71,6 +71,7 @@ apipatterns = [
     path('kanban/', include(tasks.api.kanban_api_urls)),
     path('tasks/', include(tasks.api.tasks_api_urls)),
     path('assets/', include(assets.api.assets_api_urls)),
+    path('integration/palantir/', include('integration_state.palantir_api')),
     path('approvals/', include(approvals.api.approvals_api_urls)),
     path('repair/', include(repair.api.repair_api_urls)),
     path('maintenance/', include(repair.api.maintenance_api_urls)),
