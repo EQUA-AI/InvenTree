@@ -63,6 +63,26 @@ An enrollment administrator can confirm the rule applicable to the hosted
 application and an approved staging runtime/network. Repeat authenticated SDK
 checks from that approved runtime; live SDK access remains unqualified.
 
+The supplied application-specific Ontology MCP endpoint is now reachable:
+unauthenticated access returns HTTP 401 **Bearer token required**, and both
+protected-resource and authorization-server discovery return HTTP 200 with
+verified TLS. These observations are separate from the hosted app's ingress
+failure. The supplied application RID identifies a Developer Console
+application; it is not the missing ontology RID.
+
+The MCP connection has been registered in repository-local Claude Code user
+settings using the supplied public client ID and callback port 8080. OAuth
+sign-in is pending user interaction. Its loopback redirect is
+`http://localhost:8080/callback`, separate from the hosted browser app's
+`/auth/callback`. Resume authentication from this repository with
+`claude mcp login --no-browser aimms-demo-code-app`. Keep login links, codes,
+tokens, client secrets and user MCP configuration outside Git. A Claude Code
+registration does not attach tools to this Codex chat or configure the Python
+OSDK backend. After authorization, inspect the MCP tool catalog and use only
+the resource/metadata reads required for SDK discovery; actions and writes
+remain outside this staging task. Authenticated MCP access and the generated
+Python SDK/service-user read must each be verified separately.
+
 From a machine/network where Foundry opens, use Developer Console to open the
 AIMMS application and select the Python SDK setup/documentation. Supply its
 package/module/version and initialization instructions without tokens or
@@ -186,3 +206,4 @@ behavior is claimed until the actual generated package has passed step 4.
 - [ConfidentialClientAuth usage](https://www.palantir.com/docs/foundry/compute-modules/osdk-integration/)
 - [Restricted application setup](https://www.palantir.com/docs/foundry/developer-console/create-application/)
 - [Service-user client credentials](https://www.palantir.com/docs/foundry/consumer-mode/client-credentials-setup/)
+- [Ontology MCP authentication and authorization](https://www.palantir.com/docs/foundry/ontology-mcp/authentication-and-authorization/)
