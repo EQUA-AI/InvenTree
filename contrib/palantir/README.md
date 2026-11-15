@@ -52,14 +52,16 @@ browser application coordinates; the backend transport origin remains the
 Foundry origin above. They do not identify the generated Python SDK package or
 its selected ontology.
 
-Current connectivity blocker: unauthenticated HTTPS GET checks from the agent
-environment returned HTTP 403 and Palantir's **Network Blocked** page for both
-origins. The page states that this connection is outside the enrollment's
-ingress allowlist. TLS verification passed. This blocks access before SDK
-authentication and does not establish credential validity or resource access.
-An enrollment administrator can confirm an existing approved staging runtime,
-network or VPN. Repeat connectivity and authenticated SDK checks from that
-approved runtime; this agent's current network has not been qualified.
+Current connectivity after the supplied ingress change: the Foundry origin
+returns HTTP 307 to `/workspace`, which returns HTTP 307 to `/multipass/login`.
+The hosted application still returns HTTP 403 and Palantir's **Network
+Blocked** page, identifying this connection as outside the enrollment ingress
+allowlist. Fresh no-cache GET checks reproduce these different outcomes; TLS
+verification passes for both origins. Foundry sign-in reachability does not
+establish credential validity, SDK access or resource authorization.
+An enrollment administrator can confirm the rule applicable to the hosted
+application and an approved staging runtime/network. Repeat authenticated SDK
+checks from that approved runtime; live SDK access remains unqualified.
 
 From a machine/network where Foundry opens, use Developer Console to open the
 AIMMS application and select the Python SDK setup/documentation. Supply its
