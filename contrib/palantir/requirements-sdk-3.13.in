@@ -1,0 +1,5 @@
+# Optional isolated Python 3.13 SDK worker; private artifact sources are supplied
+# at provisioning time. Keep credentials and index URLs outside this file.
+aimms-backend-staging-sdk==0.2.0
+foundry-sdk-runtime==2.249.0
+foundry-platform-sdk==1.111.0

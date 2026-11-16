@@ -43,6 +43,11 @@ def _sdk_read(payload):
         deadline=60,
     )
     dist = sdk_distribution(config)
+    operation = payload.get('operation', 'read_object')
+    if operation == 'inspect_distribution':
+        return {'sdk_module': config.sdk_module, 'sdk_version': dist.version}
+    if operation != 'read_object':
+        raise TransportError('invalid')
     sdk = importlib.import_module(config.sdk_module)
     expected = Path(dist.locate_file(f'{config.sdk_module}/__init__.py')).resolve()
     if Path(sdk.__file__).resolve() != expected:

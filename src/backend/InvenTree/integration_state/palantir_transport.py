@@ -91,6 +91,7 @@ class TransportConfig:
     authorize_fields: Callable
     request_timeout: int = 5
     deadline: int = 20
+    worker_python: str | None = None
 
 
 def _text(value, limit=256):
@@ -121,6 +122,13 @@ def validate_config(config):
     except ValueError:
         valid_origin = False
     if not valid_origin:
+        raise TransportError('invalid')
+    if config.worker_python is not None and (
+        not _text(config.worker_python, 4096)
+        or not Path(config.worker_python).is_absolute()
+        or not Path(config.worker_python).is_file()
+        or not os.access(config.worker_python, os.X_OK)
+    ):
         raise TransportError('invalid')
     if (
         not _text(config.environment, 128)
@@ -214,7 +222,7 @@ def _stop(worker):
                 stream.close()
 
 
-def _invoke_worker(payload, deadline):
+def _invoke_worker(payload, deadline, *, python_executable=None):
     """Use a clean isolated interpreter and secret-bearing anonymous stdin pipe.
 
     Worker output is capped before parsing. SDK stdout/stderr are discarded in
@@ -226,7 +234,7 @@ def _invoke_worker(payload, deadline):
     import time
 
     command = [
-        sys.executable,
+        python_executable or sys.executable,
         '-I',
         '-B',
         str(Path(__file__).with_name('palantir_worker.py')),
@@ -301,6 +309,29 @@ def _invoke_worker(payload, deadline):
         _stop(worker)
 
 
+def check_sdk_installation(config):
+    """Inspect the selected interpreter's package metadata without SDK import.
+
+    A private SDK may have its own locked environment. The server selects its
+    interpreter; callers and source payloads cannot choose executable paths.
+    This is installation evidence, not a credential or source-access check.
+    """
+    validate_config(config)
+    if config.worker_python is None:
+        sdk_distribution(config)
+        return
+    payload = _wire_config(config, config.mappings[0])
+    payload['operation'] = 'inspect_distribution'
+    result = _invoke_worker(
+        payload, config.deadline, python_executable=config.worker_python
+    )
+    if type(result) is not dict or result != {
+        'sdk_module': config.sdk_module,
+        'sdk_version': config.sdk_version,
+    }:
+        raise TransportError('invalid')
+
+
 def fetch_object(config, mapping, *, pk, client_pk, client_incarnation, incarnation):
     """Fetch only an already authorized exact identity; no source fallback."""
     validate_config(config)
@@ -325,7 +356,9 @@ def fetch_object(config, mapping, *, pk, client_pk, client_incarnation, incarnat
             raise TransportError('invalid')
         payload = _wire_config(config, mapping)
         payload.update({'credentials': asdict(credentials), 'pk': pk})
-        row = _invoke_worker(payload, config.deadline)
+        row = _invoke_worker(
+            payload, config.deadline, python_executable=config.worker_python
+        )
         if (
             type(row) is not dict
             or set(row) != set(PROPERTY_FIELDS)
@@ -359,6 +392,7 @@ def config_fingerprint(config):
         config.environment,
         config.secret_reference,
         config.deadline,
+        config.worker_python,
         id(config.resolve_credentials),
         id(config.authorize_fields),
     ]

@@ -46,11 +46,15 @@ SDK coordinates supplied for the backend are distribution
 `aimms_backend_staging_sdk.ontology.objects`. The transport's `sdk_module`
 setting is the root `aimms_backend_staging_sdk`; it appends `.ontology.objects`
 itself. The reported generated identifier is `aimmsMachine`, with a string
-primary key named `machineKey`. The wheel and its exact exports/dependencies
-have not yet been inspected here: it is not installed, the package repository
-requires authentication, and `FOUNDRY_TOKEN` is absent from this agent process.
-Artifact access requires an approved credential reference or a downloaded
-wheel path. The authenticated MCP token is not reused for artifact downloads.
+primary key named `machineKey`. The supplied artifact credential enabled a
+download of the exact wheel, whose SHA-256 matched the package index. Static
+inspection and a network-isolated import/constructor/signature probe verified
+the lowercase class, string primary key, HTTP Config options and projected-get
+interface. The generated client defaults to the previously verified ontology.
+The SDK and its 29-package dependency closure are installed in a separate
+inspection environment; the Django environment is unchanged. The authenticated
+MCP token was not reused for artifact downloads, and artifact credentials are
+not stored in this repository or the runtime lock.
 
 Public Python SDK identifiers are selected with their exact case, including
 lowercase names; dotted/private identifiers and Python keywords are rejected.
@@ -229,7 +233,50 @@ or sync completeness guarantee. Version/layout checks are not independent
 wheel integrity verification. No SDK API signature compatibility or live
 behavior is claimed until the actual generated package has passed step 4.
 
+## Optional isolated SDK worker
+
+The generated SDK can use a dedicated interpreter selected by trusted server
+configuration as `TransportConfig.worker_python`. Leave it `None` to use the
+Django interpreter. A configured value must be an absolute executable file
+path; it is never accepted from request parameters or provider data. Reads
+still use the same credential pipe, timeout, byte budget and native checks.
+The offline management check inspects package metadata in that interpreter
+without importing the SDK, resolving credentials or contacting Foundry.
+
+`requirements-sdk-3.13.in` and its generated hash lock describe the verified
+Linux x86-64 / CPython 3.13 worker dependency set. This optional environment is
+separate from backend requirements. Its wheels must be obtained through the
+approved artifact repositories and kept outside Git. For an owned worker
+environment and a prepared wheelhouse:
+
+```sh
+python3.13 -m venv "$AIMMS_SDK_RUNTIME"
+"$AIMMS_SDK_RUNTIME/bin/python" -m pip install \
+    --no-index --require-hashes --only-binary=:all: \
+    --find-links "$AIMMS_SDK_WHEELHOUSE" \
+    -r contrib/palantir/requirements-sdk-3.13.txt
+```
+
+Set `worker_python` to that environment's `bin/python` in the deployment-owned
+settings module. The lock was generated with UV 0.11.12, using the inspected
+wheelhouse as the only package source. To regenerate it from reviewed wheels:
+
+```sh
+uv pip compile --no-index --find-links "$AIMMS_SDK_WHEELHOUSE" \
+    --python-version 3.13 --generate-hashes --no-header --no-annotate \
+    contrib/palantir/requirements-sdk-3.13.in \
+    -o contrib/palantir/requirements-sdk-3.13.txt
+```
+
+The actual generated machine schema exposes native-looking `source_id` and
+`source_uuid` fields and a string `client_key`; it does not expose separate
+native client-incarnation and environment fields. Schema names alone do not
+establish live ownership or a current native identity. A reviewed mapping/key
+contract and confirmed staging context remain necessary. Import and metadata
+checks do not qualify a live service-user or native machine-data read.
+
 ## Official SDK references
+
 
 - [Python OSDK 2.x, object projections and paging semantics](https://www.palantir.com/docs/foundry/ontology-sdk/python-osdk/)
 - [Public Config options](https://www.palantir.com/docs/foundry/ontology-sdk/python-osdk-migration/)

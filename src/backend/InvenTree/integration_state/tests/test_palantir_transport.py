@@ -23,6 +23,7 @@ from integration_state.palantir_transport import (
     TransportConfig,
     TransportError,
     _invoke_worker,
+    check_sdk_installation,
     config_fingerprint,
     fetch_object,
     sdk_distribution,
@@ -134,6 +135,10 @@ class PalantirConfigurationTests(TestCase):
             config_fingerprint(config),
             config_fingerprint(replace(config, environment='other')),
         )
+        self.assertNotEqual(
+            config_fingerprint(config),
+            config_fingerprint(replace(config, worker_python=sys.executable)),
+        )
         self.assertNotIn('synthetic-secret', repr(config))
         self.assertNotIn('private', repr(Credentials('client', 'private')))
 
@@ -176,6 +181,9 @@ class PalantirConfigurationTests(TestCase):
             ],
             {'resolve_credentials': None},
             {'authorize_fields': None},
+            {'worker_python': True},
+            {'worker_python': 'python'},
+            {'worker_python': '/unavailable/aimms-sdk/python'},
         ]
         for change in changes:
             with self.subTest(change=change), self.assertRaises(TransportError):
@@ -271,6 +279,75 @@ class PalantirWorkerTests(WorkerFixture, TestCase):
         self.assertEqual(row, {'pk': 7, 'client': 1, 'name': 'Synthetic remote asset'})
         self.assertEqual(len(self.workers), 1)
         self.assertIsNotNone(self.workers[0].returncode)
+
+    def test_configured_sdk_interpreter_is_used_without_launch_patching(self):
+        """The generated SDK can live outside the Django interpreter's packages."""
+        self.assertEqual(
+            self.read(replace(fixture_config(), worker_python=self.python)),
+            {'pk': 7, 'client': 1, 'name': 'Synthetic remote asset'},
+        )
+
+    def test_remote_installation_check_never_imports_sdk_or_resolves_secrets(self):
+        """Metadata-only inspection works even when the vendor import would fail."""
+        package = (
+            Path(self.scratch.name)
+            / f'venv/lib/python{sys.version_info.major}.{sys.version_info.minor}/site-packages/aimms_synthetic_osdk/__init__.py'
+        )
+        previous = package.read_bytes()
+        resolver = mock.Mock(
+            side_effect=AssertionError('No credential resolution offline')
+        )
+        config = replace(
+            fixture_config(), worker_python=self.python, resolve_credentials=resolver
+        )
+        output = io.StringIO()
+        try:
+            package.write_text(
+                'raise AssertionError("SDK import forbidden in metadata check")\n'
+            )
+            with override_settings(AIMMS_PALANTIR_TRANSPORT=config):
+                call_command(
+                    'check_palantir_transport', require_configured=True, stdout=output
+                )
+        finally:
+            package.write_bytes(previous)
+        self.assertEqual(
+            json.loads(output.getvalue()),
+            {
+                'status': 'configured',
+                'domains': ['machines', 'locations'],
+                'live_verified': False,
+            },
+        )
+        resolver.assert_not_called()
+
+    def test_selected_runtime_package_pin_is_required(self):
+        """A matching package in another environment cannot satisfy this check."""
+        config = replace(
+            fixture_config(), worker_python=self.python, sdk_version='2.2.0'
+        )
+        with self.assertRaises(TransportError):
+            check_sdk_installation(config)
+
+    def test_nonexecutable_sdk_interpreter_is_rejected(self):
+        """Only an explicit runnable absolute interpreter path is accepted."""
+        path = Path(self.scratch.name) / 'not-an-interpreter'
+        path.write_text('not executable')
+        path.chmod(0o600)
+        with self.assertRaises(TransportError):
+            validate_config(replace(fixture_config(), worker_python=str(path)))
+
+    def test_bad_runtime_metadata_response_is_not_installation_success(self):
+        """A successful worker process still needs the exact module/version reply."""
+        config = replace(fixture_config(), worker_python=self.python)
+        with (
+            mock.patch(
+                'integration_state.palantir_transport._invoke_worker',
+                return_value={'sdk_module': config.sdk_module, 'sdk_version': 'wrong'},
+            ),
+            self.assertRaises(TransportError),
+        ):
+            check_sdk_installation(config)
 
     def test_integer_primary_key_is_supported_explicitly(self):
         """No runtime key coercion heuristics from source metadata."""

@@ -7,7 +7,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from integration_state.palantir_transport import (
     TransportError,
-    sdk_distribution,
+    check_sdk_installation,
     validate_config,
 )
 
@@ -32,7 +32,7 @@ class Command(BaseCommand):
         else:
             try:
                 validate_config(config)
-                sdk_distribution(config)
+                check_sdk_installation(config)
             except (TransportError, OSError, ValueError, TypeError):
                 raise CommandError(
                     'Palantir transport configuration or pinned generated SDK is unavailable'
