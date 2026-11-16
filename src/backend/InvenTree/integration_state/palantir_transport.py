@@ -9,6 +9,7 @@ byte or worker-memory limit; qualify those separately in the staging runtime.
 import hashlib
 import importlib.metadata
 import json
+import keyword
 import os
 import re
 import signal
@@ -21,6 +22,7 @@ from threading import BoundedSemaphore
 from urllib.parse import urlsplit
 
 MAX_OUTPUT_BYTES = 16384
+ONTOLOGY_READ_SCOPE = 'api:use-ontologies-read'
 FIELDS = ('pk', 'client', 'name')
 PROPERTY_FIELDS = (
     'pk',
@@ -149,7 +151,8 @@ def validate_config(config):
             or mapping.domain not in ('machines', 'locations')
             or mapping.domain in domains
             or not _text(mapping.object_type, 128)
-            or not re.fullmatch(r'[A-Z][a-zA-Z0-9]*', mapping.object_type)
+            or not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_]*', mapping.object_type)
+            or keyword.iskeyword(mapping.object_type)
             or mapping.object_type in objects
             or type(mapping.key_type) is not str
             or mapping.key_type not in ('str', 'int')

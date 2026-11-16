@@ -41,9 +41,25 @@ authorization, deployment or C/K acceptance is implied by those tests.
 ## Configure the staging pilot
 
 The supplied staging origin is `https://equaai.palantirfoundry.com`. The
-ontology, generated SDK distribution/module/version, object/property mappings
-and credential-store reference are still required. Recording this origin does
-not enable the transport or verify an authenticated Foundry read.
+SDK coordinates supplied for the backend are distribution
+`aimms_backend_staging_sdk`, version `0.2.0`, with object imports under
+`aimms_backend_staging_sdk.ontology.objects`. The transport's `sdk_module`
+setting is the root `aimms_backend_staging_sdk`; it appends `.ontology.objects`
+itself. The reported generated identifier is `aimmsMachine`, with a string
+primary key named `machineKey`. The wheel and its exact exports/dependencies
+have not yet been inspected here: it is not installed, the package repository
+requires authentication, and `FOUNDRY_TOKEN` is absent from this agent process.
+Artifact access requires an approved credential reference or a downloaded
+wheel path. The authenticated MCP token is not reused for artifact downloads.
+
+Public Python SDK identifiers are selected with their exact case, including
+lowercase names; dotted/private identifiers and Python keywords are rejected.
+The complete native property mapping, exact remote key, confirmed native
+staging backend/environment and service credential-store reference are still
+required. Historical candidate IDs and namespace prefixes are not current
+authority. The current lookup uses the decimal native pk; composite
+`machineKey` values require separately reviewed key resolution. These inputs
+do not enable the transport or qualify the generated SDK against Foundry.
 
 The supplied hosted application is
 `https://aimms-demo-code.equaai.palantirfoundry.com/`, with browser callback
@@ -107,7 +123,7 @@ from this blocked connection.
 Create a restricted backend application in Foundry Developer Console. Generate
 the Python SDK for the selected ontology and machine/location types. Grant its
 service user only the required staging resources and request the
-`api:ontologies-read` scope. The service user's permissions do not grant native
+`api:use-ontologies-read` scope for a new restricted application. The service user's permissions do not grant native
 AIMMS users access. Keep client secrets in the server secret store.
 
 Trusted server settings must assign a `TransportConfig` instance to
@@ -220,4 +236,5 @@ behavior is claimed until the actual generated package has passed step 4.
 - [ConfidentialClientAuth usage](https://www.palantir.com/docs/foundry/compute-modules/osdk-integration/)
 - [Restricted application setup](https://www.palantir.com/docs/foundry/developer-console/create-application/)
 - [Service-user client credentials](https://www.palantir.com/docs/foundry/consumer-mode/client-credentials-setup/)
+- [Current application restrictions and scope prefixes](https://www.palantir.com/docs/foundry/developer-console/application-restrictions/#scope-prefixes)
 - [Ontology MCP authentication and authorization](https://www.palantir.com/docs/foundry/ontology-mcp/authentication-and-authorization/)

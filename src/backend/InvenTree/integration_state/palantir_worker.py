@@ -17,6 +17,7 @@ if __name__ == '__main__':
 
 from integration_state.palantir_transport import (
     MAX_OUTPUT_BYTES,
+    ONTOLOGY_READ_SCOPE,
     PROPERTY_FIELDS,
     ObjectMapping,
     TransportConfig,
@@ -58,7 +59,7 @@ def _sdk_read(payload):
         client_id=payload['credentials']['client_id'],
         client_secret=payload['credentials']['client_secret'],
         hostname=config.origin.removeprefix('https://'),
-        scopes=['api:ontologies-read'],
+        scopes=[ONTOLOGY_READ_SCOPE],
         should_refresh=False,
         config=http,
     )

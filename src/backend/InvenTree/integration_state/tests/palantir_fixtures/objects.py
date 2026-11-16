@@ -18,3 +18,10 @@ class Machine:
 
 class Location(Machine):
     """Use the same minimal properties for the synthetic location object."""
+
+
+def __getattr__(name):
+    """Expose one exact public mixed-case name for generated-SDK controls."""
+    if name == 'aimmsMachine':
+        return Machine
+    raise AttributeError(name)

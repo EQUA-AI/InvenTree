@@ -163,6 +163,17 @@ class PalantirConfigurationTests(TestCase):
             {'mappings': (replace(config.mappings[0], name='client_pk'),)},
             {'mappings': (replace(config.mappings[0], incarnation='_private'),)},
             {'mappings': (replace(config.mappings[0], domain='history'),)},
+            *[
+                {'mappings': (replace(config.mappings[0], object_type=name),)}
+                for name in (
+                    '_private',
+                    'for',
+                    'None',
+                    'aimmsMachine.extra',
+                    'aimms-Machine',
+                    'aimmsMachine()',
+                )
+            ],
             {'resolve_credentials': None},
             {'authorize_fields': None},
         ]
@@ -269,6 +280,27 @@ class PalantirWorkerTests(WorkerFixture, TestCase):
         )
         with self.use_worker():
             self.assertEqual(self.read(config)['pk'], 7)
+
+    def test_exact_public_lowercase_sdk_export_is_supported(self):
+        """Generated identifiers need not follow a capitalized class convention."""
+        config = fixture_config()
+        config = replace(
+            config, mappings=(replace(config.mappings[0], object_type='aimmsMachine'),)
+        )
+        with self.use_worker():
+            self.assertEqual(
+                self.read(config),
+                {'pk': 7, 'client': 1, 'name': 'Synthetic remote asset'},
+            )
+
+    def test_wrong_case_is_refused_without_guessing_an_alias(self):
+        """Accept public syntax without changing the selected SDK identifier."""
+        config = fixture_config()
+        config = replace(
+            config, mappings=(replace(config.mappings[0], object_type='Aimmsmachine'),)
+        )
+        with self.use_worker(), self.assertRaises(TransportError):
+            self.read(config)
 
     def test_wrong_identity_owner_incarnation_environment_and_types_fail(self):
         """Never disclose another identity's selected data as the requested row."""

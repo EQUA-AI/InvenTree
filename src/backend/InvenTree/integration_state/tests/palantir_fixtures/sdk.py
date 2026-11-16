@@ -22,7 +22,7 @@ class ConfidentialClientAuth:
     def __init__(self, **kwargs):
         """Never silently accept a different scope or background refresh mode."""
         if (
-            kwargs['scopes'] != ['api:ontologies-read']
+            kwargs['scopes'] != ['api:use-ontologies-read']
             or kwargs['should_refresh'] is not False
             or kwargs['hostname'] != 'synthetic.example.test'
         ):
@@ -90,5 +90,9 @@ class FoundryClient:
     def __init__(self, *, auth, hostname, config):
         """Expose only the approved two synthetic object collections."""
         self.ontology = SimpleNamespace(
-            objects=SimpleNamespace(Machine=Collection(auth), Location=Collection(auth))
+            objects=SimpleNamespace(
+                Machine=Collection(auth),
+                Location=Collection(auth),
+                aimmsMachine=Collection(auth),
+            )
         )
