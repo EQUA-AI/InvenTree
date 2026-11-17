@@ -246,8 +246,11 @@ without importing the SDK, resolving credentials or contacting Foundry.
 `requirements-sdk-3.13.in` and its generated hash lock describe the verified
 Linux x86-64 / CPython 3.13 worker dependency set. This optional environment is
 separate from backend requirements. Its wheels must be obtained through the
-approved artifact repositories and kept outside Git. For an owned worker
-environment and a prepared wheelhouse:
+approved artifact repositories and kept outside Git. For a local checkout,
+`data/palantir/sdk-runtime` is a Git-ignored runtime location. Creating it
+does not install the SDK in the deployment image or enable the transport.
+
+For an owned worker environment and a prepared wheelhouse:
 
 ```sh
 python3.13 -m venv "$AIMMS_SDK_RUNTIME"
@@ -267,6 +270,16 @@ uv pip compile --no-index --find-links "$AIMMS_SDK_WHEELHOUSE" \
     contrib/palantir/requirements-sdk-3.13.in \
     -o contrib/palantir/requirements-sdk-3.13.txt
 ```
+
+For Azure's Linux amd64 image, `contrib/container/Dockerfile` also provides
+the optional `production-palantir` target. Supply the reviewed wheels as
+`contrib/palantir/wheelhouse` in a private build context; do not commit them.
+The build installs the hash-locked packages offline into
+`/opt/aimms-palantir-sdk`, verifies the generated SDK import and leaves the
+normal `production` target unchanged. Select
+`/opt/aimms-palantir-sdk/bin/python` as `worker_python` only in reviewed
+deployment settings. Shipping the runtime does not configure or enable the
+transport, authenticate to Foundry, or resolve the mapping gaps below.
 
 The actual generated machine schema exposes native-looking `source_id` and
 `source_uuid` fields and a string `client_key`; it does not expose separate

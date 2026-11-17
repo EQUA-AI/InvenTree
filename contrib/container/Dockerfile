@@ -206,6 +206,25 @@ RUN pip-licenses --format=json --with-license-file --no-license-path > "${INVENT
 # Launch the production server
 CMD ["sh", "-c", "exec gunicorn -k uvicorn.workers.UvicornWorker -c ./gunicorn.conf.py InvenTree.asgi:application -b 0.0.0.0:8000 --chdir ${INVENTREE_BACKEND_DIR}/InvenTree"]
 
+# The private wheelhouse is supplied in the build context, never committed.
+FROM python:3.13-slim-trixie@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90 AS palantir_sdk_runtime
+
+COPY contrib/palantir/requirements-sdk-3.13.txt /tmp/requirements-sdk.txt
+COPY contrib/palantir/wheelhouse /tmp/wheelhouse
+RUN python3.13 -m venv /opt/aimms-palantir-sdk \
+    && /opt/aimms-palantir-sdk/bin/python -m pip install \
+        --no-index --find-links=/tmp/wheelhouse --require-hashes \
+        --only-binary=:all: -r /tmp/requirements-sdk.txt \
+    && /opt/aimms-palantir-sdk/bin/python -m pip check
+
+FROM production AS production-palantir
+
+COPY --from=palantir_sdk_runtime /usr/local/bin/python3.13 /usr/local/bin/python3.13
+COPY --from=palantir_sdk_runtime /usr/local/lib/libpython3.13.so.1.0 /usr/local/lib/libpython3.13.so.1.0
+COPY --from=palantir_sdk_runtime /usr/local/lib/python3.13 /usr/local/lib/python3.13
+COPY --from=palantir_sdk_runtime /opt/aimms-palantir-sdk /opt/aimms-palantir-sdk
+RUN /opt/aimms-palantir-sdk/bin/python -I -c "import importlib.metadata; from aimms_backend_staging_sdk.ontology.objects import aimmsMachine; assert importlib.metadata.version('aimms_backend_staging_sdk') == '0.2.0'; assert aimmsMachine.api_name() == 'aimmsMachine'; assert aimmsMachine.primary_key() == 'machineKey'"
+
 FROM builder_stage AS dev
 
 ARG commit_hash=""

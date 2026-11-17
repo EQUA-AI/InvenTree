@@ -114,6 +114,7 @@ messages.ts
 # Local secrets (never commit)
 .secrets/
 src/backend/InvenTree/ai/secrets/
+contrib/palantir/wheelhouse/
 # Environment files (templates like .env.template stay tracked; real .env never)
 .env
 *.env
