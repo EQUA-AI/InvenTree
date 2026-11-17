@@ -275,6 +275,71 @@ establish live ownership or a current native identity. A reviewed mapping/key
 contract and confirmed staging context remain necessary. Import and metadata
 checks do not qualify a live service-user or native machine-data read.
 
+## Azure Container Apps credentials
+
+The backend is reported to run on Azure Container Apps. Store the saved
+`aimms-backend-staging` client secret in Azure Key Vault. Its public client ID
+and the exact Key Vault secret URI are still operator inputs. These credentials
+are separate from the artifact-download token and the browser/MCP application.
+
+Configure the reference chain in the Azure portal:
+
+1. Enable a managed identity on the Container App under **Security → Identity**.
+   Grant that identity **Key Vault Secrets User** access to the secret, using
+   the vault's Azure RBAC configuration. Ensure the vault's network rules allow
+   retrieval from this deployment.
+2. Under **Security → Secrets → Add**, create `foundry-secret`, select
+   **Key Vault reference**, enter the secret URI and select that identity.
+3. Create a new revision, edit the backend container's environment variables
+   and supply the following values. Deploy the revision with the reviewed
+   transport configuration and SDK runtime.
+
+| Environment variable | Container App configuration |
+| --- | --- |
+| `AIMMS_PALANTIR_CLIENT_ID` | Plain value: the backend application's public client ID |
+| `AIMMS_PALANTIR_CLIENT_SECRET` | Source: **Reference a secret**; select `foundry-secret` |
+
+Azure injects the resolved value. A literal Key Vault URL in a plain environment
+variable does not perform this lookup. In the existing deployment-owned
+`TransportConfig`, select the built-in resolver explicitly:
+
+```python
+from integration_state.palantir_transport import (
+    ENV_SECRET_REFERENCE,
+    environment_credentials,
+)
+
+# Use these two keyword arguments in the reviewed TransportConfig above:
+# secret_reference=ENV_SECRET_REFERENCE,
+# resolve_credentials=environment_credentials,
+```
+
+This resolver reads only the two fixed variable names, refuses missing or
+malformed values and unresolved reference expressions, and returns fixed public
+errors. It neither contacts Key Vault nor logs/caches credentials. The parent
+process supplies credentials to the SDK worker through its private stdin pipe;
+the worker does not inherit these environment variables. Azure managed identity
+authorizes Key Vault retrieval; Foundry client credentials authorize SDK reads.
+No Azure SDK dependency is needed for this platform-resolved path. Variables
+alone do not configure or enable `AIMMS_PALANTIR_TRANSPORT`.
+
+For automatic rotation, use a versionless URI such as
+`https://<vault>.vault.azure.net/secrets/<secret-name>`. Microsoft documents
+refresh within 30 minutes and automatic restart of active revisions using the
+secret as an environment variable. A versioned URI pins that version; update
+the reference and roll out the revision deliberately. Process environment
+variables do not update themselves. Coordinate Foundry rotation and deployment:
+invalidating the old client secret before new containers receive the replacement
+can interrupt authentication. A prompt controlled rollout should be verified
+with an authorized staging read rather than waiting on automatic refresh.
+
+The local checks use synthetic credentials and a synthetic SDK. Azure identity,
+Key Vault access, deployed secret injection and live Foundry authentication have
+not been verified. The mapping and staging qualification requirements above
+still apply. See Microsoft's
+[Container Apps secrets guide](https://learn.microsoft.com/en-us/azure/container-apps/manage-secrets)
+for reference setup, networking and rotation behavior.
+
 ## Official SDK references
 
 

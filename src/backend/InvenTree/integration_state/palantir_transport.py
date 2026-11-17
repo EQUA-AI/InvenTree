@@ -23,6 +23,7 @@ from urllib.parse import urlsplit
 
 MAX_OUTPUT_BYTES = 16384
 ONTOLOGY_READ_SCOPE = 'api:use-ontologies-read'
+ENV_SECRET_REFERENCE = 'env:AIMMS_PALANTIR_CLIENT_SECRET'
 FIELDS = ('pk', 'client', 'name')
 PROPERTY_FIELDS = (
     'pk',
@@ -101,6 +102,33 @@ def _text(value, limit=256):
         and value.strip() == value
         and not any(ord(c) < 32 for c in value)
     )
+
+
+def environment_credentials(reference):
+    """Read platform-resolved backend credentials, never a Key Vault URI.
+
+    Azure Container Apps can resolve Key Vault references into these fixed
+    environment variables. Only explicit server wiring selects this resolver;
+    defining the variables alone does not enable source reads. Each call reads
+    current process values, without logging or caching credential bytes.
+    """
+    if type(reference) is not str or reference != ENV_SECRET_REFERENCE:
+        raise TransportError('invalid')
+    client_id = os.environ.get('AIMMS_PALANTIR_CLIENT_ID')
+    client_secret = os.environ.get('AIMMS_PALANTIR_CLIENT_SECRET')
+    if (
+        not _text(client_id, 256)
+        or not _text(client_secret, 2048)
+        or client_secret.casefold().startswith((
+            'http://',
+            'https://',
+            'secretref:',
+            'keyvaultref:',
+            '@microsoft.keyvault(',
+        ))
+    ):
+        raise TransportError()
+    return Credentials(client_id, client_secret)
 
 
 def validate_config(config):

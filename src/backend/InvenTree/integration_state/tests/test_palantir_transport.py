@@ -18,6 +18,7 @@ from django.core.management.base import CommandError
 from django.test import override_settings
 
 from integration_state.palantir_transport import (
+    ENV_SECRET_REFERENCE,
     Credentials,
     ObjectMapping,
     TransportConfig,
@@ -25,6 +26,7 @@ from integration_state.palantir_transport import (
     _invoke_worker,
     check_sdk_installation,
     config_fingerprint,
+    environment_credentials,
     fetch_object,
     sdk_distribution,
     validate_config,
@@ -248,6 +250,114 @@ class PalantirConfigurationTests(TestCase):
             call_command('check_palantir_transport', require_configured=True)
 
 
+class PlatformEnvironmentCredentialTests(TestCase):
+    """Platform injection is distinct from credentials and authority selection."""
+
+    def test_platform_resolved_values_are_read_without_environment_mutation(self):
+        """The provider reads two fixed names and keeps credential repr private."""
+        values = {
+            'AIMMS_PALANTIR_CLIENT_ID': 'synthetic-client',
+            'AIMMS_PALANTIR_CLIENT_SECRET': 'synthetic-secret',
+        }
+        with mock.patch.dict(os.environ, values, clear=True):
+            result = environment_credentials(ENV_SECRET_REFERENCE)
+            self.assertEqual(dict(os.environ), values)
+        self.assertEqual(result.client_id, 'synthetic-client')
+        self.assertEqual(result.client_secret, 'synthetic-secret')
+        self.assertNotIn('synthetic-secret', repr(result))
+
+    def test_missing_blank_overlong_or_unresolved_values_are_refused_privately(self):
+        """A URL/reference string cannot be mistaken for a resolved client secret."""
+        for client_id, client_secret in [
+            (None, 'synthetic-secret'),
+            ('synthetic-client', None),
+            ('', 'synthetic-secret'),
+            ('synthetic-client', ' '),
+            ('synthetic-client', 'synthetic-secret\n'),
+            ('x' * 257, 'synthetic-secret'),
+            ('synthetic-client', 'x' * 2049),
+            ('synthetic-client', 'https://example.vault.azure.net/secrets/test'),
+            ('synthetic-client', 'HTTPS://example.vault.azure.net/secrets/test'),
+            ('synthetic-client', 'secretref:foundry-secret'),
+            (
+                'synthetic-client',
+                'keyvaultref:https://example.vault.azure.net/secrets/test',
+            ),
+            (
+                'synthetic-client',
+                '@Microsoft.KeyVault(SecretUri=https://example.vault.azure.net/secrets/test)',
+            ),
+        ]:
+            values = {
+                k: v
+                for k, v in [
+                    ('AIMMS_PALANTIR_CLIENT_ID', client_id),
+                    ('AIMMS_PALANTIR_CLIENT_SECRET', client_secret),
+                ]
+                if v is not None
+            }
+            with (
+                self.subTest(
+                    client_present=client_id is not None,
+                    secret_kind=type(client_secret).__name__,
+                ),
+                mock.patch.dict(os.environ, values, clear=True),
+                self.assertRaises(TransportError) as error,
+            ):
+                environment_credentials(ENV_SECRET_REFERENCE)
+            self.assertEqual(str(error.exception), 'Palantir read refused: unavailable')
+
+    def test_reference_cannot_select_arbitrary_environment_variables(self):
+        """No request/provider-supplied name can become a secret lookup."""
+        for reference in (
+            None,
+            True,
+            'env:OTHER_SECRET',
+            'https://example.vault.azure.net/secrets/test',
+        ):
+            with (
+                self.subTest(reference=reference),
+                self.assertRaises(TransportError) as error,
+            ):
+                environment_credentials(reference)
+            self.assertEqual(error.exception.code, 'invalid')
+
+    def test_environment_rotation_is_not_hidden_by_a_provider_cache(self):
+        """A new process environment value is used on the next resolution."""
+        with mock.patch.dict(
+            os.environ,
+            {
+                'AIMMS_PALANTIR_CLIENT_ID': 'synthetic-client',
+                'AIMMS_PALANTIR_CLIENT_SECRET': 'synthetic-A',
+            },
+            clear=True,
+        ):
+            first = environment_credentials(ENV_SECRET_REFERENCE)
+            os.environ['AIMMS_PALANTIR_CLIENT_SECRET'] = 'synthetic-B'
+            second = environment_credentials(ENV_SECRET_REFERENCE)
+        self.assertEqual(first.client_secret, 'synthetic-A')
+        self.assertEqual(second.client_secret, 'synthetic-B')
+
+    def test_metadata_check_does_not_require_platform_credentials(self):
+        """The offline command must not read environment secrets or call the SDK."""
+        config = replace(
+            fixture_config(),
+            secret_reference=ENV_SECRET_REFERENCE,
+            resolve_credentials=environment_credentials,
+        )
+        dist = mock.Mock(version='2.1.0', files=['aimms_synthetic_osdk/__init__.py'])
+        with (
+            override_settings(AIMMS_PALANTIR_TRANSPORT=config),
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch('importlib.metadata.distribution', return_value=dist),
+        ):
+            call_command(
+                'check_palantir_transport',
+                require_configured=True,
+                stdout=io.StringIO(),
+            )
+
+
 class PalantirWorkerTests(WorkerFixture, TestCase):
     """Exercise the actual isolated process, package loader and SDK calls."""
 
@@ -279,6 +389,26 @@ class PalantirWorkerTests(WorkerFixture, TestCase):
         self.assertEqual(row, {'pk': 7, 'client': 1, 'name': 'Synthetic remote asset'})
         self.assertEqual(len(self.workers), 1)
         self.assertIsNotNone(self.workers[0].returncode)
+
+    def test_platform_credentials_use_pipe_without_environment_inheritance(self):
+        """Resolve in the parent, then supply credentials only through stdin."""
+        config = fixture_config()
+        values = {
+            'AIMMS_PALANTIR_CLIENT_ID': 'success',
+            'AIMMS_PALANTIR_CLIENT_SECRET': config.resolve_credentials(
+                config.secret_reference
+            ).client_secret,
+        }
+        config = replace(
+            config,
+            secret_reference=ENV_SECRET_REFERENCE,
+            resolve_credentials=environment_credentials,
+        )
+        with mock.patch.dict(os.environ, values), self.use_worker():
+            self.assertEqual(
+                self.read(config),
+                {'pk': 7, 'client': 1, 'name': 'Synthetic remote asset'},
+            )
 
     def test_configured_sdk_interpreter_is_used_without_launch_patching(self):
         """The generated SDK can live outside the Django interpreter's packages."""

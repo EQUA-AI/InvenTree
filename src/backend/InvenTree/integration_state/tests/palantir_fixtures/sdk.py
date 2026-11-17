@@ -27,7 +27,15 @@ class ConfidentialClientAuth:
             or kwargs['hostname'] != 'synthetic.example.test'
         ):
             raise ValueError('Unexpected SDK authorization')
-        if 'AIMMS_TEST_INHERITED_SECRET' in os.environ or 'HTTPS_PROXY' in os.environ:
+        if any(
+            name in os.environ
+            for name in (
+                'AIMMS_TEST_INHERITED_SECRET',
+                'HTTPS_PROXY',
+                'AIMMS_PALANTIR_CLIENT_ID',
+                'AIMMS_PALANTIR_CLIENT_SECRET',
+            )
+        ):
             raise ValueError('Inherited secret or proxy')
         self.mode = kwargs['client_id']
         self.source = json.loads(kwargs['client_secret'])
