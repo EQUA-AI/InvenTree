@@ -10,6 +10,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 if __name__ == '__main__':
     # -I removes checkout/PYTHONPATH imports; bootstrap this known source only.
@@ -24,6 +25,49 @@ from integration_state.palantir_transport import (
     TransportError,
     sdk_distribution,
 )
+
+
+def _read_access_token(config, credentials):
+    """Request only the reviewed scope without the SDK's additional defaults."""
+    import httpx
+
+    client_id = quote(credentials['client_id'], safe='')
+    client_secret = quote(credentials['client_secret'], safe='')
+    with httpx.Client(
+        timeout=config.request_timeout,
+        verify=True,
+        trust_env=False,
+        follow_redirects=False,
+    ) as client:
+        with client.stream(
+            'POST',
+            f'{config.origin}/multipass/api/oauth2/token',
+            data={'grant_type': 'client_credentials', 'scope': ONTOLOGY_READ_SCOPE},
+            auth=httpx.BasicAuth(client_id, client_secret),
+            headers={'Accept': 'application/json'},
+        ) as response:
+            response.raise_for_status()
+            body = bytearray()
+            for chunk in response.iter_bytes():
+                body.extend(chunk)
+                if len(body) > MAX_OUTPUT_BYTES:
+                    raise TransportError('budget')
+    payload = json.loads(body)
+    if not isinstance(payload, dict):
+        raise TransportError('invalid')
+    token = payload.get('access_token')
+    scope = payload.get('scope')
+    if (
+        type(token) is not str
+        or not token
+        or str(payload.get('token_type', '')).lower() != 'bearer'
+        or (
+            scope is not None
+            and (type(scope) is not str or set(scope.split()) != {ONTOLOGY_READ_SCOPE})
+        )
+    ):
+        raise TransportError('invalid')
+    return token
 
 
 def _sdk_read(payload):
@@ -60,14 +104,7 @@ def _sdk_read(payload):
     http = sdk.Config(
         timeout=config.request_timeout, verify=True, scheme='https', proxies={}
     )
-    auth = sdk.ConfidentialClientAuth(
-        client_id=payload['credentials']['client_id'],
-        client_secret=payload['credentials']['client_secret'],
-        hostname=config.origin.removeprefix('https://'),
-        scopes=[ONTOLOGY_READ_SCOPE],
-        should_refresh=False,
-        config=http,
-    )
+    auth = sdk.UserTokenAuth(_read_access_token(config, payload['credentials']))
     client = sdk.FoundryClient(
         auth=auth, hostname=config.origin.removeprefix('https://'), config=http
     )

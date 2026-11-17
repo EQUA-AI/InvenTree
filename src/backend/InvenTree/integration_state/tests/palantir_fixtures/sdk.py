@@ -1,8 +1,6 @@
 """Executable generated-SDK-shaped test double for the actual worker protocol."""
 
 import json
-import os
-import sys
 import time
 from types import SimpleNamespace
 
@@ -16,39 +14,13 @@ class Config:
             raise ValueError('Unexpected SDK HTTP configuration')
 
 
-class ConfidentialClientAuth:
-    """Inspect invocation without an external token endpoint."""
+class UserTokenAuth:
+    """Consume only the token returned by the synthetic OAuth endpoint."""
 
-    def __init__(self, **kwargs):
-        """Never silently accept a different scope or background refresh mode."""
-        if (
-            kwargs['scopes'] != ['api:use-ontologies-read']
-            or kwargs['should_refresh'] is not False
-            or kwargs['hostname'] != 'synthetic.example.test'
-        ):
-            raise ValueError('Unexpected SDK authorization')
-        if any(
-            name in os.environ
-            for name in (
-                'AIMMS_TEST_INHERITED_SECRET',
-                'HTTPS_PROXY',
-                'AIMMS_PALANTIR_CLIENT_ID',
-                'AIMMS_PALANTIR_CLIENT_SECRET',
-            )
-        ):
-            raise ValueError('Inherited secret or proxy')
-        self.mode = kwargs['client_id']
-        self.source = json.loads(kwargs['client_secret'])
-        if self.mode == 'auth_slow':
-            time.sleep(30)
-        # Both Python and fd-level output must be absent from the wire result.
-        print('synthetic secret in SDK stdout')
-        print('synthetic secret in SDK stderr', file=sys.stderr)
-        os.write(1, b'synthetic secret at fd 1\n')
-        if self.mode == 'denied':
-            raise RuntimeError(
-                'https://synthetic.example.test/private?token=synthetic-private-value'
-            )
+    def __init__(self, token):
+        """Retain the synthetic fixture without accepting client credentials."""
+        self.mode, source = json.loads(token)
+        self.source = json.loads(source)
 
 
 class Collection:

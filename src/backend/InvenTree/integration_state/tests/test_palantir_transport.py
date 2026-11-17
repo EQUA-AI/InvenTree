@@ -103,6 +103,7 @@ class WorkerFixture:
         fixture = Path(__file__).with_name('palantir_fixtures')
         shutil.copyfile(fixture / 'sdk.py', package / '__init__.py')
         shutil.copyfile(fixture / 'objects.py', package / 'ontology/objects.py')
+        shutil.copyfile(fixture / 'httpx.py', site / 'httpx.py')
         (package / 'ontology/__init__.py').write_text('')
         info = site / 'aimms_synthetic_osdk-2.1.0.dist-info'
         info.mkdir()
@@ -389,6 +390,23 @@ class PalantirWorkerTests(WorkerFixture, TestCase):
         self.assertEqual(row, {'pk': 7, 'client': 1, 'name': 'Synthetic remote asset'})
         self.assertEqual(len(self.workers), 1)
         self.assertIsNotNone(self.workers[0].returncode)
+
+    def test_worker_refuses_token_with_extra_scopes(self):
+        """A broader token must never reach the generated SDK."""
+        with self.use_worker(), self.assertRaises(TransportError) as raised:
+            self.read(fixture_config(mode='extra_scope'))
+        self.assertEqual(raised.exception.code, 'invalid')
+
+    def test_worker_refuses_missing_or_oversized_token(self):
+        """Invalid token replies must not reach the generated SDK."""
+        for mode, code in [('missing_token', 'invalid'), ('oversize_token', 'budget')]:
+            with (
+                self.subTest(mode=mode),
+                self.use_worker(),
+                self.assertRaises(TransportError) as raised,
+            ):
+                self.read(fixture_config(mode=mode))
+            self.assertEqual(raised.exception.code, code)
 
     def test_platform_credentials_use_pipe_without_environment_inheritance(self):
         """Resolve in the parent, then supply credentials only through stdin."""

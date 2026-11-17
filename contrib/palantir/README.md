@@ -215,8 +215,12 @@ unqualified database routers, including a hold enabled during a remote read.
 Only GET and OPTIONS are supported; there is no write/action endpoint.
 
 Each read obtains a new application token in a short-lived worker
-(`should_refresh=False`); the next read reacquires it. SDK config verifies TLS,
-uses a finite request timeout and disables configured proxies. The worker
+using only `api:use-ontologies-read`; the next read reacquires it. The token
+request uses verified TLS, a finite timeout and no redirects or environment
+proxies, and refuses a token with additional returned scopes. The worker passes
+the token to the SDK's `UserTokenAuth` rather than its confidential-client
+helper, which adds write scopes. SDK config verifies TLS, uses a finite request
+timeout and disables configured proxies. The worker
 inherits no application/token/proxy environment variables. Parent-enforced
 wall time covers SDK authentication and any SDK retries; no parent retry is
 added. A nonblocking per-server-process limit admits at most four concurrent
